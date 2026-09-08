@@ -22,9 +22,15 @@ case "$1" in
     SHELL_BIN=/usr/bin/myshell; [ -x $SHARE/myshell ] && SHELL_BIN=$SHARE/myshell
     [ -x $SHARE/myapp ] && export PATH="$SHARE:$PATH"
     printf 'Starting shell (%s): ' "$SHELL_BIN"
-    "$SHELL_BIN" > /var/log/shell.log 2>&1 &
+    # Own session: a shell started from a terminal window must not die with that terminal.
+    setsid "$SHELL_BIN" < /dev/null > /var/log/shell.log 2>&1 &
     echo OK
     ;;
   stop) killall myshell 2>/dev/null ;;
-  restart) "$0" stop; sleep 1; "$0" start ;;
+  restart)
+    # Detach first: when run from a terminal inside the desktop, stopping the compositor closes that
+    # terminal, which would kill this script before it restarts the shell (black screen).
+    setsid sh -c "'$0' stop; sleep 1; '$0' start" < /dev/null > /var/log/shell-restart.log 2>&1 &
+    echo "Restarting the shell (log: /var/log/shell-restart.log)"
+    ;;
 esac
