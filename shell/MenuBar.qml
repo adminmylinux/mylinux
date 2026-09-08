@@ -6,7 +6,7 @@ Item {
     property var desktop
     property Item backdrop
     property string appName: "mylinux"
-    height: Theme.px(28)
+    height: Theme.px(24)      // like the macOS menu bar
     property bool displayOpen: false
     property bool agentOpen: false
     function closeKbd() { kbdIcon.open = false }
@@ -102,7 +102,7 @@ Item {
                     id: titleText
                     anchors.centerIn: parent
                     text: modelData.title; color: Theme.text
-                    font.pixelSize: modelData.logo ? Theme.fpx(17) : Theme.fpx(14); font.bold: !!modelData.bold; font.family: Theme.uiFont
+                    font.pixelSize: modelData.logo ? Theme.fpx(16) : Theme.fpx(13); font.bold: !!modelData.bold; font.family: Theme.uiFont
                 }
                 MouseArea {
                     anchors.fill: parent; hoverEnabled: true

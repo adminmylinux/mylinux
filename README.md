@@ -30,14 +30,19 @@ separate "apps disk" image that the system sets itself up on first boot.
   (Buildroot needs a case-sensitive filesystem; the build tree lives inside Debian at `~/br`).
   Prebuilt images are attached to the GitHub releases, so building is optional.
 
-## Run a prebuilt image
-
-1. Download `Image` and `rootfs.cpio.gz` from the latest release into `out/`.
-2. Start it:
+## Install and run (prebuilt image)
 
 ```bash
+brew install qemu
+git clone https://github.com/adminmylinux/mylinux.git
+cd mylinux
+tools/get-image.sh      # downloads Image + rootfs.cpio.gz of the latest release into out/, checks SHA256
 ./run.sh
 ```
+
+`run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
+size of the display under your mouse pointer; if the first start puts it on another display, give your
+terminal app Accessibility permission (System Settings › Privacy & Security) and it is moved automatically.
 
 The first boot shows a welcome dialog. "Set up the apps disk" formats the blank
 `out/apps.img` (a sparse 16 GB file created by `run.sh`), downloads Debian's minimal rootfs
