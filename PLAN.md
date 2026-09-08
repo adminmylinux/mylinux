@@ -515,6 +515,13 @@ hypervisor entitlement; `Contents/share` links to Homebrew's data dir. `make-app
 Homebrew's binary changes; `run.sh` calls it every launch. Verified: title "myLinux", menu items renamed, HVF boot OK.
 Published: https://github.com/adminmylinux/mylinux (GPL-3.0), release v0.1.0 with Image + rootfs.cpio.gz.
 
+**Milestone 14 follow-ups II (14:55).** The theme picker dropped its "Download Omarchy backgrounds" / "Install a theme"
+entries as soon as the filter had text (typing "download" + Enter did nothing); they now match on label/hint.
+`theme-fetch-backgrounds` replaces a theme's downloaded photos and copies only files with a PNG/JPEG/RIFF magic (a
+saved 404 page named `.png` had made the wallpaper "Unsupported image format", showing only the fallback tint). WebP
+conversion scales to ≤ 2560 px wide (Omarchy photos are up to 5000 px; llvmpipe textures and decode time). Fresh-VM
+end-to-end: picker → "down" → Enter → download window → Hackerman shows the synth-scape photo.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.
