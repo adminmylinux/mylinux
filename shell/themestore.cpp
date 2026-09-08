@@ -115,9 +115,11 @@ int ThemeStore::convertWebp(const QString &dir)
         if (!getInfo((const uint8_t *)data.constData(), data.size(), &w, &h)) continue;
         uint8_t *rgba = decode((const uint8_t *)data.constData(), data.size(), &w, &h);
         if (!rgba) continue;
-        QImage img(rgba, w, h, w * 4, QImage::Format_RGBA8888);
+        QImage img = QImage(rgba, w, h, w * 4, QImage::Format_RGBA8888).copy();
+        // Wallpapers are shown at screen size; 5000-px photos only cost decode time and texture memory.
+        if (img.width() > 2560) img = img.scaled(2560, 2560 * img.height() / img.width(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
         const QString out = path.left(path.size() - 5) + ".png";
-        if (img.copy().save(out, "PNG")) { QFile::remove(path); ++done; }
+        if (img.save(out, "PNG")) { QFile::remove(path); ++done; }
         if (wfree) wfree(rgba); else free(rgba);
     }
     return done;

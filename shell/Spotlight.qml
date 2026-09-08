@@ -89,10 +89,12 @@ Item {
             const ql = q.toLowerCase()
             list = ThemeStore.themes.filter(t => q === "" || t.name.toLowerCase().indexOf(ql) >= 0)
                 .map(t => ({ label: t.name + (t.id === Theme.themeId ? "  ✓" : ""), hint: (t.light ? "Light" : "Dark") + " · " + t.backgrounds.length + " background" + (t.backgrounds.length === 1 ? "" : "s"), swatch: [t.colors.background, t.colors.color1, t.colors.color2, t.colors.color3, t.colors.color4, t.colors.color5, t.colors.accent], run: () => Theme.setTheme(t.id) }))
-            if (q === "") list = list.concat([
+            // extras stay reachable while typing ("down", "omarchy", "install" ... match their labels)
+            list = list.concat([
                 { label: "Download Omarchy backgrounds for all themes", hint: "≈ one repository download; adds the real photos to every theme", glyph: "⤓",
                   run: () => desktop.launchArgs("/usr/bin/foot", ["-T", "Downloading backgrounds", "sh", "-c", "theme-fetch-backgrounds; echo; echo 'Press Enter to close.'; read x"]) },
-                { label: "Install a theme from GitHub…", hint: "type: install owner/repo", glyph: "⤓", run: () => { mode = "theme"; input.text = "install "; open = true } } ])
+                { label: "Install a theme from GitHub…", hint: "type: install owner/repo", glyph: "⤓", run: () => { mode = "theme"; input.text = "install "; open = true } }
+            ].filter(e => q === "" || (e.label + " " + e.hint).toLowerCase().indexOf(ql) >= 0))
         } else if (mode === "menu" && stack.length === 0 && q === "") {
             list = categories.map(c => ({ label: c.label, hint: c.hint, glyph: c.glyph, category: c.id }))
         } else if (mode === "menu" && stack.length > 0 && q === "") {

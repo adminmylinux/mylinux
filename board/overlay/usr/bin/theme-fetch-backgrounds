@@ -15,7 +15,16 @@ for d in "$TMP"/*/themes/*/; do
   t=$(basename "$d"); mkdir -p "$DEST/$t/backgrounds"
   [ -f "$DEST/$t/colors.toml" ] || cp "$d/colors.toml" "$DEST/$t/" 2>/dev/null || true
   [ -f "$d/light.mode" ] && touch "$DEST/$t/light.mode"
-  for f in "$d"/backgrounds/*; do [ -f "$f" ] && cp "$f" "$DEST/$t/backgrounds/" && n=$((n+1)); done
+  # Replace this theme's downloaded photos wholesale, so a previous broken/partial download can't linger.
+  # (Generated wallpapers live in /usr/share/mylinux and are untouched.)
+  rm -f "$DEST/$t/backgrounds"/*.webp
+  for f in "$d"/backgrounds/*; do
+    b=$(basename "$f")
+    # Skip anything that is not actually an image (e.g. a saved 404 page): must start with a known magic.
+    case $(dd if="$f" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n') in
+      89504e47|ffd8ff*|52494646) cp "$f" "$DEST/$t/backgrounds/$b" && n=$((n+1)) ;;
+    esac
+  done
 done
 # Qt in this image has no WebP plugin: convert .webp -> .png (the shell binary does it with libwebp)
 echo "Converting WebP images..."
