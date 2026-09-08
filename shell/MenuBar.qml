@@ -6,7 +6,7 @@ Item {
     property var desktop
     property Item backdrop
     property string appName: "mylinux"
-    height: Theme.px(24)      // like the macOS menu bar
+    height: Theme.px(20)      // slimmer than the 24 pt macOS bar, per user preference
     property bool displayOpen: false
     property bool agentOpen: false
     function closeKbd() { kbdIcon.open = false }
