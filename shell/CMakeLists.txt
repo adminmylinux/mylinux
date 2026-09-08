@@ -30,6 +30,13 @@ qt_add_qml_module(myshell
         KeyHelp.qml
     RESOURCES
         assets/wallpaper.png
+        assets/icons/terminal.svg
+        assets/icons/chatgpt.svg
+        assets/icons/claude.svg
+        assets/icons/claudecode.svg
+        assets/icons/codex.svg
+        assets/icons/firefox.svg
+        assets/icons/chromium.svg
 )
 
 target_link_libraries(myshell PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::WaylandCompositor)

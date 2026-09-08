@@ -1,0 +1,18 @@
+#!/bin/sh
+# Make the apps disk's commands (apt, git, node, python3, claude, codex, ...) callable from any terminal:
+# /usr/local/bin/<name> -> apps-exec for every executable in the chroot that the base system lacks.
+# Run at boot (S45apps) and after installs (apps-setup, apps-setup-ai, apps-install, apps-update).
+A=/mnt/apps; D=/usr/local/bin
+mkdir -p $D
+# `claude` should work even before the agents are installed: the launcher installs on first use.
+[ -e $D/claude ] || ln -s /usr/bin/claude-code $D/claude
+mountpoint -q $A || exit 0
+for dir in $A/usr/bin $A/usr/local/bin $A/root/.local/bin; do
+  [ -d "$dir" ] || continue
+  for f in "$dir"/*; do
+    n="${f##*/}"; [ -x "$f" ] || continue
+    [ -e "/bin/$n" ] || [ -e "/sbin/$n" ] || [ -e "/usr/bin/$n" ] || [ -e "/usr/sbin/$n" ] && continue   # base system wins
+    [ -L "$D/$n" ] && [ "$(readlink "$D/$n")" != /usr/bin/claude-code ] && continue
+    ln -sf /usr/bin/apps-exec "$D/$n"
+  done
+done

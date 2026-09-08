@@ -522,6 +522,20 @@ saved 404 page named `.png` had made the wallpaper "Unsupported image format", s
 conversion scales to ≤ 2560 px wide (Omarchy photos are up to 5000 px; llvmpipe textures and decode time). Fresh-VM
 end-to-end: picker → "down" → Enter → download window → Hackerman shows the synth-scape photo.
 
+Safer quitting (2026-09-08 15:20): the apps disk is mounted with commit=1 (journal + data flushed every second), so
+Cmd+Q on the QEMU window, which is a power cut, loses at most ~1 s; the QEMU quit confirmation is rebranded to say
+so and point at ⌘ › Shut Down…; README has a "Quitting" section. Verified: /proc/mounts shows commit=1, dialog text,
+clean poweroff exits QEMU.
+
+Terminal PATH (2026-09-08 16:00): apps-path symlinks every apps-disk command the base lacks into /usr/local/bin
+(-> apps-exec -> apps-run); apps-run keeps the caller's cwd under /root or /tmp and has /root/.local/bin on its
+PATH; claude-code/codex run inline when typed in a terminal; the desktop starts in $HOME so terminals open in /root.
+
+Dock icons (2026-09-08 16:05): AppIcon draws a gradient plate per app plus an SVG glyph from shell/assets/icons
+(Claude starburst, Claude Code terminal window, OpenAI-style knot for ChatGPT/Codex, cloud terminal); Chromium and
+Firefox use the real hicolor icons from the apps disk once installed (SVG fallback otherwise). git (+ openssh-client,
+less) is part of the default apps-disk set; apps-setup is idempotent so it adds git to older disks.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

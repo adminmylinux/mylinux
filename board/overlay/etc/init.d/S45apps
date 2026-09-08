@@ -11,9 +11,12 @@ case "$1" in
       echo "$dev" > /run/apps-disk
       if disk_is_blank $dev; then echo "apps disk: $dev is blank (first boot: run apps-setup)"; break; fi
       mkdir -p /mnt/apps
-      if mount -t ext4 -o noatime $dev /mnt/apps 2>/dev/null; then
+      # commit=1: flush the journal (and, with data=ordered, file data) every second instead of every 5,
+      # so quitting the QEMU window with Cmd+Q, which is a power cut, loses at most about a second of writes.
+      if mount -t ext4 -o noatime,commit=1 $dev /mnt/apps 2>/dev/null; then
         echo "apps disk: $dev mounted at /mnt/apps"
         mkdir -p /mnt/apps/root && mount --bind /mnt/apps/root /root && echo "home: /root -> apps disk"
+        apps-path &   # apps-disk commands on the PATH (background: ~1 s)
         break
       fi
     done ;;

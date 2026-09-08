@@ -14,4 +14,5 @@ if [ "$WHAT" = all ] || [ "$WHAT" = codex ]; then
     tar -xzf codex.tgz; mv codex-aarch64-unknown-linux-musl /root/.local/bin/codex; chmod +x /root/.local/bin/codex; rm -f codex.tgz
     /root/.local/bin/codex --version'
 fi
+apps-path
 echo "done."

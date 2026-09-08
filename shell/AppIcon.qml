@@ -1,22 +1,29 @@
 import QtQuick
 import MyShell
 
-// macOS-style app icon drawn in QML (no image assets): rounded square, vertical gradient,
-// inner highlight, and a per-app glyph. `kind` selects the artwork.
+// macOS-style app icon: rounded gradient plate with an inner highlight and a per-app glyph
+// (assets/icons/<kind>.svg, or the real browser icon from the apps disk). `kind` selects the artwork.
 Item {
     id: icon
     property string kind: "terminal"
     property real size: 52
     width: size; height: size
 
+    // plate colours (top, bottom) per app; the clock keeps its white face
+    readonly property var plates: ({
+        terminal:   ["#8d6ffb", "#5a3fd6"], chatgpt:  ["#25b78d", "#0e8c69"],
+        claude:     ["#e98661", "#c95f3b"], claudecode: ["#e98661", "#c95f3b"],
+        codex:      ["#3b3b42", "#1d1d21"], firefox:  ["#7043dc", "#3a1e88"],
+        chromium:   ["#3f8dff", "#1a5bd4"], clock:    ["#ffffff", "#e9e9ee"] })
+    readonly property var plate: plates[kind] || plates.terminal
+
     Rectangle {
-        id: plate
+        id: plateRect
         anchors.fill: parent
         radius: width * 0.225
         gradient: Gradient {
-            GradientStop { position: 0.0; color: icon.kind === "terminal" ? "#4a4a4f" : "#ffffff" }
-            // (chatgpt/claude draw their own plates on top)
-            GradientStop { position: 1.0; color: icon.kind === "terminal" ? "#1b1b1e" : "#e9e9ee" }
+            GradientStop { position: 0.0; color: icon.plate[0] }
+            GradientStop { position: 1.0; color: icon.plate[1] }
         }
         border.color: "#33000000"; border.width: 1
         // top highlight
@@ -30,64 +37,21 @@ Item {
         }
     }
 
-    // ---- terminal: prompt glyph on a dark plate ----
-    Text {
-        visible: icon.kind === "terminal"
-        anchors.centerIn: parent; anchors.verticalCenterOffset: -1
-        text: ">_"; color: "#f2f2f2"
-        font.pixelSize: icon.size * 0.40; font.bold: true; font.family: Theme.monoFont
-    }
-
-    // ---- chromium: colour ring with a blue centre ----
-    Item {
-        visible: icon.kind === "chromium"
+    // ---- glyph: assets/icons/<kind>.svg (transparent, 100x100 viewBox) ----
+    Image {
+        visible: icon.kind !== "clock" && !realIcon.visible
         anchors.fill: parent
-        Rectangle { anchors.centerIn: parent; width: icon.size * 0.72; height: width; radius: width / 2
-            gradient: Gradient { orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "#34a853" }
-                GradientStop { position: 0.5; color: "#fbbc05" }
-                GradientStop { position: 1.0; color: "#ea4335" } }
-            border.color: "#22000000"; border.width: 1 }
-        Rectangle { anchors.centerIn: parent; width: icon.size * 0.34; height: width; radius: width / 2; color: "#ffffff" }
-        Rectangle { anchors.centerIn: parent; width: icon.size * 0.26; height: width; radius: width / 2; color: "#4285f4" }
+        source: icon.kind === "clock" ? "" : "assets/icons/" + icon.kind + ".svg"
+        sourceSize: Qt.size(icon.size * 2, icon.size * 2); smooth: true; mipmap: true
     }
-
-    // ---- firefox: purple plate, orange swirl ring around a blue globe ----
-    Item {
-        visible: icon.kind === "firefox"; anchors.fill: parent
-        Rectangle { anchors.fill: parent; radius: width * 0.225
-            gradient: Gradient { GradientStop { position: 0.0; color: "#6b2fbf" } GradientStop { position: 1.0; color: "#3a1a7a" } } }
-        Rectangle { anchors.centerIn: parent; width: icon.size * 0.68; height: width; radius: width / 2
-            gradient: Gradient { GradientStop { position: 0.0; color: "#ffd23f" } GradientStop { position: 0.55; color: "#ff7a1a" } GradientStop { position: 1.0; color: "#e0286a" } } }
-        Rectangle { anchors.centerIn: parent; anchors.horizontalCenterOffset: -icon.size * 0.04; anchors.verticalCenterOffset: icon.size * 0.04
-            width: icon.size * 0.40; height: width; radius: width / 2
-            gradient: Gradient { GradientStop { position: 0.0; color: "#5cc5ff" } GradientStop { position: 1.0; color: "#2a63d8" } } }
-        Rectangle { x: icon.size * 0.18; y: icon.size * 0.16; width: icon.size * 0.30; height: icon.size * 0.14; radius: height / 2; rotation: -30; color: "#3a1a7a" }
-    }
-
-    // ---- chatgpt: dark plate, white knot-ish glyph ----
-    Item {
-        visible: icon.kind === "chatgpt"; anchors.fill: parent
-        Rectangle { anchors.fill: parent; radius: width * 0.225; color: "#10a37f" }
-        Rectangle { anchors.centerIn: parent; width: icon.size * 0.52; height: width; radius: width / 2; color: "transparent"; border.color: "white"; border.width: icon.size * 0.09 }
-        Rectangle { anchors.centerIn: parent; width: icon.size * 0.52; height: icon.size * 0.09; color: "white"; rotation: 45 }
-    }
-    // ---- claude: terracotta plate with a starburst ----
-    Item {
-        visible: icon.kind === "claude" || icon.kind === "claudecode"; anchors.fill: parent
-        Rectangle { anchors.fill: parent; radius: width * 0.225; color: icon.kind === "claude" ? "#d97757" : "#2b2b2e" }
-        Repeater { model: 8
-            Rectangle { anchors.centerIn: parent; width: icon.size * 0.10; height: icon.size * 0.62; radius: width / 2
-                        color: icon.kind === "claude" ? "#fff5ee" : "#d97757"; rotation: index * 22.5 } }
-        Text { visible: icon.kind === "claudecode"; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: icon.size * 0.08
-               text: ">_"; color: "white"; font.pixelSize: icon.size * 0.22; font.bold: true; font.family: Theme.monoFont }
-    }
-
-    // ---- codex: dark plate with a green prompt chevron ----
-    Item {
-        visible: icon.kind === "codex"; anchors.fill: parent
-        Rectangle { anchors.fill: parent; radius: width * 0.225; color: "#151517"; border.color: "#33ffffff" }
-        Text { anchors.centerIn: parent; text: "›_"; color: "#10a37f"; font.pixelSize: icon.size * 0.42; font.bold: true; font.family: Theme.monoFont }
+    // ---- browsers: the real icon from the apps disk (Debian's hicolor set) once it is installed ----
+    Image {
+        id: realIcon
+        visible: status === Image.Ready
+        anchors.centerIn: parent; width: icon.size * 0.72; height: width
+        source: icon.kind === "chromium" ? "file:///mnt/apps/usr/share/icons/hicolor/256x256/apps/chromium.png"
+              : icon.kind === "firefox" ? "file:///mnt/apps/usr/share/icons/hicolor/128x128/apps/firefox-esr.png" : ""
+        sourceSize: Qt.size(icon.size * 2, icon.size * 2); smooth: true; mipmap: true
     }
 
     // ---- clock: live analogue face ----

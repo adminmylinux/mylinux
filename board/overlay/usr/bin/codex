@@ -1,9 +1,14 @@
 #!/bin/sh
-# OpenAI Codex CLI from the apps disk in its own terminal window; installs itself on first launch.
+# OpenAI Codex CLI from the apps disk; installs itself on first launch.
+# Typed in a terminal it runs right there; from the launcher/menu it gets its own window.
+if [ -t 0 ] && [ -t 1 ]; then
+  apps-run test -x /root/.local/bin/codex 2>/dev/null || { echo "Codex is not on the apps disk yet - installing it (needs network, ~1 min)..."; apps-setup-ai codex || exit 1; }
+  exec apps-run codex "$@"
+fi
 if ! apps-run test -x /root/.local/bin/codex 2>/dev/null; then
   exec foot -T "Installing Codex" sh -c '
     echo "Codex is not on the apps disk yet - installing it now (needs network, ~1 min)..."; echo
-    if apps-setup-ai codex; then echo; echo "Installed. Starting Codex..."; sleep 1; exec apps-run sh -lc "cd /root && exec /root/.local/bin/codex"; fi
+    if apps-setup-ai codex; then echo; echo "Installed. Starting Codex..."; sleep 1; exec apps-run codex; fi
     echo; echo "Installation failed - see messages above. Press Enter to close."; read x'
 fi
-exec foot -T "Codex" -a codex apps-run sh -lc 'cd /root && exec /root/.local/bin/codex "$@"' -- "$@"
+exec foot -T "Codex" -a codex apps-run codex "$@"

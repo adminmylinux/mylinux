@@ -19,7 +19,7 @@ separate "apps disk" image that the system sets itself up on first boot.
 | Target | arm64, Linux 6.18, glibc, busybox init, initramfs only (~110 MB kernel + rootfs) |
 | Graphics | virtio-gpu, Mesa llvmpipe, Qt 6.11 `eglfs_kms` |
 | Desktop | `shell/`: QML Qt Wayland Compositor ("myshell"), foot terminal, Inter font |
-| Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, Claude Code, Codex, wl-clipboard |
+| Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, git, Claude Code, Codex, wl-clipboard |
 | Host | QEMU 11 (Homebrew), HVF acceleration, 9p shared folder, macOS app bundle `myLinux.app` |
 
 ## Requirements
@@ -61,6 +61,20 @@ Press **Option+K** for the full list.
 | Option+V, Option+Shift+T | Float/tile a window, tiling on/off |
 | Option+Ctrl+Shift+Space | Theme picker |
 | Option+Ctrl+Space | Next background |
+
+### Quitting
+
+Use **Shut Down…** (or **Restart…**) from the  menu at the top left, or type `shut` into the
+⌘K sheet. That unmounts the apps disk cleanly. Closing the myLinux window or pressing Cmd+Q on the
+Mac side is a power cut for the virtual machine: the disk is journalled and flushed every second, so
+you lose at most about a second of writes, but a clean shutdown is the safe habit.
+
+### Terminal
+
+Option+Enter opens a terminal in your home directory (`/root`, on the apps disk). The base system is
+BusyBox; everything installed on the apps disk is on the PATH as well, so `claude`, `codex`, `git`,
+`python3`, `apt install …` just work (they run inside the Debian chroot, in the same directory). For a
+full Debian shell type `apps-run bash`.
 
 ## Themes (Omarchy compatible)
 

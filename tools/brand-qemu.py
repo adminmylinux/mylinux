@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Copy qemu-system-aarch64 into the myLinux app bundle with the visible "QEMU" strings renamed.
 
-QEMU's Cocoa UI hardcodes the window title ("QEMU <name>") and the app-menu items ("About QEMU",
-"Hide QEMU", "Quit QEMU") as NSString constants. We copy the binary, write replacement strings into
-the zero padding at the end of the __TEXT segment, repoint the four CFString constants at them
+QEMU's Cocoa UI hardcodes the window title ("QEMU <name>"), the app-menu items ("About QEMU",
+"Hide QEMU", "Quit QEMU") and the quit confirmation as NSString constants. We copy the binary, write replacement strings into
+the zero padding at the end of the __TEXT segment, repoint the CFString constants at them
 (their data pointers are dyld chained fixups: the low 36 bits are the file offset, the rest is
 chain metadata we keep) and fix their lengths. Then re-sign ad hoc with QEMU's own entitlements
 (com.apple.security.hypervisor is needed for HVF).  Usage: brand-qemu.py <qemu binary> <dest> [name]
@@ -37,17 +37,31 @@ def cfstring_entry(file_off):
         if (ptr & 0xFFFFFFFFF) == file_off: return e, ptr
     return None, None
 
-replacements = {b"QEMU %s": "%s", b"About QEMU": "About " + name, b"Hide QEMU": "Hide " + name, b"Quit QEMU": "Quit " + name}
+replacements = {"QEMU %s": "%s", "About QEMU": "About " + name, "Hide QEMU": "Hide " + name, "Quit QEMU": "Quit " + name,
+                # window title while the mouse is grabbed (a UTF-16 constant because of the key glyphs)
+                "QEMU %s - (Press  \u2303 \u2325 G  to release Mouse)": "%s - (Press  \u2303 \u2325 G  to release Mouse)",
+                # Cmd+Q / window close confirmation: it is a power cut for the VM, so say so and name the clean way out
+                "Are you sure you want to quit QEMU?": "Quit " + name + " now? That cuts the power to the virtual machine, like pulling the plug. "
+                "To close cleanly, click Cancel and choose Shut Down... from the menu at the top left inside " + name + " instead."}
+# ASCII constants live in __cstring (8-bit CFStrings); anything with non-ASCII characters is UTF-16 in __ustring
+has_ustring = re.search(r"sectname __ustring\n\s+segname __TEXT", lc) is not None
+us_addr, us_size, us_off = section("__TEXT", "__ustring") if has_ustring else (0, 0, 0)
 cur = gap; done = 0
 for old, new in replacements.items():
-    off = d.find(old + b"\0", cs_off, cs_off + cs_size)
+    if old.isascii():
+        enc = lambda t: t.encode("ascii"); nul = b"\0"; lo, hi = cs_off, cs_off + cs_size
+    else:
+        enc = lambda t: t.encode("utf-16-le"); nul = b"\0\0"; lo, hi = us_off, us_off + us_size
+        assert new.isascii() == old.isascii() or not new.isascii(), "cannot store UTF-16 text in an 8-bit CFString"
+    off = d.find(enc(old) + nul, lo, hi)
     if off < 0: print("not found:", old); continue
     e, ptr = cfstring_entry(off)
     if e is None: print("no CFString constant for", old); continue
-    nb = new.encode() + b"\0"
+    cur += cur % 2                      # UTF-16 data must be 2-byte aligned
+    nb = enc(new) + nul
     assert cur + len(nb) <= gap_end, "out of padding"
     d[cur:cur + len(nb)] = nb
-    struct.pack_into("<QQ", d, e + 16, (ptr & ~0xFFFFFFFFF) | cur, len(new))
+    struct.pack_into("<QQ", d, e + 16, (ptr & ~0xFFFFFFFFF) | cur, len(new))   # length is in characters / UTF-16 units
     cur += len(nb); done += 1
 os.makedirs(os.path.dirname(dst), exist_ok=True)
 open(dst, "wb").write(d); os.chmod(dst, 0o755)

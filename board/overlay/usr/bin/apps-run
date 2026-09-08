@@ -21,6 +21,9 @@ mkdir -p $A/etc/chromium.d
 [ -f $A/etc/chromium.d/mylinux ] || cat > $A/etc/chromium.d/mylinux <<'EOS'
 export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform=wayland --no-sandbox --disable-gpu --disable-dev-shm-usage --password-store=basic"
 EOS
-exec chroot $A /usr/bin/env -i HOME=/root USER=root TERM="${TERM:-foot}" PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+# Keep the caller's working directory when the chroot has it too (/root and /tmp are the same directories).
+CWD=/root; case "$PWD" in /root|/root/*|/tmp|/tmp/*) CWD="$PWD";; esac
+exec chroot $A /usr/bin/env -i HOME=/root USER=root TERM="${TERM:-foot}" PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     LANG=C.UTF-8 WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" XDG_SESSION_TYPE=wayland \
-    GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland MOZ_ENABLE_WAYLAND=1 BROWSER=/usr/local/bin/mylinux-browser "$@"
+    GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland MOZ_ENABLE_WAYLAND=1 BROWSER=/usr/local/bin/mylinux-browser \
+    sh -c 'cd "$1" 2>/dev/null || cd /root; shift; exec "$@"' sh "$CWD" "$@"

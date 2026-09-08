@@ -1,7 +1,7 @@
 #!/bin/sh
 # First-boot setup of the apps disk, entirely inside the VM (no Debian host needed):
 #  1. format the blank disk (ext4)          2. fetch Debian's official minimal trixie arm64 rootfs
-#  3. install the desktop set (Chromium, fonts, GL, wl-clipboard, curl)   4. Claude Code + Codex
+#  3. install the desktop set (Chromium, fonts, GL, wl-clipboard, curl) + git   4. Claude Code + Codex
 # Usage: apps-setup            (idempotent: skips steps already done)
 set -e
 DEV=$(cat /run/apps-disk 2>/dev/null || echo /dev/vda)
@@ -16,7 +16,7 @@ if disk_is_blank "$DEV"; then
   step "Formatting $DEV (ext4, label apps)"
   mke2fs -q -t ext4 -L apps "$DEV"
 fi
-mkdir -p $A; mountpoint -q $A || mount -t ext4 -o noatime "$DEV" $A
+mkdir -p $A; mountpoint -q $A || mount -t ext4 -o noatime,commit=1 "$DEV" $A
 if [ ! -f $A/etc/debian_version ]; then
   step "Downloading Debian trixie (arm64) minimal rootfs"
   curl -fL --progress-bar -o /tmp/rootfs.tar.gz "$ROOTFS_URL"
@@ -33,6 +33,14 @@ if ! apps-run test -x /usr/bin/chromium; then
     wl-clipboard curl chromium chromium-sandbox
   apps-run apt-get clean
 fi
+# Developer basics (also added to disks set up before they were default: apps-setup is idempotent)
+if ! apps-run test -x /usr/bin/git; then
+  step "Installing git (with ssh client and less)"
+  apps-run apt-get update -q
+  apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends git openssh-client less
+  apps-run apt-get clean
+fi
 step "Installing Claude Code and Codex"
 apps-setup-ai all || echo "(agent install failed - retry later with: apps-setup-ai)"
-step "Done. The apps disk is ready: Chromium, Firefox (on first click), Claude Code, Codex."
+apps-path
+step "Done. The apps disk is ready: Chromium, Firefox (on first click), git, Claude Code, Codex."

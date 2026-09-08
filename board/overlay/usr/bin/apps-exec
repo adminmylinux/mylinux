@@ -1,0 +1,3 @@
+#!/bin/sh
+# Dispatcher behind the /usr/local/bin symlinks made by apps-path: run the same-named command from the apps disk.
+exec apps-run "${0##*/}" "$@"

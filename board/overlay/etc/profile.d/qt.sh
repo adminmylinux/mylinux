@@ -20,3 +20,5 @@ export QT_QUICK_DEFAULT_TEXT_RENDER_TYPE=native
 # busybox init starts services with HOME=/; the desktop and everything it launches must use the
 # real (persistent, apps-disk backed) home so downloads and settings survive a reboot.
 export HOME=/root
+# apps-disk commands (see apps-path) live in /usr/local/bin, which Buildroot's profile leaves off the PATH
+case ":$PATH:" in *:/usr/local/bin:*) ;; *) export PATH="$PATH:/usr/local/bin";; esac
