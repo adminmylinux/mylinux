@@ -2,16 +2,24 @@
 # Boot the image on the Mac with QEMU + Apple Hypervisor.framework.
 # Terminal = serial console (root shell). Window = the Qt app. Quit: Ctrl-A X in the terminal.
 # Scripted use: SERIAL=unix:out/serial.sock,server,nowait ./run.sh -qmp unix:out/qmp.sock,server,nowait
-# Guest resolution: RES=WxH ./run.sh   (default 1920x1200). The Mac window scales the guest to its
-# size (zoom-to-fit), so drag the window corner or use View > Zoom To Fit / full screen in QEMU.
-cd "$(dirname "$0")"
-# Default guest resolution = the Mac screen in points minus window margins, so the desktop is shown 1:1
-# (scaling the framebuffer blurs text). Override with RES=WxH.
+# Guest resolution: RES=WxH ./run.sh. Default: the display under the mouse pointer, in points, minus
+# window margins, so the desktop is shown 1:1 (scaling the framebuffer blurs text). QEMU creates its
+# (non-resizable) window at the guest size in device pixels and centres it; the app bundle is marked
+# non-Retina so one guest pixel is one point. View > Zoom To Fit makes the window resizable again.
+# If the window lands on another display, the placer below moves it (needs Accessibility for the
+# terminal app; harmless without).
+SCREEN=$(osascript -l JavaScript -e '
+  ObjC.import("AppKit");
+  const m = $.NSEvent.mouseLocation, all = $.NSScreen.screens, mainH = $.NSScreen.screens.objectAtIndex(0).frame.size.height;
+  let s = $.NSScreen.mainScreen;
+  for (let i = 0; i < all.count; i++) { const f = all.objectAtIndex(i).frame;
+    if (m.x >= f.origin.x && m.x < f.origin.x + f.size.width && m.y >= f.origin.y && m.y < f.origin.y + f.size.height) s = all.objectAtIndex(i); }
+  const v = s.visibleFrame;   // points, Cocoa coordinates (y up); System Events wants y down from the top of the main screen
+  [Math.round(v.size.width), Math.round(v.size.height), Math.round(v.origin.x), Math.round(mainH - (v.origin.y + v.size.height))].join(" ")' 2>/dev/null)
+SW=$(echo "$SCREEN" | cut -d' ' -f1); SH=$(echo "$SCREEN" | cut -d' ' -f2); SX=$(echo "$SCREEN" | cut -d' ' -f3); SY=$(echo "$SCREEN" | cut -d' ' -f4)
 if [ -z "$RES" ]; then
-  SB=$(osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null | tr -d ' ')
-  SW=$(echo "$SB" | cut -d, -f3); SH=$(echo "$SB" | cut -d, -f4)
   if [ -n "$SW" ] && [ "$SW" -gt 800 ] 2>/dev/null; then
-    RES="$(( (SW - 80) / 8 * 8 ))x$(( (SH - 80 - 25 - 28) / 8 * 8 ))"
+    RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - 28) / 8 * 8 ))"     # 28 = title bar
   else
     RES=1600x1000
   fi
@@ -33,7 +41,43 @@ rm -f "$SHARE_DIR/host-cmd"
     case "$cmd" in fit|center|fullscreen|native) tools/host-window.sh "$cmd" >/dev/null 2>&1 & ;; esac
   done ) &
 AGENT=$!
-trap 'kill $AGENT 2>/dev/null' EXIT
+# Window placer: QEMU centres its window on whichever display macOS chose (and again when the guest
+# sets its mode), so once the window has the guest's width, move it onto the display RES was computed
+# for and keep it there until the position has held for a few checks. The window is found by its title:
+# System Events mixes up two processes of the same app bundle, so a pid is not a safe handle.
+NAME="${NAME:-myLinux}"
+( [ -n "$SW" ] || exit 0
+  HELD=0
+  for i in $(seq 1 120); do
+    sleep 0.5
+    R=$(osascript - "$NAME" "$XRES" "$SW" "$SH" "$SX" "$SY" 2>/dev/null <<'AS'
+on run argv
+  set {nm, w, sw, sh, sx, sy} to {item 1 of argv, item 2 of argv as integer, item 3 of argv as integer, item 4 of argv as integer, item 5 of argv as integer, item 6 of argv as integer}
+  tell application "System Events"
+    repeat with pr in (every process whose bundle identifier is "dev.mylinux.vm")
+      repeat with win in windows of pr
+        set t to name of win
+        if t is nm or t starts with (nm & " - (Press") then
+          set {cw, ch} to size of win
+          if cw < (w * 9) div 10 then return "small"        -- guest mode not applied yet
+          set tx to sx + (sw - cw) div 2
+          set ty to sy + (sh - ch) div 2
+          set {px, py} to position of win
+          if (px - tx) * (px - tx) < 1600 and (py - ty) * (py - ty) < 1600 then return "held"   -- macOS may nudge it a little
+          set position of win to {tx, ty}
+          return "moved"
+        end if
+      end repeat
+    end repeat
+    return "no window"
+  end tell
+end run
+AS
+)
+    case "$R" in held) HELD=$((HELD + 1)); [ $HELD -ge 4 ] && break ;; *) HELD=0 ;; esac
+  done ) &
+PLACER=$!
+trap 'kill $AGENT $PLACER 2>/dev/null' EXIT
 # Keyboard (default GRAB=opt): Option and Cmd are swapped inside the guest, so the Option key is the
 # Super/⌘ key of the desktop (Option+Space = launcher, Option+T = terminal, ...) and macOS keeps Cmd.
 # GRAB=full instead captures every combo for the guest (real Cmd, needs Accessibility, Ctrl+Opt+G releases).
@@ -43,9 +87,10 @@ case "${GRAB:-opt}" in
   none) KEYS="full-grab=off" ;;
   *)    KEYS="swap-opt-cmd=on" ;;
 esac
-# Launch through out/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title.
+# Launch through out/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title
+# (NAME=... gives the window another title, e.g. for a second, test instance).
 tools/make-app-bundle.sh >/dev/null   # (re)creates the bundle only when needed
-out/myLinux.app/Contents/MacOS/myLinux -name myLinux \
+out/myLinux.app/Contents/MacOS/myLinux -name "$NAME" \
   -M virt -accel hvf -cpu host -smp 4 -m "${MEM:-6G}" \
   -kernel out/Image -initrd out/rootfs.cpio.gz \
   -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60" \
@@ -53,7 +98,7 @@ out/myLinux.app/Contents/MacOS/myLinux -name myLinux \
   -device virtio-keyboard-pci -device virtio-tablet-pci \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
   $APPS \
-  -display cocoa,show-cursor=on,zoom-to-fit=on,zoom-interpolation=on,left-command-key=on,"$KEYS" \
+  -display cocoa,show-cursor=on,zoom-to-fit=off,zoom-interpolation=on,left-command-key=on,"$KEYS" \
   -serial "${SERIAL:-mon:stdio}" \
   -virtfs local,path="$PWD/$SHARE_DIR",mount_tag=share,security_model=none,id=share \
   "$@"

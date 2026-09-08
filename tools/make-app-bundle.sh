@@ -26,7 +26,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIconFile</key><string>myLinux</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
-  <key>NSHighResolutionCapable</key><true/>
+  <!-- 1x backing store on purpose: QEMU sizes a non-resizable window in device pixels, so with a 1x
+       window one guest pixel is one point and the desktop appears at the size run.sh asked for. -->
+  <key>NSHighResolutionCapable</key><false/>
 </dict></plist>
 PLIST
 # icon: rounded gradient square with a window glyph, rendered by tools/gen-icon.py, converted with sips

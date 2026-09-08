@@ -536,6 +536,13 @@ Dock icons (2026-09-08 16:05): AppIcon draws a gradient plate per app plus an SV
 Firefox use the real hicolor icons from the apps disk once installed (SVG fallback otherwise). git (+ openssh-client,
 less) is part of the default apps-disk set; apps-setup is idempotent so it adds git to older disks.
 
+Window size (2026-09-08 19:10): QEMU 11's zoom-to-fit never grows the window past its initial 640x480 (only fixes
+the aspect), so the VM opened tiny; run.sh now uses zoom-to-fit=off (QEMU sizes the non-resizable window to the
+guest and centres it) with the bundle marked NSHighResolutionCapable=false so guest pixels are points. RES comes from
+the display under the mouse (NSScreen via JXA) instead of the Finder desktop bounds, which are the union of all
+displays. A placer moves the window onto that display (System Events, by window title: pids are not a safe handle
+when two processes share the bundle). NAME=... sets the window title; fresh-start.sh uses "myLinux (test)".
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

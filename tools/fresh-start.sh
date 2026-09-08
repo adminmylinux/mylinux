@@ -13,4 +13,5 @@ else
   echo "fresh environment: keeping $FRESH_IMG and $FRESH_SHARE"; shift
 fi
 mkdir -p "$FRESH_SHARE"
-APPS_IMG="$FRESH_IMG" SHARE_DIR="$FRESH_SHARE" exec ./run.sh "$@"
+# Own window title, so scripts (and run.sh's window placer) never touch a real myLinux window.
+NAME="${NAME:-myLinux (test)}" APPS_IMG="$FRESH_IMG" SHARE_DIR="$FRESH_SHARE" exec ./run.sh "$@"
