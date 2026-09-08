@@ -1,0 +1,17 @@
+#!/bin/sh
+# Install the coding agents onto the apps disk: Claude Code (native installer) and Codex (GitHub release binary).
+# Usage: apps-setup-ai [claude|codex|all]   (default all)
+set -e
+WHAT="${1:-all}"
+apps-run apt-get update -q
+apps-run apt-get install -y -q curl wl-clipboard xdg-utils ca-certificates
+if [ "$WHAT" = all ] || [ "$WHAT" = claude ]; then
+  apps-run sh -c 'curl -fsSL https://claude.ai/install.sh | bash'
+fi
+if [ "$WHAT" = all ] || [ "$WHAT" = codex ]; then
+  apps-run sh -c 'set -e; mkdir -p /root/.local/bin; cd /tmp
+    curl -fsSL -o codex.tgz https://github.com/openai/codex/releases/latest/download/codex-aarch64-unknown-linux-musl.tar.gz
+    tar -xzf codex.tgz; mv codex-aarch64-unknown-linux-musl /root/.local/bin/codex; chmod +x /root/.local/bin/codex; rm -f codex.tgz
+    /root/.local/bin/codex --version'
+fi
+echo "done."

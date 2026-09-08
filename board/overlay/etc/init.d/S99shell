@@ -1,0 +1,30 @@
+#!/bin/sh
+# Start the desktop shell (Wayland compositor) at boot. It launches the apps itself.
+# Dev loop: a myshell/myapp binary in the 9p share (/mnt/share) overrides the image's copy.
+. /etc/profile.d/qt.sh
+SHARE=/mnt/share
+mount_share() {
+  mkdir -p $SHARE
+  mountpoint -q $SHARE || mount -t 9p -o trans=virtio,version=9p2000.L share $SHARE 2>/dev/null
+}
+case "$1" in
+  start)
+    mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+    mount_share
+    # Pin the KMS mode to the resolution run.sh asked for (mylinux.res=WxH on the kernel cmdline).
+    # Otherwise QEMU's "preferred" mode follows the host window size and changes under us.
+    RES=$(sed -n 's/.*mylinux\.res=\([0-9x]*\).*/\1/p' /proc/cmdline)
+    if [ -n "$RES" ]; then
+      printf '{ "device": "/dev/dri/card0", "outputs": [ { "name": "Virtual1", "mode": "%s" } ] }\n' "$RES" > /tmp/kms.json
+      export QT_QPA_EGLFS_KMS_CONFIG=/tmp/kms.json
+    fi
+    L=$(sed -n 's/^layout=//p' $SHARE/mylinux.ini 2>/dev/null | head -1); export XKB_DEFAULT_LAYOUT="${L:-us}" XKB_DEFAULT_VARIANT=mac
+    SHELL_BIN=/usr/bin/myshell; [ -x $SHARE/myshell ] && SHELL_BIN=$SHARE/myshell
+    [ -x $SHARE/myapp ] && export PATH="$SHARE:$PATH"
+    printf 'Starting shell (%s): ' "$SHELL_BIN"
+    "$SHELL_BIN" > /var/log/shell.log 2>&1 &
+    echo OK
+    ;;
+  stop) killall myshell 2>/dev/null ;;
+  restart) "$0" stop; sleep 1; "$0" start ;;
+esac

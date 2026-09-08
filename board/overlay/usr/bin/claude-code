@@ -1,0 +1,9 @@
+#!/bin/sh
+# Claude Code (CLI) from the apps disk in its own terminal window; installs itself on first launch.
+if ! apps-run test -x /root/.local/bin/claude 2>/dev/null; then
+  exec foot -T "Installing Claude Code" sh -c '
+    echo "Claude Code is not on the apps disk yet - installing it now (needs network, ~1 min)..."; echo
+    if apps-setup-ai; then echo; echo "Installed. Starting Claude Code..."; sleep 1; exec apps-run sh -lc "cd /root && exec /root/.local/bin/claude"; fi
+    echo; echo "Installation failed - see messages above. Press Enter to close."; read x'
+fi
+exec foot -T "Claude Code" -a claude-code apps-run sh -lc 'cd /root && exec /root/.local/bin/claude "$@"' -- "$@"

@@ -1,0 +1,5 @@
+config BR2_PACKAGE_INTER
+	bool "inter font"
+	help
+	  Inter, the open-source UI typeface by Rasmus Andersson (SIL OFL 1.1).
+	  https://rsms.me/inter/

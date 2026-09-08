@@ -1,0 +1,21 @@
+#!/bin/sh
+# Mount the optional apps disk (virtio-blk, ext4) at /mnt/apps and make its /root the persistent home.
+# An unformatted disk (run.sh creates an empty file when none exists) is left for `apps-setup`.
+# A blank disk reads as zeros where an ext4 superblock would be (offset 1 KiB); busybox blkid is not reliable here.
+disk_is_blank() { [ "$(dd if="$1" bs=1024 skip=1 count=4 2>/dev/null | tr -d '\0' | wc -c)" -eq 0 ]; }
+case "$1" in
+  start)
+    rm -f /run/apps-disk
+    for dev in /dev/vda /dev/vdb; do
+      [ -b $dev ] || continue
+      echo "$dev" > /run/apps-disk
+      if disk_is_blank $dev; then echo "apps disk: $dev is blank (first boot: run apps-setup)"; break; fi
+      mkdir -p /mnt/apps
+      if mount -t ext4 -o noatime $dev /mnt/apps 2>/dev/null; then
+        echo "apps disk: $dev mounted at /mnt/apps"
+        mkdir -p /mnt/apps/root && mount --bind /mnt/apps/root /root && echo "home: /root -> apps disk"
+        break
+      fi
+    done ;;
+  stop) umount /root 2>/dev/null; umount /mnt/apps 2>/dev/null ;;
+esac

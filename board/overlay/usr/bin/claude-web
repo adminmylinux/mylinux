@@ -1,0 +1,2 @@
+#!/bin/sh
+exec webapp https://claude.ai "$@"

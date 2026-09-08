@@ -1,0 +1,9 @@
+config BR2_PACKAGE_MYAPP
+	bool "myapp"
+	depends on BR2_PACKAGE_QT6
+	select BR2_PACKAGE_QT6BASE
+	select BR2_PACKAGE_QT6BASE_GUI
+	select BR2_PACKAGE_QT6DECLARATIVE
+	select BR2_PACKAGE_QT6DECLARATIVE_QUICK
+	help
+	  The mylinux Qt 6 / QML GUI application (source in app/).

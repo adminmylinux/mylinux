@@ -1,0 +1,3 @@
+#!/bin/sh
+# Firefox ESR from the apps disk; installs itself on first launch.
+exec apps-install "Firefox" firefox-esr /usr/bin/firefox-esr apps-run firefox-esr "$@"

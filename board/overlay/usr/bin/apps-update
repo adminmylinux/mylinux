@@ -1,0 +1,3 @@
+#!/bin/sh
+# Update everything on the apps disk in a terminal window.
+exec foot -T "Update apps disk" sh -c 'apps-run apt-get update && apps-run apt-get upgrade -y; echo; echo "Done. Press Enter to close."; read x'

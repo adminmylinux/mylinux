@@ -1,0 +1,38 @@
+#!/bin/sh
+# First-boot setup of the apps disk, entirely inside the VM (no Debian host needed):
+#  1. format the blank disk (ext4)          2. fetch Debian's official minimal trixie arm64 rootfs
+#  3. install the desktop set (Chromium, fonts, GL, wl-clipboard, curl)   4. Claude Code + Codex
+# Usage: apps-setup            (idempotent: skips steps already done)
+set -e
+DEV=$(cat /run/apps-disk 2>/dev/null || echo /dev/vda)
+ROOTFS_URL="https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/dist-arm64v8/trixie/oci/blobs/rootfs.tar.gz"
+A=/mnt/apps
+# A blank disk reads as zeros where an ext4 superblock would be (offset 1 KiB); busybox blkid is not reliable here.
+disk_is_blank() { [ "$(dd if="$1" bs=1024 skip=1 count=4 2>/dev/null | tr -d '\0' | wc -c)" -eq 0 ]; }
+step() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
+
+[ -b "$DEV" ] || { echo "No apps disk device ($DEV). Start the VM with run.sh (it creates out/apps.img)."; exit 1; }
+if disk_is_blank "$DEV"; then
+  step "Formatting $DEV (ext4, label apps)"
+  mke2fs -q -t ext4 -L apps "$DEV"
+fi
+mkdir -p $A; mountpoint -q $A || mount -t ext4 -o noatime "$DEV" $A
+if [ ! -f $A/etc/debian_version ]; then
+  step "Downloading Debian trixie (arm64) minimal rootfs"
+  curl -fL --progress-bar -o /tmp/rootfs.tar.gz "$ROOTFS_URL"
+  step "Unpacking"
+  gunzip -c /tmp/rootfs.tar.gz | tar -x -C $A && rm -f /tmp/rootfs.tar.gz
+  echo "nameserver 1.1.1.1" > $A/etc/resolv.conf
+fi
+mkdir -p $A/root; mountpoint -q /root || mount --bind $A/root /root
+if ! apps-run test -x /usr/bin/chromium; then
+  step "Installing desktop packages (Chromium, fonts, GL, clipboard) - a few minutes"
+  apps-run apt-get update -q
+  apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+    ca-certificates fonts-dejavu-core fonts-liberation libgl1 libegl1 libgles2 mesa-libgallium dbus xdg-utils \
+    wl-clipboard curl chromium chromium-sandbox
+  apps-run apt-get clean
+fi
+step "Installing Claude Code and Codex"
+apps-setup-ai all || echo "(agent install failed - retry later with: apps-setup-ai)"
+step "Done. The apps disk is ready: Chromium, Firefox (on first click), Claude Code, Codex."

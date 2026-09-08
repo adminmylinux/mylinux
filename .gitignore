@@ -1,0 +1,7 @@
+# build outputs, disk images, screenshots, sockets
+out/
+# per-machine settings and hot-swapped binaries shared with the VM
+share/*
+!share/.keep
+*.log
+.DS_Store

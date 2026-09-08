@@ -1,0 +1,25 @@
+qt6base: enable the Wayland client/server features that Qt >= 6.11 decides in qtbase
+
+Since Qt 6.11 the QT_FEATURE_wayland_client / wayland_server / waylandscanner
+switches live in qtbase's src/gui/configure.cmake and are exported to every
+other module through the Qt6::Gui target.  qt6wayland then only builds its
+sources when those features were ON at qtbase configure time.  Buildroot
+2026.08 still passes -DFEATURE_wayland_* to qt6wayland (ignored) and builds
+qt6base without wayland in staging, so the compositor/client libraries are
+silently skipped.  Make qt6base (and host-qt6base, needed for the
+qtwaylandscanner host tool) depend on wayland and turn the features on.
+
+--- a/package/qt6/qt6base/qt6base.mk
++++ b/package/qt6/qt6base/qt6base.mk
+@@ QT6BASE_DEPENDENCIES
++ifeq ($(BR2_PACKAGE_QT6WAYLAND),y)
++QT6BASE_DEPENDENCIES += wayland wayland-protocols
++QT6BASE_CONF_OPTS += -DFEATURE_wayland_client=ON
++HOST_QT6BASE_DEPENDENCIES += host-wayland
++HOST_QT6BASE_CONF_OPTS += -DFEATURE_wayland_client=ON
++ifeq ($(BR2_PACKAGE_QT6WAYLAND_COMPOSITOR),y)
++QT6BASE_DEPENDENCIES += libxkbcommon
++QT6BASE_CONF_OPTS += -DFEATURE_wayland_server=ON
++HOST_QT6BASE_CONF_OPTS += -DFEATURE_wayland_server=ON
++endif
++endif

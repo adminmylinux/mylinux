@@ -1,0 +1,24 @@
+#!/bin/sh
+# Install an Omarchy-format theme (colors.toml + backgrounds/) from a git repository into
+# ~/.config/mylinux/themes/<name>. GitHub repos are fetched as a tarball (no git needed); other hosts
+# use git from the apps disk.   Usage: theme-install <url | owner/repo>
+set -e
+URL="$1"; [ -n "$URL" ] || { echo "usage: theme-install <github url | owner/repo | git url>"; exit 2; }
+DEST="${HOME:-/root}/.config/mylinux/themes"; mkdir -p "$DEST"
+case "$URL" in
+  https://github.com/*|http://github.com/*|github.com/*|*/*)
+    REPO=$(echo "$URL" | sed -E 's#^(https?://)?github\.com/##; s#\.git$##; s#/+$##')
+    NAME=$(basename "$REPO" | sed -E 's/^omarchy-//; s/-theme$//' | tr 'A-Z' 'a-z')
+    TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+    echo "Downloading github.com/$REPO ..."
+    curl -fL --progress-bar -o "$TMP/theme.tgz" "https://codeload.github.com/$REPO/tar.gz/HEAD"
+    gunzip -c "$TMP/theme.tgz" | tar -x -C "$TMP"
+    SRC=$(dirname "$(find "$TMP" -name colors.toml | head -1)")
+    [ -n "$SRC" ] && [ -f "$SRC/colors.toml" ] || { echo "No colors.toml found in that repository - not an Omarchy theme."; exit 1; }
+    rm -rf "$DEST/$NAME"; mv "$SRC" "$DEST/$NAME" ;;
+  *)
+    NAME=$(basename "${URL%%.git}" | sed -E 's/^omarchy-//; s/-theme$//' | tr 'A-Z' 'a-z')
+    apps-run test -x /usr/bin/git || apps-run apt-get install -y -q git
+    rm -rf "$DEST/$NAME"; apps-run git clone --depth 1 "$URL" "/root/.config/mylinux/themes/$NAME" ;;
+esac
+echo "Installed theme '$NAME' -> $DEST/$NAME  (open the theme picker: ⌘⌃⇧Space)"

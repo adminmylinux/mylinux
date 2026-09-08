@@ -1,0 +1,2 @@
+#!/bin/sh
+exec foot -T "Setting up the apps disk" -a apps-setup sh -c 'apps-setup 2>&1 | tee /var/log/apps-setup.log; echo; echo "Press Enter to close."; read x'

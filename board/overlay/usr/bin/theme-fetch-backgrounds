@@ -1,0 +1,24 @@
+#!/bin/sh
+# Fetch Omarchy's own background images (the photos) for all built-in themes into
+# ~/.config/mylinux/themes/<theme>/backgrounds/, where they are merged with the generated ones.
+# One download of the Omarchy repository tarball; no GitHub API, no git.
+set -e
+DEST="${HOME:-/root}/.config/mylinux/themes"; mkdir -p "$DEST"
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+echo "Downloading the Omarchy repository (backgrounds for all themes)..."
+curl -fL --progress-bar -o "$TMP/omarchy.tgz" https://codeload.github.com/basecamp/omarchy/tar.gz/HEAD
+echo "Extracting backgrounds..."
+gunzip -c "$TMP/omarchy.tgz" | tar -x -C "$TMP" --wildcards '*/themes/*/backgrounds/*' '*/themes/*/colors.toml' '*/themes/*/light.mode' 2>/dev/null || \
+gunzip -c "$TMP/omarchy.tgz" | tar -x -C "$TMP"
+n=0
+for d in "$TMP"/*/themes/*/; do
+  t=$(basename "$d"); mkdir -p "$DEST/$t/backgrounds"
+  [ -f "$DEST/$t/colors.toml" ] || cp "$d/colors.toml" "$DEST/$t/" 2>/dev/null || true
+  [ -f "$d/light.mode" ] && touch "$DEST/$t/light.mode"
+  for f in "$d"/backgrounds/*; do [ -f "$f" ] && cp "$f" "$DEST/$t/backgrounds/" && n=$((n+1)); done
+done
+# Qt in this image has no WebP plugin: convert .webp -> .png (the shell binary does it with libwebp)
+echo "Converting WebP images..."
+SHELL_BIN=/usr/bin/myshell; [ -x /mnt/share/myshell ] && SHELL_BIN=/mnt/share/myshell
+"$SHELL_BIN" --convert-webp "$DEST" 2>&1 | grep -v "^$" || true
+echo "Done: $n background images for $(ls "$DEST" | wc -l) themes. Cycle with ⌘⌃Space, pick a theme with ⌘⌃⇧Space."

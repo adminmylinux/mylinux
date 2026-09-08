@@ -1,0 +1,13 @@
+# boot from an external initramfs
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_RD_GZIP=y
+# virtual console + framebuffer console on the virtio-gpu (Qt linuxfb uses /dev/fb0 and /dev/tty0)
+CONFIG_VT=y
+CONFIG_VT_CONSOLE=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB_DEVICE=y
+# share a Mac folder into the VM over 9p (fast app iteration)
+CONFIG_NET_9P=y
+CONFIG_NET_9P_VIRTIO=y
+CONFIG_9P_FS=y

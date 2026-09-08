@@ -1,0 +1,4 @@
+#!/bin/sh
+# Open a web site as its own app window (Chromium app mode). Usage: webapp <url> [chromium args]
+URL="$1"; shift
+exec chromium --app="$URL" --window-size=1200,860 "$@"
