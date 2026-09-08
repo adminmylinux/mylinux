@@ -501,6 +501,20 @@ understands both the old `color0..15` and the Omarchy 3 named-colour `colors.tom
 22 themes downloaded, 79 WebP converted, picker shows background counts, Tokyo Night applied, ⌘⌃Space cycles.
 Repo prepared for GitHub: GPL-3.0 (Qt Wayland Compositor is GPL-only), README, `.gitignore`, user paths removed.
 
+**Milestone 14 follow-ups (14:37).** (1) busybox init starts services with `HOME=/`, so the shell and everything it
+launched used the RAM-only root as home: `theme-fetch-backgrounds` wrote to `/.config/…` (lost on reboot, and not
+where `ThemeStore` looks). `qt.sh` now exports `HOME=/root` (the apps-disk-backed home). (2) `S99shell restart` typed
+in a terminal window killed that terminal (a compositor client) and with it the script, leaving a black screen; the
+restart now runs in its own session (`setsid`) and the shell is started with `setsid` too. (3) `ThemeStore` converts
+stray `*.webp` at scan time (`ThemeStore::convertWebp`, shared with `myshell --convert-webp`) and lists user
+backgrounds before the generated ones, so a downloaded photo shows as soon as a theme is applied. (4) Mac side:
+`tools/brand-qemu.py` copies Homebrew's QEMU into `out/myLinux.app`, rewrites the four hardcoded Cocoa strings
+("QEMU %s" window title, About/Hide/Quit QEMU) by placing new strings in the zero padding at the end of `__TEXT` and
+repointing the CFString constants (chained-fixup pointers: low 36 bits = file offset), and re-signs ad hoc with QEMU's
+hypervisor entitlement; `Contents/share` links to Homebrew's data dir. `make-app-bundle.sh` refreshes the copy when
+Homebrew's binary changes; `run.sh` calls it every launch. Verified: title "myLinux", menu items renamed, HVF boot OK.
+Published: https://github.com/adminmylinux/mylinux (GPL-3.0), release v0.1.0 with Image + rootfs.cpio.gz.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

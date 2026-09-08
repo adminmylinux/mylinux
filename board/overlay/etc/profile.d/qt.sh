@@ -16,3 +16,7 @@ export QT_QPA_EGLFS_HIDECURSOR=0
 export QT_QUICK_DEFAULT_TEXT_RENDER_TYPE=native
 # --- client side (what the shell's Launcher sets for apps; handy for manual tests) ---
 # QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=wayland-0 myapp
+
+# busybox init starts services with HOME=/; the desktop and everything it launches must use the
+# real (persistent, apps-disk backed) home so downloads and settings survive a reboot.
+export HOME=/root

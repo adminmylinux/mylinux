@@ -44,7 +44,7 @@ case "${GRAB:-opt}" in
   *)    KEYS="swap-opt-cmd=on" ;;
 esac
 # Launch through out/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title.
-[ -x out/myLinux.app/Contents/MacOS/myLinux ] || tools/make-app-bundle.sh >/dev/null
+tools/make-app-bundle.sh >/dev/null   # (re)creates the bundle only when needed
 out/myLinux.app/Contents/MacOS/myLinux -name myLinux \
   -M virt -accel hvf -cpu host -smp 4 -m "${MEM:-6G}" \
   -kernel out/Image -initrd out/rootfs.cpio.gz \

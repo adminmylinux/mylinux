@@ -3,6 +3,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QDirIterator>
+#include <QImage>
+#include <QLibrary>
 #include <QDebug>
 #include <algorithm>
 
@@ -52,11 +55,12 @@ void ThemeStore::rescan()
             t["colors"] = colors;
             QStringList bgs;
             QDir bd(base + "/" + id + "/backgrounds");
+            if (!bd.entryList({"*.webp"}, QDir::Files).isEmpty()) convertWebp(bd.path());   // e.g. downloaded by an older script
             for (const QString &b : bd.entryList({"*.png", "*.jpg", "*.jpeg"}, QDir::Files, QDir::Name)) bgs << bd.filePath(b);
             t["backgrounds"] = bgs;
-            if (byId.contains(id)) {          // later dirs (user) override colours and add backgrounds
+            if (byId.contains(id)) {          // later dirs (user) override colours; their backgrounds come first
                 QVariantMap prev = byId[id];
-                QStringList all = prev["backgrounds"].toStringList(); all << bgs;
+                QStringList all = bgs; all << prev["backgrounds"].toStringList();
                 t["backgrounds"] = all;
             } else order << id;
             byId[id] = t;
@@ -88,4 +92,33 @@ void ThemeStore::applyTerminal(const QString &id, int fontPt)
     QFile f("/etc/xdg/foot/foot.ini");
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) { f.write(ini.toUtf8()); f.close(); }
     else qWarning() << "theme: cannot write foot.ini";
+}
+
+int ThemeStore::convertWebp(const QString &dir)
+{
+    QLibrary lib(QStringLiteral("webp"));
+    if (!lib.load()) lib.setFileName(QStringLiteral("/usr/lib/libwebp.so.7")), lib.load();
+    typedef int (*GetInfoFn)(const uint8_t *, size_t, int *, int *);
+    typedef uint8_t *(*DecodeFn)(const uint8_t *, size_t, int *, int *);
+    typedef void (*FreeFn)(void *);
+    auto getInfo = (GetInfoFn)lib.resolve("WebPGetInfo");
+    auto decode = (DecodeFn)lib.resolve("WebPDecodeRGBA");
+    auto wfree = (FreeFn)lib.resolve("WebPFree");
+    if (!getInfo || !decode) { qWarning() << "libwebp not available"; return -1; }
+    int done = 0;
+    QDirIterator it(dir, {"*.webp"}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString path = it.next();
+        QFile f(path); if (!f.open(QIODevice::ReadOnly)) continue;
+        const QByteArray data = f.readAll(); f.close();
+        int w = 0, h = 0;
+        if (!getInfo((const uint8_t *)data.constData(), data.size(), &w, &h)) continue;
+        uint8_t *rgba = decode((const uint8_t *)data.constData(), data.size(), &w, &h);
+        if (!rgba) continue;
+        QImage img(rgba, w, h, w * 4, QImage::Format_RGBA8888);
+        const QString out = path.left(path.size() - 5) + ".png";
+        if (img.copy().save(out, "PNG")) { QFile::remove(path); ++done; }
+        if (wfree) wfree(rgba); else free(rgba);
+    }
+    return done;
 }

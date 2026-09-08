@@ -7,7 +7,14 @@ APP=out/myLinux.app
 QEMU=$(command -v qemu-system-aarch64) || { echo "qemu-system-aarch64 not found (brew install qemu)"; exit 1; }
 QEMU=$(readlink -f "$QEMU" 2>/dev/null || echo "$QEMU")
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-ln -sfn "$QEMU" "$APP/Contents/MacOS/myLinux"
+BIN="$APP/Contents/MacOS/myLinux"
+# A patched copy of QEMU (window title and app-menu items say myLinux, see tools/brand-qemu.py),
+# refreshed whenever Homebrew's binary changes.
+if [ -L "$BIN" ] || [ ! -f "$BIN" ] || [ "$QEMU" -nt "$BIN" ]; then
+  rm -f "$BIN"; python3 tools/brand-qemu.py "$QEMU" "$BIN"
+fi
+# QEMU finds its data (BIOS/ROM files, keymaps) at <bindir>/../share/qemu; point it at Homebrew's.
+ln -sfn "$(dirname "$(dirname "$QEMU")")/share" "$APP/Contents/share"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
