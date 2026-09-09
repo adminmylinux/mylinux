@@ -7,6 +7,9 @@ apps-run apt-get update -q
 apps-run apt-get install -y -q curl wl-clipboard xdg-utils ca-certificates
 if [ "$WHAT" = all ] || [ "$WHAT" = claude ]; then
   apps-run sh -c 'curl -fsSL https://claude.ai/install.sh | bash'
+  # The home directory is this VM's workspace: pre-accept Claude Code's "trust this folder?" question for it
+  # (only on a fresh config; an existing file keeps whatever was answered).
+  [ -f /root/.claude.json ] || printf '{"projects":{"/root":{"hasTrustDialogAccepted":true}}}\n' > /root/.claude.json
 fi
 if [ "$WHAT" = all ] || [ "$WHAT" = codex ]; then
   apps-run sh -c 'set -e; mkdir -p /root/.local/bin; cd /tmp
