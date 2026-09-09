@@ -59,7 +59,7 @@ Press **Option+K** for the full list.
 
 | Keys | Action |
 |---|---|
-| Option+Space | Launcher (type to filter; `=` calculator, `install <pkg>` apt) |
+| Option+Space | Menu (Apps, Learn, Trigger, Style, Setup, Install, Remove, Update, About, System); type to find anything, `=` calculator, `install`/`remove <pkg>` |
 | Option+Enter / Option+Shift+Enter | Terminal / Browser |
 | Option+W, Option+Q, Option+M, Option+F | Close, quit, minimise, fullscreen |
 | Option+Arrows, Option+Shift+Arrows, Option+Ctrl+Arrows | Focus, swap, resize tiles |

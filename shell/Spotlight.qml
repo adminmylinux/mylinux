@@ -1,9 +1,9 @@
 import QtQuick
 import MyShell
 
-// ⌘Space launcher / ⌘⌥Space menu, in the spirit of Omarchy's Walker: a centred glass dialog with a
-// search field, a filtered list, arrow keys + Enter, Esc to close. Prefixes: "= 2*21" calculator,
-// "? query" web search, "install <pkg>" apt on the apps disk.
+// ⌘Space: the Omarchy-style menu (Apps, Learn, Trigger, Style, Setup, Install, Remove, Update, About,
+// System) with a search field on top: type to find anything in it. Arrow keys + Enter, Esc goes back / closes.
+// Prefixes: "= 2*21" calculator, "? query" web search, "install <pkg>" / "remove <pkg>" apt on the apps disk.
 Item {
     id: spot
     property var desktop
@@ -34,46 +34,74 @@ Item {
         const a = desktop ? desktop.dockApps() : []
         return a.map(x => ({ label: x.name, hint: "Application", kind: x.kind, run: () => desktop.launch(x.exec), keys: x.appId }))
     }
-    function actions() {
-        return [
-            { label: "New Terminal", hint: "⌘T", glyph: ">_", run: () => desktop.launch("/usr/bin/foot") },
-            { label: "Display settings", hint: "Brightness · Text size · Scale", glyph: "🖥", run: () => desktop.openDisplayPanel() },
-            { label: "Scale 1x", hint: "Display", glyph: "1x", run: () => Theme.setScale(1) },
-            { label: "Scale 1.5x", hint: "Display", glyph: "1.5", run: () => Theme.setScale(1.5) },
-            { label: "Scale 2x", hint: "Display", glyph: "2x", run: () => Theme.setScale(2) },
-            { label: "Fill Mac screen", hint: "Mac window", glyph: "⤢", run: () => Launcher.hostCommand("fit") },
-            { label: "Update apps disk", hint: "apt update && apt upgrade", glyph: "⟳", run: () => desktop.launch("/usr/bin/apps-update") },
-            { label: "About mylinux", hint: "", glyph: "i", run: () => desktop.showAbout() },
-            { label: "Restart", hint: "System", glyph: "↻", run: () => desktop.systemRestart() },
-            { label: "Shut Down", hint: "System", glyph: "⏻", run: () => desktop.systemShutdown() }
-        ]
-    }
     property var categories: [
-        { id: "apps", label: "Apps", glyph: "▦", hint: "Launch an application" },
-        { id: "setup", label: "Setup", glyph: "⚙", hint: "Display, scale, Mac window" },
+        { id: "apps",    label: "Apps",    glyph: "▦", hint: "Launch an application" },
+        { id: "learn",   label: "Learn",   glyph: "◉", hint: "Keybindings, manuals" },
+        { id: "trigger", label: "Trigger", glyph: "➶", hint: "Toggle tiling, backgrounds, Mac window" },
+        { id: "style",   label: "Style",   glyph: "✎", hint: "Theme, backgrounds, scale, title bars" },
+        { id: "setup",   label: "Setup",   glyph: "⚙", hint: "Display, keyboard, apps disk, agents" },
         { id: "install", label: "Install", glyph: "⤓", hint: "Install software with apt" },
-        { id: "update", label: "Update", glyph: "⟳", hint: "Update the apps disk" },
-        { id: "about", label: "About", glyph: "i", hint: "About this system" },
-        { id: "system", label: "System", glyph: "⏻", hint: "Restart or shut down" }
+        { id: "remove",  label: "Remove",  glyph: "⊟", hint: "Remove software" },
+        { id: "update",  label: "Update",  glyph: "⟳", hint: "Update the apps disk" },
+        { id: "about",   label: "About",   glyph: "i", hint: "About this system" },
+        { id: "system",  label: "System",  glyph: "⏻", hint: "Restart or shut down" }
     ]
+    function inTerminal(title, cmd) { desktop.launchArgs("/usr/bin/foot", ["-T", title, "sh", "-c", cmd + "; echo; echo 'Press Enter to close.'; read x"]) }
     function categoryItems(id) {
         switch (id) {
         case "apps": return apps()
-        case "setup": return [{ label: "Theme…", hint: "⌘⌃⇧Space", glyph: "◐", run: () => { mode = "theme"; stack = []; input.text = ""; refresh(); open = true } }].concat(actions().filter(a => /Display|Scale|Fill/.test(a.label)))
-        case "install": return [
+        case "learn": return [
+            { label: "Keybindings", hint: "⌘K", glyph: "⌘", run: () => desktop.showKeys() },
+            { label: "myLinux on GitHub", hint: "README, releases, source", glyph: "◉", run: () => desktop.launchArgs("/usr/bin/firefox", ["https://github.com/adminmylinux/mylinux"]) },
+            { label: "Omarchy manual", hint: "the workflow myLinux follows", glyph: "◉", run: () => desktop.launchArgs("/usr/bin/firefox", ["https://learn.omarchy.org"]) } ]
+        case "trigger": return [
+            { label: "Next background", hint: "⌘⌃Space", glyph: "▨", run: () => Theme.nextBackground() },
+            { label: "Tiling on/off", hint: "⌘⇧T", glyph: "▥", run: () => desktop.toggleTiling() },
+            { label: "Float / tile this window", hint: "⌘V", glyph: "▢", run: () => { if (desktop.focusedWindow) desktop.setFloating(desktop.focusedWindow, desktop.focusedWindow.tiled) } },
+            { label: "Cycle windows", hint: "⌘Tab", glyph: "⇄", run: () => desktop.cycleWindows() },
+            { label: "Fill Mac screen", hint: "Mac window", glyph: "⤢", run: () => Launcher.hostCommand("fit") },
+            { label: "Mac full screen", hint: "Mac window", glyph: "⤢", run: () => Launcher.hostCommand("fullscreen") } ]
+        case "style": return [
+            { label: "Theme…", hint: "⌘⌃⇧Space", glyph: "◐", run: () => { mode = "theme"; stack = []; input.text = ""; refresh(); open = true } },
+            { label: "Download Omarchy backgrounds", hint: "real photos for every theme", glyph: "⤓", run: () => inTerminal("Downloading backgrounds", "theme-fetch-backgrounds") },
+            { label: "Next background", hint: "⌘⌃Space", glyph: "▨", run: () => Theme.nextBackground() },
+            { label: "Scale 1x", hint: "Display", glyph: "1x", run: () => Theme.setScale(1) },
+            { label: "Scale 1.5x", hint: "Display", glyph: "1.5", run: () => Theme.setScale(1.5) },
+            { label: "Scale 2x", hint: "Display", glyph: "2x", run: () => Theme.setScale(2) },
+            { label: "Title bars: auto", hint: "only for apps without their own (now: " + Theme.titleBars + ")", glyph: "▭", run: () => Theme.setTitleBars("auto") },
+            { label: "Title bars: always", hint: "macOS-style bar on every window", glyph: "▭", run: () => Theme.setTitleBars("always") },
+            { label: "Title bars: never", hint: "bare windows, Omarchy-style", glyph: "▭", run: () => Theme.setTitleBars("never") } ]
+        case "setup": return [
+            { label: "Display settings", hint: "Brightness · Text size · Scale", glyph: "🖥", run: () => desktop.openDisplayPanel() } ]
+            .concat(Theme.layouts.map(l => ({ label: "Keyboard: " + l.label, hint: l.badge + (l.id === Theme.keyboardLayout ? "  ✓" : ""), glyph: "⌨", run: () => Theme.setKeyboardLayout(l.id) })))
+            .concat([
             { label: "Set up / repair the apps disk", hint: "apps-setup", glyph: "⤓", run: () => desktop.launch("/usr/bin/apps-setup-window") },
-            { label: "Install a package…", hint: "type: install <name>", glyph: "⤓", run: () => { mode = "search"; input.text = "install " } },
+            { label: "Install / update Claude Code and Codex", hint: "apps-setup-ai", glyph: "✳", run: () => inTerminal("Installing agents", "apps-setup-ai") } ])
+        case "install": return [
+            { label: "Install a package…", hint: "type: install <name>", glyph: "⤓", run: () => { input.text = "install " } },
             { label: "Firefox", hint: "firefox-esr", glyph: "⤓", run: () => desktop.launch("/usr/bin/firefox") },
             { label: "Remote Desktop", hint: "Remmina: VNC, RDP, SSH in tabs", glyph: "⤓", run: () => desktop.launch("/usr/bin/remmina") },
             { label: "Claude Code", hint: "claude", glyph: "⤓", run: () => desktop.launch("/usr/bin/claude-code") },
             { label: "LibreOffice", hint: "apt: libreoffice", glyph: "⤓", run: () => installPkg("libreoffice") },
             { label: "VS Code (Codium)", hint: "apt: codium", glyph: "⤓", run: () => installPkg("codium") },
             { label: "GIMP", hint: "apt: gimp", glyph: "⤓", run: () => installPkg("gimp") } ]
-        case "update": return actions().filter(a => /Update/.test(a.label))
-        case "about": return actions().filter(a => /About/.test(a.label))
-        case "system": return actions().filter(a => /Restart|Shut/.test(a.label))
+        case "remove": return [
+            { label: "Remove a package…", hint: "type: remove <name>", glyph: "⊟", run: () => { input.text = "remove " } },
+            { label: "Clean apt caches", hint: "apt-get clean · autoremove", glyph: "⊟", run: () => inTerminal("Cleaning", "apps-run apt-get autoremove -y; apps-run apt-get clean") } ]
+        case "update": return [ { label: "Update apps disk", hint: "apt update && apt upgrade", glyph: "⟳", run: () => desktop.launch("/usr/bin/apps-update") } ]
+        case "about": return [ { label: "About myLinux", hint: "", glyph: "i", run: () => desktop.showAbout() } ]
+        case "system": return [
+            { label: "Restart the desktop", hint: "restarts the shell, closes apps", glyph: "↻", run: () => desktop.launchArgs("/etc/init.d/S99shell", ["restart"]) },
+            { label: "Restart", hint: "System", glyph: "↻", run: () => desktop.systemRestart() },
+            { label: "Shut Down", hint: "System", glyph: "⏻", run: () => desktop.systemShutdown() } ]
         }
         return []
+    }
+    // everything the menu can do, flat, for typed search
+    function everything() {
+        let all = categories.map(c => ({ label: c.label, hint: c.hint, glyph: c.glyph, category: c.id }))
+        for (const c of categories) all = all.concat(categoryItems(c.id).map(e => Object.assign({}, e, { hint: c.label + (e.hint ? " · " + e.hint : "") })))
+        return all
     }
     function installPkg(p) { desktop.launchArgs("/usr/bin/apps-install", [p, p, "/usr/bin/" + p, "/usr/bin/true"]) }
 
@@ -110,11 +138,15 @@ Item {
         } else if (q.startsWith("install ")) {
             const p = q.slice(8).trim()
             list = p.length ? [{ label: "Install " + p, hint: "apt install " + p + " (apps disk)", glyph: "⤓", run: () => installPkg(p) }] : []
+        } else if (q.startsWith("remove ")) {
+            const p = q.slice(7).trim().replace(/[^A-Za-z0-9.+-]/g, "")
+            list = p.length ? [{ label: "Remove " + p, hint: "apt remove " + p + " (apps disk)", glyph: "⊟", run: () => inTerminal("Removing " + p, "apps-run apt-get remove -y " + p) }] : []
         } else {
-            const all = apps().concat(actions())
+            // typed text searches everything the menu offers: categories, their entries, apps, actions
+            const all = q === "" ? apps() : everything()
             const ql = q.toLowerCase()
             list = q === "" ? all : all.filter(e => (e.label + " " + (e.keys || "") + " " + (e.hint || "")).toLowerCase().indexOf(ql) >= 0)
-                .sort((a, b) => a.label.toLowerCase().indexOf(ql) - b.label.toLowerCase().indexOf(ql))
+                .sort((a, b) => { const la = a.label.toLowerCase().indexOf(ql), lb = b.label.toLowerCase().indexOf(ql); return (la < 0 ? 99 : la) - (lb < 0 ? 99 : lb) })
         }
         results = list
         if (selected >= list.length) selected = Math.max(0, list.length - 1)
@@ -138,7 +170,7 @@ Item {
         width: Theme.px(620); height: header.height + list.height + Theme.px(24)
         anchors.horizontalCenter: parent.horizontalCenter; y: Theme.px(150)
         MouseArea { anchors.fill: parent }                              // swallow clicks inside
-        GlassPanel { anchors.fill: parent; backdrop: spot.backdrop; radius: Theme.px(18); tint: "#c81c1c22"; borderColor: "#55ffffff"; saturation: 0.15; dim: 0.25 }
+        GlassPanel { anchors.fill: parent; backdrop: spot.backdrop; radius: Theme.px(18); tint: "#ee1c1c22"; borderColor: "#55ffffff"; saturation: 0.15; dim: 0.25 }
 
         Column {
             id: header
@@ -146,7 +178,7 @@ Item {
             spacing: Theme.px(8)
             Row { spacing: Theme.px(8)
                 Text { visible: spot.mode === "theme"; text: "Theme"; color: "#8f8f96"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont; font.letterSpacing: 1 }
-                Text { visible: spot.mode === "menu"; text: "Omarchy menu"; color: "#8f8f96"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont; font.letterSpacing: 1 }
+                Text { visible: spot.mode === "menu"; text: "myLinux"; color: "#8f8f96"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont; font.letterSpacing: 1 }
                 Repeater { model: spot.stack; Text { text: "› " + spot.categories.find(c => c.id === modelData).label; color: "#c9c9ce"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont } }
             }
             Rectangle {
@@ -172,7 +204,7 @@ Item {
         ListView {
             id: list
             anchors { top: header.bottom; left: parent.left; right: parent.right; margins: Theme.px(12) }
-            height: Math.min(contentHeight, Theme.px(46) * 9)
+            height: Math.min(contentHeight, Theme.px(46) * 10)   // all ten menu categories without scrolling
             clip: true; interactive: contentHeight > height
             model: spot.results
             currentIndex: spot.selected

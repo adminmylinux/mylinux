@@ -22,8 +22,7 @@ Item {
     property var menus: [
         { title: "⌘", logo: true, items: [
             { label: "About mylinux", action: "about" }, { sep: true },
-            { label: "Launcher", action: "spotlight", shortcut: mod + "Space / ⌥Space" },
-            { label: "Menu", action: "menu", shortcut: mod + "⌥Space / ⌃⌥Space" },
+            { label: "Menu / Search", action: "menu", shortcut: mod + "Space" },
             { label: "Theme…", action: "theme", shortcut: mod + "⌃⇧Space" },
             { label: "Next Background", action: "background", shortcut: mod + "⌃Space" }, { sep: true },
             { label: "Restart…", action: "restart" }, { label: "Shut Down…", action: "shutdown" } ] },
@@ -60,7 +59,6 @@ Item {
         if (!desktop || !item.action) return
         switch (item.action) {
         case "about": desktop.showAbout(); break
-        case "spotlight": desktop.openSpotlight("search"); break
         case "menu": desktop.openSpotlight("menu"); break
         case "theme": desktop.openSpotlight("theme"); break
         case "background": Theme.nextBackground(); break

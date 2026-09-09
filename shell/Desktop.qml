@@ -84,7 +84,7 @@ Window {
     function resizeDir(dir) { if (focusedWindow) tiling.resize(focusedWindow, dir) }
     // Single source of truth for the key help (⌘ = the Super/Option key)
     readonly property var keybindings: [
-        { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ T / ⌘ N", "New terminal"], ["⌘ Space", "Launcher"], ["⌘ ⌥ Space", "Menu"], ["⌘ K", "This list"]] },
+        { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ T / ⌘ N", "New terminal"], ["⌘ Space", "Menu: type to find anything"], ["⌘ ⌥ Space", "Menu (alternative)"], ["⌘ K", "This list"]] },
         { group: "Windows", keys: [["⌘ W", "Close window"], ["⌘ Q", "Quit app"], ["⌘ M", "Minimise"], ["⌘ F", "Fullscreen"], ["⌘ V", "Float / tile window"], ["⌘ Tab", "Cycle windows"], ["⌘ ⇧ T", "Tiling on/off"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
         { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
@@ -174,7 +174,7 @@ Window {
     Shortcut { sequences: ["Meta+Ctrl+Right"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("right") }
     Shortcut { sequences: ["Meta+Ctrl+Up"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("up") }
     Shortcut { sequences: ["Meta+Ctrl+Down"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("down") }
-    Shortcut { sequences: ["Meta+Space", "Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("search") }
+    Shortcut { sequences: ["Meta+Space", "Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }
     Shortcut { sequences: ["Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }
     Shortcut { sequences: ["Meta+Ctrl+Shift+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("theme") }
     Shortcut { sequences: ["Meta+Ctrl+Space"]; context: Qt.ApplicationShortcut; onActivated: Theme.nextBackground() }

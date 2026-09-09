@@ -570,6 +570,10 @@ Key sheet (2026-09-09 09:05): KeyGrab publishes the held modifiers (Q_PROPERTY m
 bindings whose modifiers equal the held set (⌘, ⌘⇧, ⌘^, ⌘⌥) and dims the rest; panel tint raised so windows behind do not
 bleed through. tools/qmp.py gained kdown/kup to hold keys in tests.
 
+Menu (2026-09-09 09:15): ⌘Space opens the Omarchy-style menu (Apps, Learn, Trigger, Style, Setup, Install, Remove, Update,
+About, System) with the search field on top; typing searches everything the menu offers (Spotlight.everything()), plus
+the = ? install remove prefixes. The old flat "search" mode is gone from the shortcuts.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.
