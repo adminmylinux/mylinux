@@ -625,6 +625,8 @@ GitHub) in ~/.config/mylinux/secrets.env (0600, Secrets singleton), exported by 
 
 Highlight (2026-09-09 12:10): Theme.highlight (#2f6fe6, macOS blue) for menu items, launcher selection, key-sheet hits and workspace pills instead of the theme accent (pale accents read badly under white text). Tailscale panel verified live: the test VM joined the user's tailnet as "mylinux" (someone pressed Connect in the test window; the test disk's browser is signed in) and listed 9 machines; peer names now use the DNS label (iPhone HostName is "localhost"). Test node logged out afterwards.
 
+Close button (2026-09-09 12:15): the top-left corner ResizeHandle (34x34 from -12,-12) covered the red traffic light, so clicks went to the resizer while ⌘W worked; that corner zone is now 16x16. Verified by clicking the button in the test VM.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

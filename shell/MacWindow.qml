@@ -235,7 +235,8 @@ Item {
     ResizeHandle { edges: Qt.RightEdge;  x: parent.width - inner; y: corner; width: outer + inner; height: parent.height - 2 * corner }
     ResizeHandle { edges: Qt.TopEdge;    x: corner; y: -outer; width: parent.width - 2 * corner; height: outer + inner }
     ResizeHandle { edges: Qt.BottomEdge; x: corner; y: parent.height - inner; width: parent.width - 2 * corner; height: outer + inner }
-    ResizeHandle { edges: Qt.LeftEdge | Qt.TopEdge;      x: -outer; y: -outer; width: corner + outer; height: corner + outer }
+    // top-left corner: small, so it never covers the traffic lights (which start 12 px in)
+    ResizeHandle { edges: Qt.LeftEdge | Qt.TopEdge;      x: -outer; y: -outer; width: outer + inner + 4; height: outer + inner + 4 }
     ResizeHandle { edges: Qt.RightEdge | Qt.TopEdge;     x: parent.width - corner; y: -outer; width: corner + outer; height: corner + outer }
     ResizeHandle { edges: Qt.LeftEdge | Qt.BottomEdge;   x: -outer; y: parent.height - corner; width: corner + outer; height: corner + outer }
     ResizeHandle { edges: Qt.RightEdge | Qt.BottomEdge;  x: parent.width - corner; y: parent.height - corner; width: corner + outer; height: corner + outer }
