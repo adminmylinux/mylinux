@@ -263,7 +263,7 @@ Window {
 
     Component { id: windowComponent; MacWindow {} }
 
-    MouseArea { id: dockEdge; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 3; z: 7
+    MouseArea { id: dockEdge; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: Theme.px(16); z: 7   // reveal zone (hover only, clicks pass through)
                hoverEnabled: true; acceptedButtons: Qt.NoButton; onEntered: root.dockRevealed = true; onExited: dockHideTimer.restart() }
     Dock { id: dock; z: 8; desktop: root; backdrop: backdrop; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter }
     MenuBar { id: menuBar; z: 10; desktop: root; backdrop: backdrop; width: parent.width
