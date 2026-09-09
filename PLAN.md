@@ -605,6 +605,8 @@ surface without app id that is 1x1 or titled "wl-clipboard" becomes a helper: re
 rendered so frame callbacks flow), never tiled or listed, given keyboard focus for 400 ms. Polling wl-paste is out
 (each poll would steal focus). Proper fix later: ext-data-control-v1 in the compositor, then wl-paste --watch.
 
+VNC to wayvnc (2026-09-09 11:10): libvncclient verifies the TLS certificate name against the typed address, so the IP fails ("The certificate's owner does not match hostname"); connect by the cert name (omarchy-imac). New hosts-sync merges share/hosts into /etc/hosts of guest + apps disk (S99shell, apps-run). Diagnosed with a small libvncclient test client compiled in the apps chroot (gcc + libvncserver-dev).
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

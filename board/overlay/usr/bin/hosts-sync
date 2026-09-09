@@ -1,0 +1,10 @@
+#!/bin/sh
+# Merge share/hosts (a hosts file kept on the Mac, e.g. "192.168.0.61 omarchy-imac") into the guest's
+# /etc/hosts and the apps disk's /etc/hosts, between marker lines so it can be updated any time.
+# Run at shell start and by apps-run.
+SRC=/mnt/share/hosts
+[ -f "$SRC" ] || exit 0
+for H in /etc/hosts /mnt/apps/etc/hosts; do
+  [ -d "$(dirname "$H")" ] || continue
+  { [ -f "$H" ] && sed '/^# >>> share\/hosts/,/^# <<< share\/hosts/d' "$H"; echo "# >>> share/hosts (edit share/hosts on the Mac)"; grep -v '^\s*#' "$SRC" | grep -v '^\s*$'; echo "# <<< share/hosts"; } > "$H.tmp" && mv -f "$H.tmp" "$H"
+done

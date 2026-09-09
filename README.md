@@ -127,6 +127,13 @@ The dock's Remote Desktop icon (or "Remote" in the launcher) starts Remmina, ins
 first use. Add one profile per machine (VNC, RDP or SSH); connections open as tabs in a single window,
 so one window switches between all your machines.
 
+VNC servers with TLS (wayvnc on Omarchy, for example) need two things: the server's certificate as
+"CA Certificate File" (put it in `share/` on the Mac and pick it from `/mnt/share`), and a server
+address that matches the certificate's name. The VNC library rejects a certificate issued to
+`omarchy-imac` when you connect to its IP address. Add a line like `192.168.0.61 omarchy-imac` to
+`share/hosts` on the Mac, which is merged into the guest's hosts file at every start, and connect to
+`omarchy-imac` instead.
+
 ## Themes (Omarchy compatible)
 
 Themes use Omarchy's format: a directory with `colors.toml`, optional `light.mode` and a

@@ -12,6 +12,7 @@ case "$1" in
     mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
     cd "$HOME" 2>/dev/null || cd /      # terminals and apps start in the home directory
     mount_share
+    hosts-sync   # share/hosts -> /etc/hosts (guest and apps disk)
     # Pin the KMS mode to the resolution run.sh asked for (mylinux.res=WxH on the kernel cmdline).
     # Otherwise QEMU's "preferred" mode follows the host window size and changes under us.
     RES=$(sed -n 's/.*mylinux\.res=\([0-9x]*\).*/\1/p' /proc/cmdline)
