@@ -47,7 +47,8 @@ Item {
         { title: "Window", dynamic: true, items: [
             { label: "Minimize", action: "minimize", shortcut: mod + "M" }, { label: "Zoom", action: "zoom" },
             { label: "Fullscreen", action: "fullscreen", shortcut: mod + "F" }, { label: "Float / Tile", action: "float", shortcut: mod + "V" },
-            { label: "Tiling on/off", action: "tiling", shortcut: mod + "⇧T" }, { label: "Keybindings", action: "keys", shortcut: mod + "K" }, { sep: true } ] },
+            { label: "Tiling on/off", action: "tiling", shortcut: mod + "⇧T" },
+            { label: "Title bars: " + Theme.titleBars + " (click to change)", action: "titlebars" }, { label: "Keybindings", action: "keys", shortcut: mod + "K" }, { sep: true } ] },
         { title: "Help", items: [ { label: "mylinux Help", disabled: true } ] }
     ]
     function itemsFor(i) {
@@ -83,6 +84,7 @@ Item {
         case "tiling": desktop.toggleTiling(); break
         case "keys": desktop.showKeys(); break
         case "cycle": desktop.cycleWindows(); break
+        case "titlebars": Theme.setTitleBars(Theme.titleBars === "auto" ? "always" : Theme.titleBars === "always" ? "never" : "auto"); break
         case "window": desktop.activateWindow(item.win); break
         }
     }

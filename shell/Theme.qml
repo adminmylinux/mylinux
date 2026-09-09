@@ -54,6 +54,9 @@ QtObject {
     // write the terminal palette for the persisted theme at start-up (foot reads it per launch)
     Component.onCompleted: ThemeStore.applyTerminal(themeId, terminalFontPt)
     function setScale(v) { scale = v; Settings.set("display/scale", v) }
+    // Our macOS-style title bars: "auto" = only for apps that do not decorate themselves, "always", "never"
+    property string titleBars: String(Settings.value("wm/titlebars", "auto"))
+    function setTitleBars(v) { titleBars = v; Settings.set("wm/titlebars", v) }
     function setTextScale(v) { textScale = v; Settings.set("display/textScale", v) }
     function setBrightness(v) { brightness = v; Settings.set("display/brightness", v) }
     function setTerminalFontPt(v) { terminalFontPt = v; Settings.set("display/terminalFontPt", v); ThemeStore.applyTerminal(themeId, v) }

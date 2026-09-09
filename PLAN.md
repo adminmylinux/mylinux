@@ -560,6 +560,10 @@ Remote desktops (2026-09-09 06:55): /usr/bin/remmina installs Remmina + VNC/RDP 
 "Remote Desktop" (kind remote), File menu and launcher entries. Verified: installs in ~1 min, runs on Wayland. No secret
 plugin, so saved passwords are stored unencrypted - follow-up if wanted (remmina-plugin-secret + a keyring).
 
+Title bars (2026-09-09 07:50): MacWindow.selfDecorated (xdg-decoration client-side, or window geometry smaller than the
+surface = CSD shadow margins) drops our title bar/frame for GTK/Chromium windows; Theme.titleBars auto|always|never
+(Settings wm/titlebars, Window menu). titleHeight change re-lays out the tile.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

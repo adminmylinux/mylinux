@@ -69,6 +69,12 @@ Press **Option+K** for the full list.
 | Option+Ctrl+Shift+Space | Theme picker |
 | Option+Ctrl+Space | Next background |
 
+### Window frames
+
+Apps that draw their own header bar (Firefox, Chromium, Remmina and other GTK apps) get no second
+title bar; the terminal and other plain windows get the macOS-style one. Window › "Title bars"
+switches between auto, always and never.
+
 ### Quitting
 
 Use **Shut Down…** (or **Restart…**) from the  menu at the top left, or type `shut` into the

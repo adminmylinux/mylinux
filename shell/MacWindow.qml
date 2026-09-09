@@ -10,7 +10,14 @@ Item {
     property var output              // the Desktop window
     property int cascadeIndex: 0
     property string title: toplevel ? (toplevel.title || toplevel.appId || "Window") : ""
-    readonly property int titleHeight: Theme.px(34)
+    // Apps that draw their own decoration (GTK header bars, Chromium in CSD mode) get no second title bar
+    // from us. Recognised by the shadow margins they keep around the window geometry; the xdg-decoration
+    // mode is no use here, because foot (configured without any decoration) also reports client-side.
+    readonly property bool selfDecorated: shellSurface && surfaceItem.width > 0 && shellSurface.windowGeometry.width > 0
+            && (shellSurface.windowGeometry.width < surfaceItem.width - 2 || shellSurface.windowGeometry.height < surfaceItem.height - 2)
+    readonly property bool showTitle: Theme.titleBars === "always" || (Theme.titleBars === "auto" && !selfDecorated)
+    readonly property int titleHeight: showTitle ? Theme.px(34) : 0
+    onTitleHeightChanged: if (tiled && output && output.tiling) output.tiling.relayout()   // re-send the tile size
     readonly property int radius: Theme.px(12)
     // fractional UI scale is applied to the client surface as an item scale; integer scale is HiDPI in the client
     readonly property real surfaceScale: Theme.scale / Theme.outputScale
@@ -93,8 +100,9 @@ Item {
     onHeightChanged: { if (resizeEdges & Qt.TopEdge) y = anchoredBottom - height; else place() }
     onResizeEdgesChanged: { anchoredRight = x + width; anchoredBottom = y + height }
 
-    // Shadow
+    // Shadow (self-decorated apps bring their own)
     Rectangle {
+        visible: win.showTitle
         anchors.fill: frame; anchors.margins: -1; radius: win.radius + 1
         color: "transparent"; border.color: "#33000000"; border.width: 1
         Rectangle { anchors.fill: parent; anchors.margins: -6; radius: win.radius + 6; color: "#22000000"; z: -1 }
@@ -103,13 +111,14 @@ Item {
     Rectangle {
         id: frame
         anchors.fill: parent
-        radius: win.radius
-        color: "#f2f2f4"
+        radius: win.showTitle ? win.radius : 0
+        color: win.showTitle ? "#f2f2f4" : "transparent"
         clip: true
 
         // Title bar with traffic lights
         Rectangle {
             id: titleBar
+            visible: win.showTitle
             width: parent.width; height: win.titleHeight
             color: win.output && win.output.focusedWindow === win ? "#e8e8ea" : "#f4f4f5"
             // Drag/raise/zoom area; declared first so the traffic lights below stack above it.
