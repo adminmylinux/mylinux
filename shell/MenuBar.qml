@@ -9,6 +9,8 @@ Item {
     height: Theme.px(20)      // slimmer than the 24 pt macOS bar, per user preference
     property bool displayOpen: false
     property bool agentOpen: false
+    property bool tailscaleOpen: false
+    property bool settingsOpen: false
     function closeKbd() { kbdIcon.open = false }
     readonly property bool kbdOpen: kbdIcon.open
     // 0 = none; menus open on click, and switch on hover while one is open (macOS behaviour)
@@ -175,13 +177,25 @@ Item {
                 Rectangle { width: Theme.px(3); height: Theme.px(9); radius: 1; color: Theme.text; anchors.bottom: parent.bottom } }
             MouseArea { id: actMa; anchors.fill: parent; hoverEnabled: true; onPressed: { bar.openIndex = -1; if (bar.desktop) bar.desktop.launch("/usr/bin/activity") } }
         }
+        // Tailscale: the 3x3 dot mark; bright when connected
+        Item {
+            id: tsIcon
+            visible: Tailscale.available
+            width: Theme.px(24); height: bar.height
+            Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: bar.tailscaleOpen ? "#44ffffff" : "transparent" }
+            Grid { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; columns: 3; spacing: Theme.px(1.5)
+                Repeater { model: 9
+                    Rectangle { width: Theme.px(3.2); height: width; radius: width / 2; color: Theme.text
+                                opacity: (index === 4 || index >= 6) ? (Tailscale.connected ? 1 : 0.55) : (Tailscale.connected ? 0.4 : 0.2) } } }
+            MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = false; bar.agentOpen = false; bar.settingsOpen = false; kbdIcon.open = false; bar.tailscaleOpen = !bar.tailscaleOpen } }
+        }
         // agent usage (Claude Code / Codex)
         Item {
             id: agentIcon
             width: Theme.px(24); height: bar.height
             Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: bar.agentOpen ? "#44ffffff" : "transparent" }
             Repeater { model: 8; Rectangle { anchors.centerIn: parent; anchors.verticalCenterOffset: Theme.px(1); width: Theme.px(2.4); height: Theme.px(14); radius: width / 2; color: Theme.text; rotation: index * 22.5 } }
-            MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = false; kbdIcon.open = false; bar.agentOpen = !bar.agentOpen } }
+            MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = false; bar.tailscaleOpen = false; bar.settingsOpen = false; kbdIcon.open = false; bar.agentOpen = !bar.agentOpen } }
         }
         // keyboard layout badge + chooser
         Item {
@@ -203,6 +217,14 @@ Item {
                 Rectangle { x: Theme.px(7); y: Theme.px(12); width: Theme.px(4); height: Theme.px(2); color: Theme.text }
                 Rectangle { x: Theme.px(4); y: Theme.px(14); width: Theme.px(10); height: 1.5; color: Theme.text } }
             MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = !bar.displayOpen } }
+        }
+        // settings (gear)
+        Item {
+            id: gearIcon
+            width: Theme.px(22); height: bar.height
+            Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: bar.settingsOpen ? "#44ffffff" : "transparent" }
+            Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; text: "⚙"; color: Theme.text; font.pixelSize: Theme.fpx(15); font.family: Theme.uiFont }
+            MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = false; bar.agentOpen = false; bar.tailscaleOpen = false; kbdIcon.open = false; bar.settingsOpen = !bar.settingsOpen } }
         }
         Text { id: clock; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: Theme.px(2); color: Theme.text; font.pixelSize: Theme.fpx(14); font.family: Theme.uiFont
             text: Qt.formatDateTime(new Date(), "ddd d MMM  HH:mm")

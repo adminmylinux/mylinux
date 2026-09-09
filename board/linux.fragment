@@ -11,3 +11,5 @@ CONFIG_FB_DEVICE=y
 CONFIG_NET_9P=y
 CONFIG_NET_9P_VIRTIO=y
 CONFIG_9P_FS=y
+# Tailscale (userspace WireGuard over a TUN device)
+CONFIG_TUN=y

@@ -615,6 +615,14 @@ Chromium now runs with --force-prefers-reduced-motion everywhere (apps-run, chro
 window at 4%. Follow-up if needed: cap the compositor frame rate (KMS mode @30) or per-surface commit throttling.
 Menu bar has an Activity (btop) icon left of the agent icon.
 
+Tailscale (2026-09-09 11:50): Buildroot package (1.78.1, +15 MB rootfs) + CONFIG_TUN; S47tailscale runs tailscaled with
+state in /root/.config/tailscale (apps disk) and --tun=tailscale0 (no --netfilter-mode flag in this build; no netfilter
+in the kernel, userspace WireGuard). Menu bar dot-grid icon -> TailscalePanel (C++ Tailscale singleton polls
+`tailscale status --json`: state, self IP, peers online/IP/OS, click = ssh terminal; Connect runs tailscale-login which
+opens the login URL in Chromium). Settings gear -> SettingsPanel: API keys (OpenRouter, Anthropic, OpenAI, Tailscale,
+GitHub) in ~/.config/mylinux/secrets.env (0600, Secrets singleton), exported by apps-run (chroot) and ENV hook
+(/etc/profile.d/secrets.sh) for base shells. Login itself not testable here (needs the user's account).
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

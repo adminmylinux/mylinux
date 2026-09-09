@@ -121,6 +121,21 @@ BusyBox; everything installed on the apps disk is on the PATH as well, so `claud
 `python3`, `apt install …` just work (they run inside the Debian chroot, in the same directory). For a
 full Debian shell type `apps-run bash`.
 
+### Settings and API keys
+
+The gear in the menu bar opens Settings: OpenRouter, Anthropic, OpenAI and Tailscale API keys and a
+GitHub token. They are saved with owner-only permissions in `~/.config/mylinux/secrets.env` on the
+apps disk and exported as environment variables to every new terminal and app, so tools such as
+Claude Code, Codex or OpenRouter clients find them without further setup.
+
+### Tailscale
+
+Tailscale is built in. The menu bar's dot-grid icon opens its panel: Connect joins your tailnet as
+`mylinux` (the login page opens in the browser), and once connected the panel lists every machine on
+the tailnet with its online state and IP; click one for an SSH terminal. The login is kept on the apps disk. After that, MagicDNS names such as
+`omarchy-imac` resolve inside myLinux, and other tailnet machines can reach the VM. The `tailscale`
+command works in any terminal.
+
 ### Remote desktops
 
 The dock's Remote Desktop icon (or "Remote" in the launcher) starts Remmina, installed from Debian on

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network Qml Quick WaylandCompositor)
 qt_standard_project_setup(REQUIRES 6.5)
 
-qt_add_executable(myshell main.cpp launcher.cpp launcher.h settings.cpp settings.h agentusage.cpp agentusage.h themestore.cpp themestore.h keygrab.cpp keygrab.h)
+qt_add_executable(myshell main.cpp launcher.cpp launcher.h settings.cpp settings.h agentusage.cpp agentusage.h themestore.cpp themestore.h keygrab.cpp keygrab.h tailscale.cpp tailscale.h secrets.cpp secrets.h)
 
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
@@ -25,6 +25,8 @@ qt_add_qml_module(myshell
         DisplayPanel.qml
         Spotlight.qml
         AgentPanel.qml
+        TailscalePanel.qml
+        SettingsPanel.qml
         FirstRun.qml
         Tiling.qml
         KeyHelp.qml

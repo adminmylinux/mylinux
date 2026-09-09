@@ -84,7 +84,9 @@ Item {
             .concat(Theme.layouts.map(l => ({ label: "Keyboard: " + l.label, hint: l.badge + (l.id === Theme.keyboardLayout ? "  ✓" : ""), glyph: "⌨", run: () => Theme.setKeyboardLayout(l.id) })))
             .concat([
             { label: "Set up / repair the apps disk", hint: "apps-setup", glyph: "⤓", run: () => desktop.launch("/usr/bin/apps-setup-window") },
-            { label: "Install / update Claude Code and Codex", hint: "apps-setup-ai", glyph: "✳", run: () => inTerminal("Installing agents", "apps-setup-ai") } ])
+            { label: "Install / update Claude Code and Codex", hint: "apps-setup-ai", glyph: "✳", run: () => inTerminal("Installing agents", "apps-setup-ai") },
+            { label: "Tailscale: connect", hint: "join your tailnet as \"mylinux\" (opens the login page)", glyph: "⬡", run: () => desktop.launch("/usr/bin/tailscale-login") },
+            { label: "Tailscale: status", hint: "peers, IP", glyph: "⬡", run: () => desktop.launch("/usr/bin/tailscale-status") } ])
         case "install": return [
             { label: "Install a package…", hint: "type: install <name>", glyph: "⤓", run: () => { input.text = "install " } },
             { label: "Firefox", hint: "firefox-esr", glyph: "⤓", run: () => desktop.launch("/usr/bin/firefox") },

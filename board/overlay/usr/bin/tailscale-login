@@ -1,0 +1,10 @@
+#!/bin/sh
+# Join the tailnet: runs `tailscale up` in a terminal window and opens the login link in the browser.
+exec foot -T "Tailscale" sh -c '
+  echo "Connecting this myLinux to your tailnet (hostname: mylinux)..."; echo
+  tailscale up --hostname=mylinux --accept-dns=true --accept-routes=true 2>&1 | while IFS= read -r line; do
+    echo "$line"
+    url=$(printf "%s" "$line" | grep -o "https://login.tailscale.com/[^ ]*")
+    [ -n "$url" ] && { echo; echo "Opening the login page in the browser..."; setsid /usr/bin/chromium "$url" >/dev/null 2>&1 < /dev/null & }
+  done
+  echo; tailscale status 2>&1 | head -20; echo; echo "Press Enter to close."; read x'

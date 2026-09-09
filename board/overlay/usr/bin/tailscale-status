@@ -1,0 +1,2 @@
+#!/bin/sh
+exec foot -T "Tailscale status" sh -c 'tailscale status 2>&1; echo; echo "IP: $(tailscale ip -4 2>/dev/null)"; echo; echo "Press Enter to close."; read x'

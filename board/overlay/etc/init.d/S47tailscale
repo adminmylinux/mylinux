@@ -1,0 +1,16 @@
+#!/bin/sh
+# Tailscale node daemon. State lives in the home directory (apps disk) so the login survives reboots.
+# Networking is userspace WireGuard over the kernel TUN device; no netfilter in this kernel.
+STATE=/root/.config/tailscale
+case "$1" in
+  start)
+    [ -x /usr/sbin/tailscaled ] || exit 0
+    mkdir -p "$STATE" /run/tailscale /dev/net
+    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
+    printf 'Starting tailscaled: '
+    setsid /usr/sbin/tailscaled --state="$STATE/tailscaled.state" --socket=/run/tailscale/tailscaled.sock \
+        --statedir="$STATE" --tun=tailscale0 --port=41641 < /dev/null > /var/log/tailscaled.log 2>&1 &
+    echo OK ;;
+  stop) killall tailscaled 2>/dev/null ;;
+  restart) $0 stop; sleep 1; $0 start ;;
+esac
