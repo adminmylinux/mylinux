@@ -7,6 +7,8 @@ for d in dev proc sys tmp; do mountpoint -q $A/$d || mount --bind /$d $A/$d; don
 mountpoint -q $A/dev/pts || mount -t devpts devpts $A/dev/pts 2>/dev/null
 mkdir -p $A/dev/shm; mountpoint -q $A/dev/shm || mount -t tmpfs tmpfs $A/dev/shm
 mkdir -p "$A$XDG_RUNTIME_DIR"; mountpoint -q "$A$XDG_RUNTIME_DIR" || mount --bind "$XDG_RUNTIME_DIR" "$A$XDG_RUNTIME_DIR"
+# the Mac share folder, so apps (file dialogs) can read files dropped into share/ on the Mac
+if mountpoint -q /mnt/share; then mkdir -p $A/mnt/share; mountpoint -q $A/mnt/share || mount --bind /mnt/share $A/mnt/share; fi
 cp -f /etc/resolv.conf $A/etc/resolv.conf 2>/dev/null
 # helper scripts inside the chroot: default browser for xdg-open / $BROWSER (Claude Code login etc.)
 mkdir -p $A/usr/local/bin
