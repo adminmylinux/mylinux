@@ -589,6 +589,8 @@ Solid panels (2026-09-09 09:45): GlassPanel.solid (default Theme.solidPanels = t
 the tint opaque and skips the software blur; menus, sheets, popovers, About and FirstRun are solid, the dock and menu
 bar stay glass (they sit over the wallpaper). Style menu: Panels: solid / glass.
 
+Autostart (2026-09-09 09:50): default is now claude-web (the claude.ai app window) + chatgpt instead of claude-code; override with [session] autostart=... in share/mylinux.ini.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

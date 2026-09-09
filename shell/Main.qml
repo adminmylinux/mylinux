@@ -38,7 +38,7 @@ WaylandCompositor {
         if (autostarted) return
         const ready = Launcher.fileExists("/mnt/apps/usr/bin/chromium")
         const needsDisk = ["chromium", "firefox", "chatgpt", "claude-web", "claude-code", "codex", "apps-"]
-        const list = String(Settings.value("session/autostart", "/usr/bin/claude-code,/usr/bin/chatgpt")).split(",")
+        const list = String(Settings.value("session/autostart", "/usr/bin/claude-web,/usr/bin/chatgpt")).split(",")
         let launched = 0
         for (let cmd of list) {
             cmd = cmd.trim(); if (!cmd.length) continue

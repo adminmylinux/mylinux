@@ -78,6 +78,17 @@ Press **Option+K** for the full list.
 The set follows Omarchy's, so the same fingers work on both. Alt+Tab (window cycling) reaches the guest
 only with `GRAB=full`, because Alt is the Mac Cmd key and macOS keeps Cmd+Tab otherwise.
 
+### Startup apps
+
+The desktop opens the Claude and ChatGPT app windows at start. Change the list in `share/mylinux.ini`:
+
+```ini
+[session]
+autostart=/usr/bin/claude-web,/usr/bin/chatgpt
+```
+
+Any command works there, for example `/usr/bin/claude-code` for the terminal agent or `/usr/bin/foot`.
+
 ### Window frames
 
 Apps that draw their own header bar (Firefox, Chromium, Remmina and other GTK apps) get no second
