@@ -34,11 +34,24 @@ APPS="-drive file=$APPS_IMG,if=none,format=raw,id=apps -device virtio-blk-pci,dr
 # Shared folder (settings file, dev binaries, host-cmd channel). SHARE_DIR=... to use another one.
 SHARE_DIR="${SHARE_DIR:-share}"; mkdir -p "$SHARE_DIR"
 # Host agent: the guest shell writes a command into $SHARE_DIR/host-cmd; we act on it here (window fit etc.).
-rm -f "$SHARE_DIR/host-cmd"
-( while sleep 0.5; do
-    [ -f "$SHARE_DIR/host-cmd" ] || continue
-    cmd=$(head -1 "$SHARE_DIR/host-cmd"); rm -f "$SHARE_DIR/host-cmd"
-    case "$cmd" in fit|center|fullscreen|native) tools/host-window.sh "$cmd" >/dev/null 2>&1 & ;; esac
+# It also bridges the text clipboard both ways through $SHARE_DIR/clipboard (CLIPBOARD=0 turns that off):
+# the Mac clipboard is mirrored into mac.txt, and guest.txt (written by clipboard-bridge in the guest)
+# goes into the Mac clipboard.
+rm -f "$SHARE_DIR/host-cmd"; mkdir -p "$SHARE_DIR/clipboard"; rm -f "$SHARE_DIR/clipboard"/*.txt
+CLIPBOARD="${CLIPBOARD:-1}"
+( export LC_ALL=en_US.UTF-8; LAST_MAC=""; LAST_GUEST_M=""; G="$SHARE_DIR/clipboard/guest.txt"; M="$SHARE_DIR/clipboard/mac.txt"
+  while sleep 0.5; do
+    if [ -f "$SHARE_DIR/host-cmd" ]; then
+      cmd=$(head -1 "$SHARE_DIR/host-cmd"); rm -f "$SHARE_DIR/host-cmd"
+      case "$cmd" in fit|center|fullscreen|native) tools/host-window.sh "$cmd" >/dev/null 2>&1 & ;; esac
+    fi
+    [ "$CLIPBOARD" = 1 ] || continue
+    if [ -f "$G" ]; then
+      GM=$(stat -f %m "$G" 2>/dev/null)
+      if [ "$GM" != "$LAST_GUEST_M" ]; then LAST_GUEST_M=$GM; T=$(cat "$G"); if [ -n "$T" ] && [ "$T" != "$LAST_MAC" ]; then printf '%s' "$T" | pbcopy; LAST_MAC=$T; fi; fi
+    fi
+    T=$(pbpaste 2>/dev/null)
+    if [ -n "$T" ] && [ "$T" != "$LAST_MAC" ]; then LAST_MAC=$T; printf '%s' "$T" > "$M.tmp" && mv -f "$M.tmp" "$M"; fi
   done ) &
 AGENT=$!
 # Window placer: QEMU centres its window on whichever display macOS chose (and again when the guest

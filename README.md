@@ -89,6 +89,12 @@ autostart=/usr/bin/claude-web,/usr/bin/chatgpt
 
 Any command works there, for example `/usr/bin/claude-code` for the terminal agent or `/usr/bin/foot`.
 
+### Clipboard
+
+Text copied on the Mac can be pasted inside myLinux and the other way round. run.sh mirrors the
+Mac clipboard through the share folder and a small daemon in the guest applies it with wl-clipboard
+from the apps disk. Text only; `CLIPBOARD=0 ./run.sh` turns it off.
+
 ### Dock
 
 The dock hides below the screen edge and slides up when the pointer touches the bottom of the

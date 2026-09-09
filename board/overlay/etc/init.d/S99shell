@@ -26,6 +26,8 @@ case "$1" in
     # Own session: a shell started from a terminal window must not die with that terminal.
     setsid "$SHELL_BIN" < /dev/null > /var/log/shell.log 2>&1 &
     echo OK
+    # Mac <-> guest text clipboard (see clipboard-bridge); one instance is enough across shell restarts
+    pidof clipboard-bridge > /dev/null || setsid /usr/bin/clipboard-bridge < /dev/null > /var/log/clipboard.log 2>&1 &
     ;;
   stop) killall myshell 2>/dev/null ;;
   restart)
