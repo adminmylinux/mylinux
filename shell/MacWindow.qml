@@ -23,8 +23,9 @@ Item {
     readonly property real surfaceScale: Theme.scale / Theme.outputScale
     property bool minimized: false
     property int workspace: 1
+    property bool scratch: false          // lives on the scratchpad (⌘S shows/hides it over any workspace)
     // (not "onWorkspace": names starting with "on" + a capital read as signal handlers in QML)
-    readonly property bool shownWorkspace: !output || output.workspace === workspace
+    readonly property bool shownWorkspace: !output || (scratch ? output.scratchVisible : output.workspace === workspace)
     property bool placed: false
     property bool tiled: false
     property bool fullscreen: false
@@ -163,6 +164,27 @@ Item {
             TapHandler { gesturePolicy: TapHandler.DragThreshold; onPressedChanged: if (pressed) win.raise() }
         }
 
+    }
+
+    // Omarchy-style ⌘ + left drag moves the window (floating it), ⌘ + right drag resizes it.
+    MouseArea {
+        id: superDrag
+        anchors.fill: parent; z: 200
+        enabled: (KeyGrab.modifiers & Qt.MetaModifier) !== 0
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        property point last; property real sw; property real sh
+        onPressed: (m) => {
+            win.raise()
+            if (m.button === Qt.LeftButton && win.tiled && win.output) win.output.setFloating(win, true)
+            last = mapToItem(null, m.x, m.y); sw = win.geo.width; sh = win.geo.height
+        }
+        onPositionChanged: (m) => {
+            const p = mapToItem(null, m.x, m.y)
+            if (pressedButtons & Qt.LeftButton) { win.x += p.x - last.x; win.y += p.y - last.y; last = p }
+            else if (pressedButtons & Qt.RightButton)
+                win.toplevel.sendConfigure(Qt.size(Math.max(240, sw + (p.x - last.x) / win.surfaceScale), Math.max(120, sh + (p.y - last.y) / win.surfaceScale)), [XdgToplevel.ResizingState, XdgToplevel.ActivatedState])
+        }
+        onReleased: (m) => { if (m.button === Qt.RightButton) win.toplevel.sendConfigure(Qt.size(win.geo.width, win.geo.height), [XdgToplevel.ActivatedState]) }
     }
 
     // Resize handles on every edge and corner. The client picks the final size (xdg configure);

@@ -31,7 +31,7 @@ Item {
             { label: "Hide " + bar.appName, action: "minimize", shortcut: mod + "M" },
             { label: "Quit " + bar.appName, action: "quit", shortcut: mod + "Q" } ] },
         { title: "File", items: [
-            { label: "New Terminal", action: "terminal", shortcut: mod + "T" },
+            { label: "New Terminal", action: "terminal", shortcut: mod + "Enter" },
             { label: "New Clock", action: "clock" },
             { label: "New Firefox Window", action: "firefox" },
             { label: "New Chromium Window", action: "browser" },
@@ -42,10 +42,10 @@ Item {
             { label: "Undo", disabled: true }, { label: "Redo", disabled: true }, { sep: true },
             { label: "Cut", disabled: true }, { label: "Copy", disabled: true }, { label: "Paste", disabled: true } ] },
         { title: "View", items: [
-            { label: "Zoom", action: "zoom" }, { label: "Cycle Windows", action: "cycle", shortcut: mod + "Tab" } ] },
+            { label: "Zoom", action: "zoom" }, { label: "Cycle Windows", action: "cycle", shortcut: "⌥Tab" }, { label: "Screenshot", action: "screenshot", shortcut: "Print" } ] },
         { title: "Window", dynamic: true, items: [
             { label: "Minimize", action: "minimize", shortcut: mod + "M" }, { label: "Zoom", action: "zoom" },
-            { label: "Fullscreen", action: "fullscreen", shortcut: mod + "F" }, { label: "Float / Tile", action: "float", shortcut: mod + "V" },
+            { label: "Fullscreen", action: "fullscreen", shortcut: mod + "F" }, { label: "Float / Tile", action: "float", shortcut: mod + "T" },
             { label: "Tiling on/off", action: "tiling", shortcut: mod + "⇧T" },
             { label: "Title bars: " + Theme.titleBars + " (click to change)", action: "titlebars" }, { label: "Keybindings", action: "keys", shortcut: mod + "K" }, { sep: true } ] },
         { title: "Help", items: [ { label: "mylinux Help", disabled: true } ] }
@@ -82,6 +82,7 @@ Item {
         case "tiling": desktop.toggleTiling(); break
         case "keys": desktop.showKeys(); break
         case "cycle": desktop.cycleWindows(); break
+        case "screenshot": desktop.screenshot(); break
         case "titlebars": Theme.setTitleBars(Theme.titleBars === "auto" ? "always" : Theme.titleBars === "always" ? "never" : "auto"); break
         case "window": desktop.activateWindow(item.win); break
         }

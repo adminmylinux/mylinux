@@ -578,6 +578,13 @@ Key sheet tabs (2026-09-09 09:20): ⌘K has "Sheet" (grid by group) and "Search"
 group; filtered by a text field). Tab switches; typing on the sheet jumps into search with that text; Esc clears, then
 closes. Modifier highlighting works in both tabs.
 
+Omarchy keys (2026-09-09 09:40): the shortcut set now matches Omarchy: ⌘T float, ⌘J toggle split, ⌘Tab/⇧Tab/⌃Tab
+next/previous/former workspace, ⌘⇧⌥1-9 move silently (KeyGrab digit(n, shift, alt)), ⌘S/⌘⌥S scratchpad (MacWindow.scratch,
+Desktop.scratchVisible), ⌘⇧F files (Nautilus via apps-install), ⌘⌥F/⌘⌃F = fullscreen, ⌘Esc/⌘⇧Esc menus, ⌘/ ⌘⌥/ scale
+steps, Print screenshot (backdrop.grabToImage -> /root), ⌃⌥⌦ close all, ⌘+drag move / ⌘+right drag resize
+(MacWindow superDrag, enabled while KeyGrab reports Meta). Alt+Tab cycles windows but only reaches the guest with
+GRAB=full. Not ported: clipboard manager, emoji picker, lock, nightlight, notifications, groups, monitor moves.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

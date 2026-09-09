@@ -27,13 +27,14 @@ bool KeyGrab::eventFilter(QObject *, QEvent *event)
     if (mods != m_mods) { m_mods = mods; emit modifiersChanged(); }
 
     if (!(ke->modifiers() & Qt::MetaModifier)) return false;
-    if (ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) return false;
+    if (ke->modifiers() & Qt::ControlModifier) return false;
+    if ((ke->modifiers() & Qt::AltModifier) && !(ke->modifiers() & Qt::ShiftModifier)) return false;   // Super+Alt+n is free
     // libinput reports xkb key codes (evdev + 8): the digit row 1..9,0 is 10..19; accept raw evdev 2..11 as well.
     const int code = int(ke->nativeScanCode());
     int n = 0;
     if (code >= 10 && code <= 19) n = code - 9;
     else if (code >= 2 && code <= 11) n = code - 1;
     if (n == 0) return false;
-    if (press && !ke->isAutoRepeat()) emit digit(n, ke->modifiers() & Qt::ShiftModifier);
+    if (press && !ke->isAutoRepeat()) emit digit(n, ke->modifiers() & Qt::ShiftModifier, ke->modifiers() & Qt::AltModifier);
     return true;    // swallow press and release so the client never sees the symbol
 }

@@ -37,20 +37,53 @@ Window {
         if (tiling) tiling.relayout()
         focusTopmost()
     }
-    function moveToWorkspace(w, n) {
-        if (!w || n < 1 || n > workspaces || w.workspace === n) return
+    function moveToWorkspace(w, n, follow) {
+        if (!w || n < 1 || n > workspaces || (w.workspace === n && !w.scratch)) return
         if (w.tiled) tilingOf(w).remove(w)
+        w.scratch = false
         w.workspace = n
         if (tilingEnabled && !w.minimized) tilings[n - 1].add(w, null)
         windowsRevision++
-        switchWorkspace(n)
+        if (follow === false) { if (focusedWindow === w) focusedWindow = null; focusTopmost(); return }
+        switchWorkspaceTracked(n)
         w.raise()
     }
-    function moveFocusedToWorkspace(n) { if (focusedWindow) moveToWorkspace(focusedWindow, n) }
+    function moveFocusedToWorkspace(n, follow) { if (focusedWindow) moveToWorkspace(focusedWindow, n, follow !== false) }
+    property int previousWorkspace: 1
+    onWorkspaceChanged: {}
+    function switchWorkspaceTracked(n) { if (n !== workspace) { previousWorkspace = workspace; switchWorkspace(n) } }
+    function nextWorkspace() { switchWorkspaceTracked(workspace % workspaces + 1) }
+    function prevWorkspace() { switchWorkspaceTracked((workspace + workspaces - 2) % workspaces + 1) }
+    function formerWorkspace() { switchWorkspaceTracked(previousWorkspace) }
+    // Scratchpad (Omarchy ⌘S): windows moved there float above whatever workspace is current, shown or hidden as a set.
+    property bool scratchVisible: false
+    function toggleScratch() {
+        if (!windows.some(w => w.scratch)) return
+        scratchVisible = !scratchVisible; windowsRevision++
+        if (scratchVisible) { for (const w of windows) if (w.scratch) w.raise() } else { focusedWindow = null; focusTopmost() }
+    }
+    function moveFocusedToScratch() {
+        const w = focusedWindow; if (!w || w.scratch) return
+        if (w.tiled) tilingOf(w).remove(w)
+        w.scratch = true; scratchVisible = false; focusedWindow = null; windowsRevision++; focusTopmost()
+    }
+    function toggleSplit() { if (focusedWindow && focusedWindow.tiled) tilingOf(focusedWindow).toggleSplit(focusedWindow) }
+    function closeAll() { for (const w of windows.slice()) w.toplevel.sendClose() }
+    function screenshot() {
+        const d = new Date(), pad = n => (n < 10 ? "0" : "") + n
+        const f = "/root/screenshot-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + ".png"
+        backdrop.grabToImage(r => { r.saveToFile(f); console.log("screenshot saved:", f) })
+    }
+    function scaleStep(up) {
+        const steps = [1, 1.25, 1.5, 2]
+        let i = steps.findIndex(v => Math.abs(v - Theme.scale) < 0.01); if (i < 0) i = 0
+        i = Math.max(0, Math.min(steps.length - 1, i + (up ? 1 : -1))); Theme.setScale(steps[i])
+    }
     // Bring a window forward wherever it is (menu bar window list, dock).
     function activateWindow(w) {
         if (!w) return
-        if (w.workspace !== workspace) switchWorkspace(w.workspace)
+        if (w.scratch) { scratchVisible = true; windowsRevision++ }
+        else if (w.workspace !== workspace) switchWorkspaceTracked(w.workspace)
         if (w.minimized) w.restore(); else w.raise()
     }
 
@@ -84,11 +117,11 @@ Window {
     function resizeDir(dir) { if (focusedWindow) tiling.resize(focusedWindow, dir) }
     // Single source of truth for the key help (⌘ = the Super/Option key)
     readonly property var keybindings: [
-        { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ T / ⌘ N", "New terminal"], ["⌘ Space", "Menu: type to find anything"], ["⌘ ⌥ Space", "Menu (alternative)"], ["⌘ K", "This list"]] },
-        { group: "Windows", keys: [["⌘ W", "Close window"], ["⌘ Q", "Quit app"], ["⌘ M", "Minimise"], ["⌘ F", "Fullscreen"], ["⌘ V", "Float / tile window"], ["⌘ Tab", "Cycle windows"], ["⌘ ⇧ T", "Tiling on/off"]] },
+        { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ ⇧ F", "Files"], ["⌘ Space / ⌘ Esc", "Menu: type to find anything"], ["⌘ ⇧ Esc", "System menu"], ["⌘ K", "This list"]] },
+        { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / full width"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
-        { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
-        { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
+        { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["⌘ ⇧ ⌥ 1 … 9", "Move window there silently"], ["⌘ Tab / ⌘ ⇧ Tab", "Next / previous workspace"], ["⌘ ⌃ Tab", "Former workspace"], ["⌘ S", "Show / hide the scratchpad"], ["⌘ ⌥ S", "Move window to the scratchpad"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
+        { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
     ]
     function touch() { windowsRevision++ }
 
@@ -101,8 +134,8 @@ Window {
         return id || w.title || "mylinux"
     }
     function windowsFor(appId) { return windows.filter(w => appIdOf(w) === appId) }
-    function visibleWindows() { return windows.filter(w => !w.minimized && w.workspace === workspace) }
-    function currentWindows() { return windows.filter(w => w.workspace === workspace) }
+    function visibleWindows() { return windows.filter(w => !w.minimized && (w.scratch ? scratchVisible : w.workspace === workspace)) }
+    function currentWindows() { return windows.filter(w => w.scratch ? scratchVisible : w.workspace === workspace) }
     function hasMinimized(appId) { return windowsFor(appId).some(w => w.minimized) }
     function isRunning(appId) { return windowsFor(appId).length > 0 }
 
@@ -150,18 +183,21 @@ Window {
     }
     function minimizeFocused() { if (focusedWindow) focusedWindow.minimize() }
 
-    // ---- shortcuts (Cmd = Meta/Super; libinput maps it, the old evdev keymap could not) -------
-    Shortcut { sequences: ["Meta+W"]; context: Qt.ApplicationShortcut; onActivated: root.closeFocused() }
-    Shortcut { sequences: ["Meta+Q"]; context: Qt.ApplicationShortcut; onActivated: root.quitFocusedApp() }
+    // ---- shortcuts, Omarchy's set (⌘ = Meta/Super, the Option key; Alt = the Mac Cmd key, which macOS keeps
+    // unless GRAB=full). Super+digit combinations come from KeyGrab (C++), the rest are QML shortcuts.
+    Shortcut { sequences: ["Meta+W", "Meta+Q", "Ctrl+Alt+W"]; context: Qt.ApplicationShortcut; onActivated: root.closeFocused() }
+    Shortcut { sequences: ["Ctrl+Alt+Del", "Ctrl+Alt+Delete"]; context: Qt.ApplicationShortcut; onActivated: root.closeAll() }
     Shortcut { sequences: ["Meta+M"]; context: Qt.ApplicationShortcut; onActivated: root.minimizeFocused() }
-    Shortcut { sequences: ["Meta+T", "Meta+N"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/foot") }
-    Shortcut { sequences: ["Meta+Tab", "Meta+`"]; context: Qt.ApplicationShortcut; onActivated: root.cycleWindows() }
-    Shortcut { sequences: ["Meta+Return", "Meta+Enter"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/foot") }
-    Shortcut { sequences: ["Meta+Shift+Return", "Meta+Shift+Enter"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/firefox") }
+    Shortcut { sequences: ["Meta+Return", "Meta+Enter", "Meta+N"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/foot") }
+    Shortcut { sequences: ["Meta+Shift+Return", "Meta+Shift+Enter", "Meta+Shift+B"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/firefox") }
+    Shortcut { sequences: ["Meta+Shift+F"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/files") }
     Shortcut { sequences: ["Meta+K"]; context: Qt.ApplicationShortcut; onActivated: keyHelp.visible = !keyHelp.visible }
-    Shortcut { sequences: ["Meta+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.toggleFullscreen() }
-    Shortcut { sequences: ["Meta+V"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.setFloating(root.focusedWindow, root.focusedWindow.tiled) }
+    Shortcut { sequences: ["Meta+F", "Meta+Alt+F", "Meta+Ctrl+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.toggleFullscreen() }
+    Shortcut { sequences: ["Meta+T"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.setFloating(root.focusedWindow, root.focusedWindow.tiled) }
+    Shortcut { sequences: ["Meta+J"]; context: Qt.ApplicationShortcut; onActivated: root.toggleSplit() }
     Shortcut { sequences: ["Meta+Shift+T"]; context: Qt.ApplicationShortcut; onActivated: root.toggleTiling() }
+    Shortcut { sequences: ["Alt+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.cycleWindows() }
+    Shortcut { sequences: ["Alt+Shift+Tab", "Alt+Shift+Backtab"]; context: Qt.ApplicationShortcut; onActivated: root.cycleWindows() }
     Shortcut { sequences: ["Meta+Left"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("left") }
     Shortcut { sequences: ["Meta+Right"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("right") }
     Shortcut { sequences: ["Meta+Up"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("up") }
@@ -174,13 +210,21 @@ Window {
     Shortcut { sequences: ["Meta+Ctrl+Right"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("right") }
     Shortcut { sequences: ["Meta+Ctrl+Up"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("up") }
     Shortcut { sequences: ["Meta+Ctrl+Down"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("down") }
-    Shortcut { sequences: ["Meta+Space", "Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }
-    Shortcut { sequences: ["Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }
+    Shortcut { sequences: ["Meta+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.nextWorkspace() }
+    Shortcut { sequences: ["Meta+Shift+Tab", "Meta+Shift+Backtab"]; context: Qt.ApplicationShortcut; onActivated: root.prevWorkspace() }
+    Shortcut { sequences: ["Meta+Ctrl+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.formerWorkspace() }
+    Shortcut { sequences: ["Meta+S", "Meta+`"]; context: Qt.ApplicationShortcut; onActivated: root.toggleScratch() }
+    Shortcut { sequences: ["Meta+Alt+S", "Meta+Shift+`", "Meta+Shift+~"]; context: Qt.ApplicationShortcut; onActivated: root.moveFocusedToScratch() }
+    Shortcut { sequences: ["Meta+Space", "Meta+Esc", "Meta+Escape", "Ctrl+Alt+Esc", "Ctrl+Alt+Escape", "Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }
+    Shortcut { sequences: ["Meta+Shift+Esc", "Meta+Shift+Escape"]; context: Qt.ApplicationShortcut; onActivated: spotlight.showCategory("system") }
     Shortcut { sequences: ["Meta+Ctrl+Shift+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("theme") }
     Shortcut { sequences: ["Meta+Ctrl+Space"]; context: Qt.ApplicationShortcut; onActivated: Theme.nextBackground() }
-    // Workspaces: ⌘1..9 switch, ⌘⇧1..9 move the focused window there and follow it. Shift turns the digit
-    // keys into layout-dependent symbols, so KeyGrab (C++) matches them by physical key code.
-    Connections { target: KeyGrab; function onDigit(n, shift) { if (shift) root.moveFocusedToWorkspace(n); else root.switchWorkspace(n) } }
+    Shortcut { sequences: ["Meta+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(true) }
+    Shortcut { sequences: ["Meta+Alt+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(false) }
+    Shortcut { sequences: ["Print", "SysReq"]; context: Qt.ApplicationShortcut; onActivated: root.screenshot() }
+    // Workspaces: ⌘1..9 switch, ⌘⇧1..9 move the focused window there and follow, ⌘⇧⌥1..9 move silently.
+    // Shift turns the digit keys into layout-dependent symbols, so KeyGrab (C++) matches them by physical key code.
+    Connections { target: KeyGrab; function onDigit(n, shift, alt) { if (shift) root.moveFocusedToWorkspace(n, !alt); else root.switchWorkspaceTracked(n) } }
 
     // ---- scene ----------------------------------------------------------------------------
     // Everything the glass panels blur: wallpaper + windows.

@@ -24,6 +24,7 @@ Item {
         input.forceActiveFocus()
         refresh()
     }
+    function showCategory(id) { show("menu"); stack = [id]; selected = 0; refresh() }
     function hide() {
         open = false; input.text = ""
         if (desktop && desktop.focusedWindow) desktop.focusedWindow.raise()   // gives the key focus back
@@ -57,8 +58,9 @@ Item {
         case "trigger": return [
             { label: "Next background", hint: "⌘⌃Space", glyph: "▨", run: () => Theme.nextBackground() },
             { label: "Tiling on/off", hint: "⌘⇧T", glyph: "▥", run: () => desktop.toggleTiling() },
-            { label: "Float / tile this window", hint: "⌘V", glyph: "▢", run: () => { if (desktop.focusedWindow) desktop.setFloating(desktop.focusedWindow, desktop.focusedWindow.tiled) } },
-            { label: "Cycle windows", hint: "⌘Tab", glyph: "⇄", run: () => desktop.cycleWindows() },
+            { label: "Float / tile this window", hint: "⌘T", glyph: "▢", run: () => { if (desktop.focusedWindow) desktop.setFloating(desktop.focusedWindow, desktop.focusedWindow.tiled) } },
+            { label: "Cycle windows", hint: "⌥Tab", glyph: "⇄", run: () => desktop.cycleWindows() },
+            { label: "Screenshot", hint: "Print · saved in your home", glyph: "▣", run: () => desktop.screenshot() },
             { label: "Fill Mac screen", hint: "Mac window", glyph: "⤢", run: () => Launcher.hostCommand("fit") },
             { label: "Mac full screen", hint: "Mac window", glyph: "⤢", run: () => Launcher.hostCommand("fullscreen") } ]
         case "style": return [

@@ -18,7 +18,7 @@ public:
     bool eventFilter(QObject *watched, QEvent *event) override;
     int modifiers() const { return int(m_mods); }
 signals:
-    void digit(int n, bool shift);      // Super+n / Super+Shift+n, n = 1..9 (0 reads as 10)
+    void digit(int n, bool shift, bool alt);   // Super+n, Super+Shift+n, Super+Shift+Alt+n; n = 1..9 (0 reads as 10)
     void modifiersChanged();
 private:
     Qt::KeyboardModifiers m_mods;

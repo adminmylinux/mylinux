@@ -59,15 +59,24 @@ Press **Option+K** for the full list.
 
 | Keys | Action |
 |---|---|
-| Option+Space | Menu (Apps, Learn, Trigger, Style, Setup, Install, Remove, Update, About, System); type to find anything, `=` calculator, `install`/`remove <pkg>` |
-| Option+Enter / Option+Shift+Enter | Terminal / Browser |
-| Option+W, Option+Q, Option+M, Option+F | Close, quit, minimise, fullscreen |
+| Option+Space, Option+Esc | Menu (Apps, Learn, Trigger, Style, Setup, Install, Remove, Update, About, System); type to find anything, `=` calculator, `install`/`remove <pkg>` |
+| Option+Shift+Esc | System menu |
+| Option+Enter / Option+Shift+Enter / Option+Shift+F | Terminal / Browser / Files |
+| Option+W or Q, Option+M, Option+F, Option+Alt+F | Close, minimise, full screen, full width |
+| Option+T, Option+J, Option+Shift+T | Float/tile a window, toggle split direction, tiling on/off |
 | Option+Arrows, Option+Shift+Arrows, Option+Ctrl+Arrows | Focus, swap, resize tiles |
-| Option+V, Option+Shift+T | Float/tile a window, tiling on/off |
+| Option + drag, Option + right drag | Move, resize a window |
 | Option+1 … Option+9 | Switch workspace (the menu bar shows the occupied ones) |
-| Option+Shift+1 … 9 | Move the window to that workspace and follow it |
-| Option+Ctrl+Shift+Space | Theme picker |
-| Option+Ctrl+Space | Next background |
+| Option+Shift+1 … 9, Option+Shift+Alt+1 … 9 | Move the window to that workspace and follow it, or move it silently |
+| Option+Tab, Option+Shift+Tab, Option+Ctrl+Tab | Next, previous, former workspace |
+| Option+S, Option+Alt+S | Show/hide the scratchpad, move the window to it |
+| Option+Ctrl+Shift+Space, Option+Ctrl+Space | Theme picker, next background |
+| Option+/ , Option+Alt+/ | Scale up, down |
+| Print | Screenshot into your home folder |
+| Option+K | Keybindings sheet (with search) |
+
+The set follows Omarchy's, so the same fingers work on both. Alt+Tab (window cycling) reaches the guest
+only with `GRAB=full`, because Alt is the Mac Cmd key and macOS keeps Cmd+Tab otherwise.
 
 ### Window frames
 

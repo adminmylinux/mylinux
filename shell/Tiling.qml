@@ -79,6 +79,12 @@ QtObject {
         const a = findLeaf(root, win), b = findLeaf(root, other)
         a.win = other; b.win = win; relayout()
     }
+    // flip the split that holds the focused window (Omarchy ⌘J)
+    function toggleSplit(win) {
+        const leaf = findLeaf(root, win); if (!leaf) return
+        const p = parentOf(root, leaf, null); if (!p) return
+        p.split = p.split === "h" ? "v" : "h"; relayout()
+    }
     // grow the focused window's share of its parent split
     function resize(win, dir) {
         const leaf = findLeaf(root, win); if (!leaf) return
