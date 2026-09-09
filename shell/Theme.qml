@@ -56,6 +56,9 @@ QtObject {
     function setScale(v) { scale = v; Settings.set("display/scale", v) }
     // Our macOS-style title bars: "auto" = only for apps that do not decorate themselves, "always", "never"
     property string titleBars: String(Settings.value("wm/titlebars", "auto"))
+    // Menus, sheets and popovers: solid (default) or see-through glass
+    property bool solidPanels: String(Settings.value("look/solidPanels", "true")) === "true"
+    function setSolidPanels(v) { solidPanels = v; Settings.set("look/solidPanels", v ? "true" : "false") }
     function setTitleBars(v) { titleBars = v; Settings.set("wm/titlebars", v) }
     function setTextScale(v) { textScale = v; Settings.set("display/textScale", v) }
     function setBrightness(v) { brightness = v; Settings.set("display/brightness", v) }

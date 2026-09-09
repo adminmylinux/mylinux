@@ -88,7 +88,7 @@ Item {
         }
     }
 
-    GlassPanel { anchors.fill: parent; backdrop: bar.backdrop; radius: 0; tint: Theme.barTint; dim: Theme.isLight ? 0 : 0.35; borderColor: "transparent"; blurAmount: 0.6 }
+    GlassPanel { anchors.fill: parent; backdrop: bar.backdrop; radius: 0; tint: Theme.barTint; dim: Theme.isLight ? 0 : 0.35; borderColor: "transparent"; blurAmount: 0.6; solid: false }
 
     Row {
         id: titles

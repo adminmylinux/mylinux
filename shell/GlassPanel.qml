@@ -14,12 +14,15 @@ Item {
     property real blurAmount: 0.9
     property real saturation: 0.25
     property real dim: 0.0            // darken the blurred backdrop (0..1), for readability
+    // Solid: no blur, the tint drawn opaque. Default for menus and sheets (Theme.solidPanels): over app
+    // windows the see-through look reads badly, and skipping the software blur is cheaper too.
+    property bool solid: Theme.solidPanels
 
     // What's behind us, tracked as we move/resize.
     ShaderEffectSource {
         id: behind
         sourceItem: glass.backdrop
-        live: true
+        live: !glass.solid
         hideSource: false
         visible: false
         smooth: true
@@ -33,6 +36,7 @@ Item {
     ShaderEffectSource { id: maskTex; sourceItem: maskShape; hideSource: true; visible: false; smooth: true }
 
     MultiEffect {
+        visible: !glass.solid
         anchors.fill: parent
         source: behind
         blurEnabled: true
@@ -47,7 +51,7 @@ Item {
         maskSpreadAtMin: 0.0
     }
     // tint + hairline
-    Rectangle { anchors.fill: parent; radius: glass.radius; color: glass.tint; border.color: glass.borderColor; border.width: 1 }
+    Rectangle { anchors.fill: parent; radius: glass.radius; color: glass.solid ? Qt.rgba(glass.tint.r, glass.tint.g, glass.tint.b, 1) : glass.tint; border.color: glass.borderColor; border.width: 1 }
     // specular highlight along the top edge
     Rectangle {
         anchors { top: parent.top; left: parent.left; right: parent.right; margins: 1 }

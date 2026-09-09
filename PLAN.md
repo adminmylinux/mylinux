@@ -585,6 +585,10 @@ steps, Print screenshot (backdrop.grabToImage -> /root), ⌃⌥⌦ close all, �
 (MacWindow superDrag, enabled while KeyGrab reports Meta). Alt+Tab cycles windows but only reaches the guest with
 GRAB=full. Not ported: clipboard manager, emoji picker, lock, nightlight, notifications, groups, monitor moves.
 
+Solid panels (2026-09-09 09:45): GlassPanel.solid (default Theme.solidPanels = true, Settings look/solidPanels) draws
+the tint opaque and skips the software blur; menus, sheets, popovers, About and FirstRun are solid, the dock and menu
+bar stay glass (they sit over the wallpaper). Style menu: Panels: solid / glass.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

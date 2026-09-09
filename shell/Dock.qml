@@ -8,7 +8,7 @@ Item {
     width: row.width + Theme.px(28); height: Theme.px(74)
     anchors.bottomMargin: Theme.px(10)
 
-    GlassPanel { anchors.fill: parent; backdrop: dock.backdrop; radius: Theme.px(22); tint: "#30ffffff"; borderColor: "#70ffffff" }
+    GlassPanel { anchors.fill: parent; backdrop: dock.backdrop; radius: Theme.px(22); tint: "#30ffffff"; borderColor: "#70ffffff"; solid: false }
 
     property var apps: [
         { name: "Terminal", appId: "foot",  exec: "/usr/bin/foot",  kind: "terminal" },
