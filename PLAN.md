@@ -609,6 +609,12 @@ VNC to wayvnc (2026-09-09 11:10): libvncclient verifies the TLS certificate name
 
 Activity (2026-09-09 11:20): btop from Debian, default in apps-setup (git step) and self-installing via /usr/bin/activity (apps-install + foot -a activity -W 132x42); Desktop.floatingApps opens app id "activity" floating (btop needs >= 80x24). Menu: File > Activity, launcher Apps > Activity. Buildroot has no btop package.
 
+CPU (2026-09-09 11:35): the compositor burned ~4 cores because claude.ai animates permanently -> Chromium commits at
+60 fps -> full llvmpipe redraws (ChatGPT alone: 4%, Claude alone: 93%; the live blur of dock/bar was not the cause).
+Chromium now runs with --force-prefers-reduced-motion everywhere (apps-run, chromium.d, /usr/bin/chromium): Claude
+window at 4%. Follow-up if needed: cap the compositor frame rate (KMS mode @30) or per-surface commit throttling.
+Menu bar has an Activity (btop) icon left of the agent icon.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

@@ -164,6 +164,17 @@ Item {
 
     Row {
         anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter; spacing: Theme.px(16)
+        // Activity (btop): three little bars, like an activity monitor
+        Item {
+            id: activityIcon
+            width: Theme.px(22); height: bar.height
+            Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: actMa.containsMouse ? "#33ffffff" : "transparent" }
+            Row { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; spacing: Theme.px(2)
+                Rectangle { width: Theme.px(3); height: Theme.px(6); radius: 1; color: Theme.text; anchors.bottom: parent.bottom }
+                Rectangle { width: Theme.px(3); height: Theme.px(12); radius: 1; color: Theme.text; anchors.bottom: parent.bottom }
+                Rectangle { width: Theme.px(3); height: Theme.px(9); radius: 1; color: Theme.text; anchors.bottom: parent.bottom } }
+            MouseArea { id: actMa; anchors.fill: parent; hoverEnabled: true; onPressed: { bar.openIndex = -1; if (bar.desktop) bar.desktop.launch("/usr/bin/activity") } }
+        }
         // agent usage (Claude Code / Codex)
         Item {
             id: agentIcon

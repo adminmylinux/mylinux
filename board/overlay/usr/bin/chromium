@@ -1,5 +1,5 @@
 #!/bin/sh
 # Chromium from the apps disk, tuned for this compositor (software GL, root inside the chroot).
-exec apps-run chromium --ozone-platform=wayland --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage \
+exec apps-run chromium --ozone-platform=wayland --no-sandbox --test-type --force-prefers-reduced-motion --disable-gpu --disable-dev-shm-usage \
     --password-store=basic --no-first-run --disable-features=UseOzonePlatform,WaylandFractionalScaleV1 \
     --enable-features=UseOzonePlatform "$@"

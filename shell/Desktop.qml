@@ -148,7 +148,7 @@ Window {
         { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / full width"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
         { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["⌘ ⇧ ⌥ 1 … 9", "Move window there silently"], ["⌘ Tab / ⌘ ⇧ Tab", "Next / previous workspace"], ["⌘ ⌃ Tab", "Former workspace"], ["⌘ S", "Show / hide the scratchpad"], ["⌘ ⌥ S", "Move window to the scratchpad"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
-        { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["⌘ ⌃ C", "Send clipboard to Mac"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
+        { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["⌘ ⌃ C", "Send clipboard to Mac"], ["Menu bar icons", "Activity · Agents · Keyboard layout · Display"]] }
     ]
     function touch() { windowsRevision++ }
     // Dock auto-hide: revealed while the pointer is at the bottom edge or over the dock, hidden shortly after it leaves

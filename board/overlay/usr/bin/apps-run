@@ -13,18 +13,20 @@ cp -f /etc/resolv.conf $A/etc/resolv.conf 2>/dev/null
 hosts-sync
 # helper scripts inside the chroot: default browser for xdg-open / $BROWSER (Claude Code login etc.).
 # Rewritten on every run so flag changes reach disks set up earlier. (--test-type only silences
-# Chromium's "unsupported flag --no-sandbox" bar; the sandbox is off because we run as root.)
+# Chromium's "unsupported flag --no-sandbox" bar; the sandbox is off because we run as root.
+# --force-prefers-reduced-motion: pages with permanent animations, claude.ai for one, otherwise make
+# Chromium commit 60 frames a second and the software compositor redraw the whole screen each time.)
 mkdir -p $A/usr/local/bin
 cat > $A/usr/local/bin/mylinux-browser <<'EOS'
 #!/bin/sh
-exec chromium --ozone-platform=wayland --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage --password-store=basic --no-first-run "$@"
+exec chromium --ozone-platform=wayland --no-sandbox --test-type --force-prefers-reduced-motion --disable-gpu --disable-dev-shm-usage --password-store=basic --no-first-run "$@"
 EOS
 chmod +x $A/usr/local/bin/mylinux-browser
 # Debian's /usr/bin/chromium wrapper reads /etc/chromium.d/*: make every launch path (xdg-open, .desktop files) use
 # the flags this compositor needs.
 mkdir -p $A/etc/chromium.d
 cat > $A/etc/chromium.d/mylinux <<'EOS'
-export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform=wayland --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage --password-store=basic"
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform=wayland --no-sandbox --test-type --force-prefers-reduced-motion --disable-gpu --disable-dev-shm-usage --password-store=basic"
 EOS
 # Keep the caller's working directory when the chroot has it too (/root and /tmp are the same directories).
 CWD=/root; case "$PWD" in /root|/root/*|/tmp|/tmp/*) CWD="$PWD";; esac
