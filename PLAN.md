@@ -556,7 +556,7 @@ showing as padding inside the frame): frame size = geometry, surface item offset
 configure sizes use the geometry. Firefox and Chromium still draw their own min/max/close buttons (CSD) - follow-up.
 
 Remote desktops (2026-09-09 06:55): /usr/bin/remmina installs Remmina + VNC/RDP plugins from Debian on first use
-(apps-install now takes a package list) and seeds tab_mode=2 so every connection is a tab in one window; dock icon
+(apps-install now takes a package list, closes its window after installing and starts the app detached; trap HUP + sleep, the pty hangup used to kill the child before setsid) and seeds tab_mode=2 so every connection is a tab in one window; dock icon
 "Remote Desktop" (kind remote), File menu and launcher entries. Verified: installs in ~1 min, runs on Wayland. No secret
 plugin, so saved passwords are stored unencrypted - follow-up if wanted (remmina-plugin-secret + a keyring).
 

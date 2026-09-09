@@ -8,6 +8,12 @@ exec foot -T "Installing $TITLE" sh -c '
   echo "$TITLE is not on the apps disk yet - installing it now (needs network)..."; echo
   if ! mountpoint -q /mnt/apps; then echo "No apps disk mounted. Build one with tools/make-apps-disk.sh on the Mac."; exec sh; fi
   apps-run apt-get update -q && apps-run apt-get install -y -q --no-install-recommends $PKG \
-    && apps-run test -e "$TEST" && { apps-path; echo; echo "Installed. Starting $TITLE..."; exec "$@"; }
+    && apps-run test -e "$TEST" && { apps-path; echo; echo "Installed. Starting $TITLE..."; sleep 1
+         # Start the app on its own (log in /var/log) so this window can close instead of showing its chatter.
+         # Ignore HUP and give the child a moment: closing this terminal hangs up the pty before the child
+         # has called setsid, which would kill it.
+         trap "" HUP
+         setsid "$@" < /dev/null > "/var/log/$(echo "$TITLE" | tr " A-Z" "_a-z").log" 2>&1 &
+         sleep 1; exit 0; }
   echo; echo "Installation failed - see messages above. Press Enter to close."; read x
 ' sh "$TITLE" "$PKG" "$TEST" "$@"
