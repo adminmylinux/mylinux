@@ -100,7 +100,7 @@ Item {
                 Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: titleItem.open ? "#44ffffff" : "transparent" }
                 Text {
                     id: titleText
-                    anchors.centerIn: parent
+                    anchors.centerIn: parent; anchors.verticalCenterOffset: Theme.px(2)   // text reads centred a little below the middle
                     text: modelData.title; color: Theme.text
                     font.pixelSize: modelData.logo ? Theme.fpx(16) : Theme.fpx(13); font.bold: !!modelData.bold; font.family: Theme.uiFont
                 }
@@ -148,7 +148,7 @@ Item {
             id: agentIcon
             width: Theme.px(24); height: bar.height
             Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: bar.agentOpen ? "#44ffffff" : "transparent" }
-            Repeater { model: 8; Rectangle { anchors.centerIn: parent; width: Theme.px(2.4); height: Theme.px(14); radius: width / 2; color: Theme.text; rotation: index * 22.5 } }
+            Repeater { model: 8; Rectangle { anchors.centerIn: parent; anchors.verticalCenterOffset: Theme.px(1); width: Theme.px(2.4); height: Theme.px(14); radius: width / 2; color: Theme.text; rotation: index * 22.5 } }
             MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = false; kbdIcon.open = false; bar.agentOpen = !bar.agentOpen } }
         }
         // keyboard layout badge + chooser
@@ -157,7 +157,7 @@ Item {
             width: kbdText.width + Theme.px(12); height: bar.height
             property bool open: false
             Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: kbdIcon.open ? "#44ffffff" : "transparent" }
-            Text { id: kbdText; anchors.centerIn: parent; color: Theme.text; font.pixelSize: Theme.fpx(12); font.bold: true; font.family: Theme.uiFont
+            Text { id: kbdText; anchors.centerIn: parent; anchors.verticalCenterOffset: Theme.px(2); color: Theme.text; font.pixelSize: Theme.fpx(12); font.bold: true; font.family: Theme.uiFont
                    text: (Theme.layouts.find(l => l.id === Theme.keyboardLayout) || Theme.layouts[0]).badge }
             MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = false; bar.kbdRight = kbdIcon.mapToItem(bar, kbdIcon.width, 0).x; kbdIcon.open = !kbdIcon.open } }
         }
@@ -166,13 +166,13 @@ Item {
             id: dispIcon
             width: Theme.px(22); height: bar.height
             Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: bar.displayOpen ? "#44ffffff" : "transparent" }
-            Item { anchors.centerIn: parent; width: Theme.px(18); height: Theme.px(16)
+            Item { anchors.centerIn: parent; anchors.verticalCenterOffset: Theme.px(1); width: Theme.px(18); height: Theme.px(16)
                 Rectangle { x: 0; y: 0; width: Theme.px(18); height: Theme.px(12); radius: 2; color: "transparent"; border.color: Theme.text; border.width: 1.5 }
                 Rectangle { x: Theme.px(7); y: Theme.px(12); width: Theme.px(4); height: Theme.px(2); color: Theme.text }
                 Rectangle { x: Theme.px(4); y: Theme.px(14); width: Theme.px(10); height: 1.5; color: Theme.text } }
             MouseArea { anchors.fill: parent; onPressed: { bar.openIndex = -1; bar.displayOpen = !bar.displayOpen } }
         }
-        Text { id: clock; anchors.verticalCenter: parent.verticalCenter; color: Theme.text; font.pixelSize: Theme.fpx(14); font.family: Theme.uiFont
+        Text { id: clock; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: Theme.px(2); color: Theme.text; font.pixelSize: Theme.fpx(14); font.family: Theme.uiFont
             text: Qt.formatDateTime(new Date(), "ddd d MMM  HH:mm")
             Timer { interval: 1000; running: true; repeat: true; onTriggered: clock.text = Qt.formatDateTime(new Date(), "ddd d MMM  HH:mm") } }
     }

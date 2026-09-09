@@ -543,7 +543,7 @@ the display under the mouse (NSScreen via JXA) instead of the Finder desktop bou
 displays. A placer moves the window onto that display (System Events, by window title: pids are not a safe handle
 when two processes share the bundle). NAME=... sets the window title; fresh-start.sh uses "myLinux (test)".
 
-Menu bar (2026-09-08 21:30): 20 px (was 28; the user wants it slimmer than the 24 pt macOS bar), titles 13 px / logo 16 px. tools/get-image.sh downloads and
+Menu bar (2026-09-08 21:30, offsets 2026-09-09 04:50): 20 px (was 28; the user wants it slimmer than the 24 pt macOS bar); text sits 2 px and icons 1 px below the geometric centre (caps rows 6-16 of 0-19), which reads as centred, titles 13 px / logo 16 px. tools/get-image.sh downloads and
 verifies the latest release into out/; README "Install and run" is now clone + get-image + run.sh.
 
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
