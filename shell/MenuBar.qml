@@ -17,7 +17,7 @@ Item {
 
     function windowItems() {
         if (!desktop) return []
-        return desktop.windows.map(w => ({ label: (w.minimized ? "◇ " : "") + w.title, action: "window", win: w }))
+        return desktop.windows.map(w => ({ label: (w.workspace !== desktop.workspace ? "[" + w.workspace + "] " : "") + (w.minimized ? "◇ " : "") + w.title, action: "window", win: w }))
     }
     property var menus: [
         { title: "⌘", logo: true, items: [
@@ -81,7 +81,7 @@ Item {
         case "tiling": desktop.toggleTiling(); break
         case "keys": desktop.showKeys(); break
         case "cycle": desktop.cycleWindows(); break
-        case "window": if (item.win.minimized) item.win.restore(); else item.win.raise(); break
+        case "window": desktop.activateWindow(item.win); break
         }
     }
 
@@ -109,6 +109,22 @@ Item {
                     onPressed: { if (titleItem.open) bar.openIndex = -1; else bar.openAt(index, titleItem) }
                     onEntered: if (bar.openIndex >= 0 && !titleItem.open) bar.openAt(index, titleItem)
                 }
+            }
+        }
+    }
+    // Workspaces (Omarchy-style): occupied ones and the current one, click to switch
+    Row {
+        anchors.horizontalCenter: parent.horizontalCenter; anchors.verticalCenter: parent.verticalCenter; spacing: Theme.px(4)
+        Repeater {
+            model: bar.desktop ? bar.desktop.workspaces : 0
+            Rectangle {
+                readonly property bool current: bar.desktop.workspace === index + 1
+                visible: current || (bar.desktop.windowsRevision, bar.desktop.workspaceOccupied(index + 1))
+                width: Theme.px(18); height: Theme.px(14); radius: Theme.px(4)
+                color: current ? Theme.accent : "#33808080"
+                Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; text: index + 1; font.pixelSize: Theme.fpx(10); font.bold: true; font.family: Theme.uiFont
+                       color: current ? (Theme.isLight ? "#ffffff" : "#101014") : Theme.text }
+                MouseArea { anchors.fill: parent; onClicked: bar.desktop.switchWorkspace(index + 1) }
             }
         }
     }

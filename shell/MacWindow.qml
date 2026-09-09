@@ -15,6 +15,9 @@ Item {
     // fractional UI scale is applied to the client surface as an item scale; integer scale is HiDPI in the client
     readonly property real surfaceScale: Theme.scale / Theme.outputScale
     property bool minimized: false
+    property int workspace: 1
+    // (not "onWorkspace": names starting with "on" + a capital read as signal handlers in QML)
+    readonly property bool shownWorkspace: !output || output.workspace === workspace
     property bool placed: false
     property bool tiled: false
     property bool fullscreen: false
@@ -38,12 +41,12 @@ Item {
     width: surfaceItem.width * surfaceScale; height: surfaceItem.height * surfaceScale + titleHeight
     z: 0
 
-    // Minimise/restore: a quick scale+fade instead of a genie.
+    // Minimise/restore: a quick scale+fade instead of a genie. Other workspaces' windows are hidden.
     visible: opacity > 0
-    opacity: minimized ? 0 : 1
+    opacity: (minimized || !shownWorkspace) ? 0 : 1
     scale: minimized ? 0.6 : 1
     transformOrigin: Item.Bottom
-    Behavior on opacity { NumberAnimation { duration: 160 } }
+    Behavior on opacity { NumberAnimation { duration: 110 } }
     Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
     function raise() {

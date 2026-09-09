@@ -546,6 +546,11 @@ when two processes share the bundle). NAME=... sets the window title; fresh-star
 Menu bar (2026-09-08 21:30, offsets 2026-09-09 04:50): 20 px (was 28; the user wants it slimmer than the 24 pt macOS bar); text sits 2 px and icons 1 px below the geometric centre (caps rows 6-16 of 0-19), which reads as centred, titles 13 px / logo 16 px. tools/get-image.sh downloads and
 verifies the latest release into out/; README "Install and run" is now clone + get-image + run.sh.
 
+Workspaces (2026-09-09 05:30): 9 Omarchy-style workspaces; ⌘1-9 switch, ⌘⇧1-9 move the focused window and follow.
+Windows carry a workspace number (hidden when not current), one dwindle tree per workspace (Desktop.tilings), the menu
+bar shows occupied workspaces as pills (click to switch), the Window menu tags other workspaces' windows with [n]; the
+dock activates an app on its workspace when it has no window here.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

@@ -64,6 +64,8 @@ Press **Option+K** for the full list.
 | Option+W, Option+Q, Option+M, Option+F | Close, quit, minimise, fullscreen |
 | Option+Arrows, Option+Shift+Arrows, Option+Ctrl+Arrows | Focus, swap, resize tiles |
 | Option+V, Option+Shift+T | Float/tile a window, tiling on/off |
+| Option+1 … Option+9 | Switch workspace (the menu bar shows the occupied ones) |
+| Option+Shift+1 … 9 | Move the window to that workspace and follow it |
 | Option+Ctrl+Shift+Space | Theme picker |
 | Option+Ctrl+Space | Next background |
 

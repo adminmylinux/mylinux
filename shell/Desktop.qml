@@ -17,31 +17,67 @@ Window {
     property Item focusedWindow: null
     property int cascade: 0
 
-    property Tiling tiling: Tiling { area: windowLayer; enabled: String(Settings.value("wm/tiling", "true")) === "true" }
+    // ---- workspaces (Omarchy-style): ⌘1..⌘9 switch, ⌘⇧1..9 move the focused window and follow ----
+    // Every window carries a workspace number; only the current workspace's windows are shown.
+    // Each workspace has its own dwindle tiling tree.
+    readonly property int workspaces: 9
+    property int workspace: 1
+    property bool tilingEnabled: String(Settings.value("wm/tiling", "true")) === "true"
+    property var tilings: []
+    property Tiling tiling: tilings.length ? tilings[workspace - 1] : null
+    Component { id: tilingComponent; Tiling { area: windowLayer } }
+    Component.onCompleted: { const t = []; for (let i = 0; i < workspaces; ++i) t.push(tilingComponent.createObject(root)); tilings = t }
+    function tilingOf(w) { return tilings[(w.workspace || 1) - 1] }
+    function workspaceOccupied(n) { return windows.some(w => w.workspace === n) }
+    function switchWorkspace(n) {
+        if (n < 1 || n > workspaces || n === workspace) return
+        workspace = n
+        focusedWindow = null
+        windowsRevision++
+        if (tiling) tiling.relayout()
+        focusTopmost()
+    }
+    function moveToWorkspace(w, n) {
+        if (!w || n < 1 || n > workspaces || w.workspace === n) return
+        if (w.tiled) tilingOf(w).remove(w)
+        w.workspace = n
+        if (tilingEnabled && !w.minimized) tilings[n - 1].add(w, null)
+        windowsRevision++
+        switchWorkspace(n)
+        w.raise()
+    }
+    function moveFocusedToWorkspace(n) { if (focusedWindow) moveToWorkspace(focusedWindow, n) }
+    // Bring a window forward wherever it is (menu bar window list, dock).
+    function activateWindow(w) {
+        if (!w) return
+        if (w.workspace !== workspace) switchWorkspace(w.workspace)
+        if (w.minimized) w.restore(); else w.raise()
+    }
+
     function addWindow(toplevel, xdgSurface) {
         const w = windowComponent.createObject(windowLayer, {
-            toplevel: toplevel, shellSurface: xdgSurface, output: root, cascadeIndex: cascade++
+            toplevel: toplevel, shellSurface: xdgSurface, output: root, cascadeIndex: cascade++, workspace: workspace
         })
         windows.push(w); windowsRevision++
-        if (tiling.enabled) tiling.add(w, focusedWindow)
+        if (tilingEnabled) tiling.add(w, focusedWindow)
         w.raise()
     }
     function removeWindow(w) {
         const i = windows.indexOf(w)
         if (i >= 0) windows.splice(i, 1)
-        if (w.tiled) tiling.remove(w)
+        if (w.tiled) tilingOf(w).remove(w)
         if (focusedWindow === w) focusedWindow = null
         windowsRevision++
         focusTopmost()
     }
     function setFloating(w, floating) {
-        if (floating && w.tiled) { tiling.remove(w); w.raise() }
-        else if (!floating && !w.tiled) tiling.add(w, focusedWindow)
+        if (floating && w.tiled) { tilingOf(w).remove(w); w.raise() }
+        else if (!floating && !w.tiled) tilingOf(w).add(w, w.workspace === workspace ? focusedWindow : null)
     }
     function toggleTiling() {
-        tiling.enabled = !tiling.enabled; Settings.set("wm/tiling", tiling.enabled ? "true" : "false")
-        if (tiling.enabled) { for (const w of windows) if (!w.tiled && !w.minimized) tiling.add(w, null) }
-        else { for (const w of windows.slice()) if (w.tiled) tiling.remove(w) }
+        tilingEnabled = !tilingEnabled; Settings.set("wm/tiling", tilingEnabled ? "true" : "false")
+        if (tilingEnabled) { for (const w of windows) if (!w.tiled && !w.minimized) tilingOf(w).add(w, null) }
+        else { for (const w of windows.slice()) if (w.tiled) tilingOf(w).remove(w) }
     }
     function focusDir(dir) { if (!focusedWindow) { focusTopmost(); return } const n = tiling.neighbour(focusedWindow, dir); if (n) n.raise() }
     function swapDir(dir) { if (focusedWindow) tiling.swap(focusedWindow, dir) }
@@ -51,6 +87,7 @@ Window {
         { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ T / ⌘ N", "New terminal"], ["⌘ Space", "Launcher"], ["⌘ ⌥ Space", "Menu"], ["⌘ K", "This list"]] },
         { group: "Windows", keys: [["⌘ W", "Close window"], ["⌘ Q", "Quit app"], ["⌘ M", "Minimise"], ["⌘ F", "Fullscreen"], ["⌘ V", "Float / tile window"], ["⌘ Tab", "Cycle windows"], ["⌘ ⇧ T", "Tiling on/off"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
+        { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window to workspace (and follow)"], ["Menu bar numbers", "Occupied workspaces; click to switch"]] },
         { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
     ]
     function touch() { windowsRevision++ }
@@ -64,7 +101,8 @@ Window {
         return id || w.title || "mylinux"
     }
     function windowsFor(appId) { return windows.filter(w => appIdOf(w) === appId) }
-    function visibleWindows() { return windows.filter(w => !w.minimized) }
+    function visibleWindows() { return windows.filter(w => !w.minimized && w.workspace === workspace) }
+    function currentWindows() { return windows.filter(w => w.workspace === workspace) }
     function hasMinimized(appId) { return windowsFor(appId).some(w => w.minimized) }
     function isRunning(appId) { return windowsFor(appId).length > 0 }
 
@@ -77,19 +115,23 @@ Window {
         const t = topmost(visibleWindows())
         if (t) t.raise()
     }
-    // Dock icon click: restore minimised windows, else raise, else launch.
+    // Dock icon click: windows on this workspace first (restore minimised, else raise); otherwise
+    // switch to the workspace of the app's topmost window; otherwise launch.
     function activateApp(appId, exec) {
         const mine = windowsFor(appId)
         if (mine.length === 0) { Launcher.launch(exec); return }
-        const minimized = mine.filter(w => w.minimized)
+        const here = mine.filter(w => w.workspace === workspace)
+        if (here.length === 0) { activateWindow(topmost(mine)); return }
+        const minimized = here.filter(w => w.minimized)
         if (minimized.length > 0) { for (const w of minimized) w.restore(); return }
-        const t = topmost(mine); if (t) t.raise()
+        const t = topmost(here); if (t) t.raise()
     }
-    // Cmd-Tab: cycle through all windows (restoring minimised ones), lowest first.
+    // Cmd-Tab: cycle through this workspace's windows (restoring minimised ones), lowest first.
     function cycleWindows() {
-        if (windows.length === 0) return
+        const list = currentWindows()
+        if (list.length === 0) return
         let lowest = null
-        for (const w of windows) if (!lowest || w.z < lowest.z) lowest = w
+        for (const w of list) if (!lowest || w.z < lowest.z) lowest = w
         if (lowest.minimized) lowest.restore(); else lowest.raise()
     }
     function launch(exec) { Launcher.launch(exec) }
@@ -136,6 +178,9 @@ Window {
     Shortcut { sequences: ["Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }
     Shortcut { sequences: ["Meta+Ctrl+Shift+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("theme") }
     Shortcut { sequences: ["Meta+Ctrl+Space"]; context: Qt.ApplicationShortcut; onActivated: Theme.nextBackground() }
+    // Workspaces: ⌘1..9 switch, ⌘⇧1..9 move the focused window there and follow it. Shift turns the digit
+    // keys into layout-dependent symbols, so KeyGrab (C++) matches them by physical key code.
+    Connections { target: KeyGrab; function onDigit(n, shift) { if (shift) root.moveFocusedToWorkspace(n); else root.switchWorkspace(n) } }
 
     // ---- scene ----------------------------------------------------------------------------
     // Everything the glass panels blur: wallpaper + windows.
@@ -155,8 +200,8 @@ Window {
             anchors.fill: parent
             anchors.topMargin: menuBar.height
             anchors.bottomMargin: dock.height + dock.anchors.bottomMargin + 6
-            onWidthChanged: root.tiling.relayout()
-            onHeightChanged: root.tiling.relayout()
+            onWidthChanged: if (root.tiling) root.tiling.relayout()
+            onHeightChanged: if (root.tiling) root.tiling.relayout()
         }
     }
 
