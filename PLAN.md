@@ -596,11 +596,14 @@ bottom edge reveals the dock, it hides 600 ms after the pointer leaves dock and 
 the bottom. Style menu: Dock: auto-hide / always visible. tools/app-build.sh now fails loudly when ninja fails (it used
 to copy the stale binary because the exit status went through `| tail`).
 
-Clipboard (2026-09-09 10:25): text clipboard Mac <-> guest over the share folder. run.sh's host agent mirrors pbpaste
-into share/clipboard/mac.txt and pbcopies share/clipboard/guest.txt (CLIPBOARD=0 disables); the guest daemon
-clipboard-bridge (started by S99shell, waits for wayland-0 + wl-copy on the apps disk) applies mac.txt with wl-copy and
-publishes wl-paste changes to guest.txt, twice a second. QtWayland accepts set_selection / offers the selection to
-unfocused clients, so no focus tricks are needed. Text only; images/files are a follow-up.
+Clipboard (2026-09-09 10:40): text clipboard Mac -> guest automatic, guest -> Mac on request (⌘⌃C / Ctrl+Alt+C, like
+Omarchy). run.sh's host agent mirrors pbpaste into share/clipboard/mac.txt and pbcopies share/clipboard/guest.txt
+(CLIPBOARD=0 disables); clipboard-bridge (S99shell) applies mac.txt with wl-copy; clipboard-send writes wl-paste output
+to guest.txt. wl-clipboard needs a 1x1 popup surface for keyboard focus on a plain wl_data_device compositor (no
+data-control protocol), which used to get tiled and flash: tiling now waits for the app id (finishAdd), and a mapped
+surface without app id that is 1x1 or titled "wl-clipboard" becomes a helper: rendered 1x1 at 1% opacity (it must stay
+rendered so frame callbacks flow), never tiled or listed, given keyboard focus for 400 ms. Polling wl-paste is out
+(each poll would steal focus). Proper fix later: ext-data-control-v1 in the compositor, then wl-paste --watch.
 
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper

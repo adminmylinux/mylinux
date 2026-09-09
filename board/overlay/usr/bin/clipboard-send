@@ -1,0 +1,7 @@
+#!/bin/sh
+# Put the guest's text selection into the Mac clipboard (⌘⌃C): written to the share, run.sh pbcopies it.
+. /etc/profile.d/qt.sh
+D=/mnt/share/clipboard; mkdir -p "$D"
+T=$(apps-run wl-paste -n -t text/plain 2>/dev/null) || exit 0
+[ -n "$T" ] || exit 0
+printf '%s' "$T" > "$D/guest.txt.tmp" && mv -f "$D/guest.txt.tmp" "$D/guest.txt"

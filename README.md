@@ -91,9 +91,10 @@ Any command works there, for example `/usr/bin/claude-code` for the terminal age
 
 ### Clipboard
 
-Text copied on the Mac can be pasted inside myLinux and the other way round. run.sh mirrors the
-Mac clipboard through the share folder and a small daemon in the guest applies it with wl-clipboard
-from the apps disk. Text only; `CLIPBOARD=0 ./run.sh` turns it off.
+Text copied on the Mac can be pasted inside myLinux right away: run.sh mirrors the Mac clipboard
+through the share folder and a small daemon in the guest applies it. The other direction is on
+request, like Omarchy: press **Option+Ctrl+C** to send what you copied in myLinux to the Mac
+clipboard. Text only; `CLIPBOARD=0 ./run.sh` turns it off.
 
 ### Dock
 

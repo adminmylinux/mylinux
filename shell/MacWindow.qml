@@ -15,7 +15,7 @@ Item {
     // mode is no use here, because foot (configured without any decoration) also reports client-side.
     readonly property bool selfDecorated: shellSurface && surfaceItem.width > 0 && shellSurface.windowGeometry.width > 0
             && (shellSurface.windowGeometry.width < surfaceItem.width - 2 || shellSurface.windowGeometry.height < surfaceItem.height - 2)
-    readonly property bool showTitle: Theme.titleBars === "always" || (Theme.titleBars === "auto" && !selfDecorated)
+    readonly property bool showTitle: !helper && (Theme.titleBars === "always" || (Theme.titleBars === "auto" && !selfDecorated))
     readonly property int titleHeight: showTitle ? Theme.px(34) : 0
     onTitleHeightChanged: if (tiled && output && output.tiling) output.tiling.relayout()   // re-send the tile size
     readonly property int radius: Theme.px(12)
@@ -24,6 +24,12 @@ Item {
     property bool minimized: false
     property int workspace: 1
     property bool scratch: false          // lives on the scratchpad (⌘S shows/hides it over any workspace)
+    property bool added: false            // tiled/raised by the desktop once the app id is known (see Desktop.finishAdd)
+    property bool helper: false           // a nameless 1x1 helper surface (wl-clipboard): kept invisible, never tiled
+    readonly property bool mapped: surfaceItem.width > 0 && surfaceItem.height > 0
+    onMappedChanged: if (mapped && output && !added) output.windowMapped(win)
+    Connections { target: win.toplevel; function onAppIdChanged() { if (win.toplevel.appId && win.output && !win.added) win.output.finishAdd(win) } }
+    function takeKeyboardFocus() { surfaceItem.takeFocus() }
     // (not "onWorkspace": names starting with "on" + a capital read as signal handlers in QML)
     readonly property bool shownWorkspace: !output || (scratch ? output.scratchVisible : output.workspace === workspace)
     property bool placed: false
@@ -54,8 +60,9 @@ Item {
     z: 0
 
     // Minimise/restore: a quick scale+fade instead of a genie. Other workspaces' windows are hidden.
+    // helper surfaces stay rendered (frame callbacks keep flowing) but practically invisible: 1x1 at 1% opacity
     visible: opacity > 0
-    opacity: (minimized || !shownWorkspace) ? 0 : 1
+    opacity: helper ? 0.01 : ((minimized || !shownWorkspace) ? 0 : 1)
     scale: minimized ? 0.6 : 1
     transformOrigin: Item.Bottom
     Behavior on opacity { NumberAnimation { duration: 110 } }

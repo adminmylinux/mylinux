@@ -17,7 +17,7 @@ Item {
 
     function windowItems() {
         if (!desktop) return []
-        return desktop.windows.map(w => ({ label: (w.workspace !== desktop.workspace ? "[" + w.workspace + "] " : "") + (w.minimized ? "◇ " : "") + w.title, action: "window", win: w }))
+        return desktop.realWindows().map(w => ({ label: (w.workspace !== desktop.workspace ? "[" + w.workspace + "] " : "") + (w.minimized ? "◇ " : "") + w.title, action: "window", win: w }))
     }
     property var menus: [
         { title: "⌘", logo: true, items: [

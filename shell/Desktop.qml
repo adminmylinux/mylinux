@@ -28,7 +28,7 @@ Window {
     Component { id: tilingComponent; Tiling { area: windowLayer } }
     Component.onCompleted: { const t = []; for (let i = 0; i < workspaces; ++i) t.push(tilingComponent.createObject(root)); tilings = t }
     function tilingOf(w) { return tilings[(w.workspace || 1) - 1] }
-    function workspaceOccupied(n) { return windows.some(w => w.workspace === n) }
+    function workspaceOccupied(n) { return windows.some(w => !w.helper && w.workspace === n) }
     function switchWorkspace(n) {
         if (n < 1 || n > workspaces || n === workspace) return
         workspace = n
@@ -58,7 +58,7 @@ Window {
     // Scratchpad (Omarchy ⌘S): windows moved there float above whatever workspace is current, shown or hidden as a set.
     property bool scratchVisible: false
     function toggleScratch() {
-        if (!windows.some(w => w.scratch)) return
+        if (!windows.some(w => w.scratch && !w.helper)) return
         scratchVisible = !scratchVisible; windowsRevision++
         if (scratchVisible) { for (const w of windows) if (w.scratch) w.raise() } else { focusedWindow = null; focusTopmost() }
     }
@@ -68,7 +68,7 @@ Window {
         w.scratch = true; scratchVisible = false; focusedWindow = null; windowsRevision++; focusTopmost()
     }
     function toggleSplit() { if (focusedWindow && focusedWindow.tiled) tilingOf(focusedWindow).toggleSplit(focusedWindow) }
-    function closeAll() { for (const w of windows.slice()) w.toplevel.sendClose() }
+    function closeAll() { for (const w of realWindows()) w.toplevel.sendClose() }
     function screenshot() {
         const d = new Date(), pad = n => (n < 10 ? "0" : "") + n
         const f = "/root/screenshot-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + ".png"
@@ -92,9 +92,34 @@ Window {
             toplevel: toplevel, shellSurface: xdgSurface, output: root, cascadeIndex: cascade++, workspace: workspace
         })
         windows.push(w); windowsRevision++
+        // Tiling waits for the app id (set right after creation, before the first commit, so the tile size
+        // still reaches the client before it draws). A surface that maps without one is a helper.
+        if (toplevel.appId) finishAdd(w)
+    }
+    function finishAdd(w) {
+        if (w.added) return
+        w.added = true
         if (tilingEnabled) tiling.add(w, focusedWindow)
         w.raise()
     }
+    // First buffer arrived. No app id and a 1x1 buffer or the title "wl-clipboard" = wl-clipboard's popup (it
+    // only wants keyboard focus for a serial / the selection offer): keep it invisible, hand it focus briefly,
+    // then give focus back.
+    function windowMapped(w) {
+        if (w.added) return
+        const t = w.toplevel ? (w.toplevel.title || "") : ""
+        if (appIdOf(w) === "" && (t === "" || t === "wl-clipboard" || (w.geo.width <= 2 && w.geo.height <= 2))) {
+            w.helper = true; w.added = true; windowsRevision++
+            w.x = 0; w.y = 0
+            w.takeKeyboardFocus()
+            if (compositor && compositor.defaultSeat && w.shellSurface) compositor.defaultSeat.keyboardFocus = w.shellSurface.surface
+            helperFocusBack.restart()
+        } else finishAdd(w)
+    }
+    Timer { id: helperFocusBack; interval: 400; onTriggered: root.focusTopmost() }
+    function realWindows() { return windows.filter(w => !w.helper) }
+    // Guest -> Mac clipboard on request (⌘⌃C, like Omarchy's Ctrl+Alt+C): clipboard-send writes it to the share
+    function sendClipboardToMac() { Launcher.launch("/usr/bin/clipboard-send") }
     function removeWindow(w) {
         const i = windows.indexOf(w)
         if (i >= 0) windows.splice(i, 1)
@@ -121,7 +146,7 @@ Window {
         { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / full width"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
         { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["⌘ ⇧ ⌥ 1 … 9", "Move window there silently"], ["⌘ Tab / ⌘ ⇧ Tab", "Next / previous workspace"], ["⌘ ⌃ Tab", "Former workspace"], ["⌘ S", "Show / hide the scratchpad"], ["⌘ ⌥ S", "Move window to the scratchpad"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
-        { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
+        { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["⌘ ⌃ C", "Send clipboard to Mac"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
     ]
     function touch() { windowsRevision++ }
     // Dock auto-hide: revealed while the pointer is at the bottom edge or over the dock, hidden shortly after it leaves
@@ -137,9 +162,9 @@ Window {
         if (id === "myapp") return "Clock"
         return id || w.title || "mylinux"
     }
-    function windowsFor(appId) { return windows.filter(w => appIdOf(w) === appId) }
-    function visibleWindows() { return windows.filter(w => !w.minimized && (w.scratch ? scratchVisible : w.workspace === workspace)) }
-    function currentWindows() { return windows.filter(w => w.scratch ? scratchVisible : w.workspace === workspace) }
+    function windowsFor(appId) { return windows.filter(w => !w.helper && appIdOf(w) === appId) }
+    function visibleWindows() { return windows.filter(w => !w.helper && !w.minimized && (w.scratch ? scratchVisible : w.workspace === workspace)) }
+    function currentWindows() { return windows.filter(w => !w.helper && (w.scratch ? scratchVisible : w.workspace === workspace)) }
     function hasMinimized(appId) { return windowsFor(appId).some(w => w.minimized) }
     function isRunning(appId) { return windowsFor(appId).length > 0 }
 
@@ -226,6 +251,7 @@ Window {
     Shortcut { sequences: ["Meta+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(true) }
     Shortcut { sequences: ["Meta+Alt+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(false) }
     Shortcut { sequences: ["Print", "SysReq"]; context: Qt.ApplicationShortcut; onActivated: root.screenshot() }
+    Shortcut { sequences: ["Meta+Ctrl+C", "Ctrl+Alt+C"]; context: Qt.ApplicationShortcut; onActivated: root.sendClipboardToMac() }
     // Workspaces: ⌘1..9 switch, ⌘⇧1..9 move the focused window there and follow, ⌘⇧⌥1..9 move silently.
     // Shift turns the digit keys into layout-dependent symbols, so KeyGrab (C++) matches them by physical key code.
     Connections { target: KeyGrab; function onDigit(n, shift, alt) { if (shift) root.moveFocusedToWorkspace(n, !alt); else root.switchWorkspaceTracked(n) } }

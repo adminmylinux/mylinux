@@ -1,23 +1,16 @@
 #!/bin/sh
-# Text clipboard bridge Mac <-> myLinux over the share folder. run.sh mirrors the Mac clipboard into
-# share/clipboard/mac.txt and copies share/clipboard/guest.txt into the Mac clipboard; this side sets the
-# guest clipboard with wl-copy and publishes what the guest copies with wl-paste (wl-clipboard from the
-# apps disk). Text only; polled twice a second. Started by S99shell.
+# Mac -> guest text clipboard over the share folder: run.sh mirrors the Mac clipboard into
+# share/clipboard/mac.txt; this applies it as the guest selection with wl-copy (wl-clipboard from the apps
+# disk; its helper surface is kept invisible by the compositor). Guest -> Mac is on request: clipboard-send
+# (⌘⌃C). Started by S99shell.
 . /etc/profile.d/qt.sh
-D=/mnt/share/clipboard; MAC=$D/mac.txt; GUEST=$D/guest.txt
+D=/mnt/share/clipboard; MAC=$D/mac.txt
 until [ -S "$XDG_RUNTIME_DIR/wayland-0" ] && [ -x /mnt/apps/usr/bin/wl-copy ] && mountpoint -q /mnt/share; do sleep 2; done
 mkdir -p "$D"
-LAST_MAC_M=""; LAST_TEXT=""
+LAST_M=""; LAST_TEXT=""
 while sleep 0.5; do
-  # Mac -> guest: a changed mac.txt becomes the guest selection
-  if [ -f "$MAC" ]; then
-    M=$(stat -c %Y "$MAC" 2>/dev/null)
-    if [ "$M" != "$LAST_MAC_M" ]; then
-      LAST_MAC_M=$M; T=$(cat "$MAC")
-      if [ -n "$T" ] && [ "$T" != "$LAST_TEXT" ]; then LAST_TEXT=$T; printf '%s' "$T" | apps-run wl-copy 2>/dev/null; fi
-    fi
-  fi
-  # guest -> Mac: a new text selection is written for run.sh to pick up
-  T=$(apps-run wl-paste -n -t text/plain 2>/dev/null)
-  if [ -n "$T" ] && [ "$T" != "$LAST_TEXT" ]; then LAST_TEXT=$T; printf '%s' "$T" > "$GUEST.tmp" && mv -f "$GUEST.tmp" "$GUEST"; fi
+  [ -f "$MAC" ] || continue
+  M=$(stat -c %Y "$MAC" 2>/dev/null); [ "$M" != "$LAST_M" ] || continue
+  LAST_M=$M; T=$(cat "$MAC")
+  if [ -n "$T" ] && [ "$T" != "$LAST_TEXT" ]; then LAST_TEXT=$T; printf '%s' "$T" | apps-run wl-copy 2>/dev/null; fi
 done

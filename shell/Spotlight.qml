@@ -61,6 +61,7 @@ Item {
             { label: "Float / tile this window", hint: "⌘T", glyph: "▢", run: () => { if (desktop.focusedWindow) desktop.setFloating(desktop.focusedWindow, desktop.focusedWindow.tiled) } },
             { label: "Cycle windows", hint: "⌥Tab", glyph: "⇄", run: () => desktop.cycleWindows() },
             { label: "Screenshot", hint: "Print · saved in your home", glyph: "▣", run: () => desktop.screenshot() },
+            { label: "Send clipboard to Mac", hint: "⌘⌃C · text copied here becomes the Mac clipboard", glyph: "⇪", run: () => desktop.sendClipboardToMac() },
             { label: "Fill Mac screen", hint: "Mac window", glyph: "⤢", run: () => Launcher.hostCommand("fit") },
             { label: "Mac full screen", hint: "Mac window", glyph: "⤢", run: () => Launcher.hostCommand("fullscreen") } ]
         case "style": return [
