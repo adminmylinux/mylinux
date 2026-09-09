@@ -574,6 +574,10 @@ Menu (2026-09-09 09:15): ⌘Space opens the Omarchy-style menu (Apps, Learn, Tri
 About, System) with the search field on top; typing searches everything the menu offers (Spotlight.everything()), plus
 the = ? install remove prefixes. The old flat "search" mode is gone from the shortcuts.
 
+Key sheet tabs (2026-09-09 09:20): ⌘K has "Sheet" (grid by group) and "Search" (compact list: key chip, description,
+group; filtered by a text field). Tab switches; typing on the sheet jumps into search with that text; Esc clears, then
+closes. Modifier highlighting works in both tabs.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.
