@@ -10,18 +10,20 @@ mkdir -p "$A$XDG_RUNTIME_DIR"; mountpoint -q "$A$XDG_RUNTIME_DIR" || mount --bin
 # the Mac share folder, so apps (file dialogs) can read files dropped into share/ on the Mac
 if mountpoint -q /mnt/share; then mkdir -p $A/mnt/share; mountpoint -q $A/mnt/share || mount --bind /mnt/share $A/mnt/share; fi
 cp -f /etc/resolv.conf $A/etc/resolv.conf 2>/dev/null
-# helper scripts inside the chroot: default browser for xdg-open / $BROWSER (Claude Code login etc.)
+# helper scripts inside the chroot: default browser for xdg-open / $BROWSER (Claude Code login etc.).
+# Rewritten on every run so flag changes reach disks set up earlier. (--test-type only silences
+# Chromium's "unsupported flag --no-sandbox" bar; the sandbox is off because we run as root.)
 mkdir -p $A/usr/local/bin
-[ -x $A/usr/local/bin/mylinux-browser ] || cat > $A/usr/local/bin/mylinux-browser <<'EOS'
+cat > $A/usr/local/bin/mylinux-browser <<'EOS'
 #!/bin/sh
-exec chromium --ozone-platform=wayland --no-sandbox --disable-gpu --disable-dev-shm-usage --password-store=basic --no-first-run "$@"
+exec chromium --ozone-platform=wayland --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage --password-store=basic --no-first-run "$@"
 EOS
 chmod +x $A/usr/local/bin/mylinux-browser
 # Debian's /usr/bin/chromium wrapper reads /etc/chromium.d/*: make every launch path (xdg-open, .desktop files) use
 # the flags this compositor needs.
 mkdir -p $A/etc/chromium.d
-[ -f $A/etc/chromium.d/mylinux ] || cat > $A/etc/chromium.d/mylinux <<'EOS'
-export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform=wayland --no-sandbox --disable-gpu --disable-dev-shm-usage --password-store=basic"
+cat > $A/etc/chromium.d/mylinux <<'EOS'
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform=wayland --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage --password-store=basic"
 EOS
 # Keep the caller's working directory when the chroot has it too (/root and /tmp are the same directories).
 CWD=/root; case "$PWD" in /root|/root/*|/tmp|/tmp/*) CWD="$PWD";; esac
