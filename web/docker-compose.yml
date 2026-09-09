@@ -1,0 +1,31 @@
+# Deployment on contabogit: /opt/mylinux-web
+services:
+  web:
+    build: ./app
+    container_name: mylinux-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # loopback only, Caddy on the host terminates TLS for mylinux.app
+      - "127.0.0.1:8801:3000"
+
+  db:
+    image: postgres:17-alpine
+    container_name: mylinux-web-db
+    restart: unless-stopped
+    env_file: .env # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

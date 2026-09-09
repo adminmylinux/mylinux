@@ -3,6 +3,7 @@
 #include <QQmlEngine>
 #include <QVariantMap>
 #include <QNetworkAccessManager>
+#include <QDateTime>
 
 // Usage of the coding agents on the apps disk (Claude Code, Codex): tokens per day / model from their
 // local session logs, rate limits from Codex's logs and from Claude's OAuth usage endpoint.
@@ -30,4 +31,5 @@ private:
     QVariantMap m_claude, m_codex;
     bool m_busy = false;
     QNetworkAccessManager m_net;
+    QDateTime m_lastClaudeProbe;
 };

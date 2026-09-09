@@ -72,6 +72,7 @@ Item {
 
         Label { text: "TOKENS BY MODEL" }
         Text { visible: !(panel.usage && panel.usage.models && panel.usage.models.length); text: "No sessions in the last 7 days"; color: "#9a9aa2"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
+        Text { visible: !!(panel.usage && panel.usage.fromCache); text: "From Claude Code's stats cache (no transcripts on disk)"; color: "#8a8a92"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont }
         Repeater { model: panel.usage && panel.usage.models ? panel.usage.models : []
             Rectangle { width: col.width; height: Theme.px(30); radius: Theme.px(6); color: "#2a2a30"
                 Text { text: modelData.name; color: "#e6e6ea"; font.pixelSize: Theme.fpx(13); font.family: Theme.uiFont; anchors.left: parent.left; anchors.leftMargin: Theme.px(10); anchors.verticalCenter: parent.verticalCenter }

@@ -627,6 +627,15 @@ Highlight (2026-09-09 12:10): Theme.highlight (#2f6fe6, macOS blue) for menu ite
 
 Close button (2026-09-09 12:15): the top-left corner ResizeHandle (34x34 from -12,-12) covered the red traffic light, so clicks went to the resizer while ⌘W worked; that corner zone is now 16x16. Verified by clicking the button in the test VM.
 
+Firefox typing (2026-09-09 14:30): three layers. (1) QtWayland sends keyboard enter/key/modifiers to ONE wl_keyboard
+resource per client; Firefox binds wl_seat twice (GDK + own registry) and the keys went to the object GDK never reads
+-> patches/qt6wayland/0002 broadcasts to all of the focused client's wl_keyboard objects, like the pointer.
+(2) Keyboard focus was granted at window creation, before the first buffer; GTK ignores a pre-map enter -> MacWindow
+gives focus only when mapped and re-sends it (refocus) if it was granted early. (3) KeyGrab never saw the Super key
+release (xkb reports Key_Super_L, not Key_Meta) so the ⌘-drag layer stayed enabled and swallowed clicks after any ⌘
+shortcut -> Super_L/R and AltGr recognised. Diagnosed with WAYLAND_DEBUG=1 inside the chroot (set it inside apps-run's
+sh -c: env -i strips it).
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

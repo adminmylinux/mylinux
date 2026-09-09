@@ -7,10 +7,10 @@ KeyGrab::KeyGrab(QObject *parent) : QObject(parent) { qApp->installEventFilter(t
 static Qt::KeyboardModifier modifierOf(int key)
 {
     switch (key) {
-    case Qt::Key_Meta: return Qt::MetaModifier;
+    case Qt::Key_Meta: case Qt::Key_Super_L: case Qt::Key_Super_R: return Qt::MetaModifier;   // xkb reports Super_L, not Meta
     case Qt::Key_Shift: return Qt::ShiftModifier;
     case Qt::Key_Control: return Qt::ControlModifier;
-    case Qt::Key_Alt: return Qt::AltModifier;
+    case Qt::Key_Alt: case Qt::Key_AltGr: return Qt::AltModifier;
     default: return Qt::NoModifier;
     }
 }

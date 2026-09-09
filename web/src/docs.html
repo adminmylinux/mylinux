@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>myLinux docs</title>
+  <meta name="description" content="How to install, run, use and build myLinux, and how the account keeps your setup between Macs." />
+  <link rel="icon" href="./logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./docs.css" />
+</head>
+<body>
+  <nav class="menubar">
+    <a class="brand" href="/"><img src="./logo.svg" alt="" /> myLinux</a>
+    <a href="/docs" aria-current="page">Docs</a>
+    <a href="https://github.com/adminmylinux/mylinux">GitHub</a>
+    <span class="spacer"></span>
+    <a href="/app">Sign in</a>
+  </nav>
+
+  <div class="wrap docs">
+    <nav aria-label="Sections">
+      <a href="#install">Install and run</a>
+      <a href="#first-boot">First boot</a>
+      <a href="#keys">Keys</a>
+      <a href="#daily">Daily use</a>
+      <a href="#themes">Themes</a>
+      <a href="#account">Account and sync</a>
+      <a href="#api">API</a>
+      <a href="#build">Build the image</a>
+      <a href="#license">License</a>
+    </nav>
+
+    <article>
+      <h1>Docs</h1>
+      <p>myLinux is a small Linux desktop that lives entirely in RAM, built for Apple-silicon Macs. It runs as a QEMU virtual machine on Apple's Hypervisor.framework, shows a Qt 6 Wayland compositor with a macOS-style look, and borrows its keyboard-driven workflow and themes from <a href="https://omarchy.org">Omarchy</a>. Persistent things live on a separate apps disk.</p>
+
+      <h2 id="install">Install and run</h2>
+      <p>You need an Apple-silicon Mac with macOS 15 or newer, <a href="https://brew.sh">Homebrew</a>, and about 8 GB of free RAM for the virtual machine. Prebuilt images are attached to the GitHub releases, so building is optional.</p>
+      <div class="window"><div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Terminal</div>
+<pre class="term"><span class="p">$ </span>brew install qemu
+<span class="p">$ </span>git clone https://github.com/adminmylinux/mylinux.git
+<span class="p">$ </span>cd mylinux
+<span class="p">$ </span>tools/get-image.sh      <span class="c"># Image + rootfs.cpio.gz of the latest release into out/, SHA-256 checked</span>
+<span class="p">$ </span>./run.sh</pre></div>
+      <p><code>run.sh</code> wraps QEMU in <code>out/myLinux.app</code>, so the Mac shows it as "myLinux". The window opens at the size of the display under your mouse pointer. If the first start puts it on another display, give your terminal app Accessibility permission in System Settings › Privacy &amp; Security and it is moved automatically.</p>
+      <p>Environment variables for <code>run.sh</code>:</p>
+      <table class="spec">
+        <tr><td><code>RES=1600x1000</code></td><td>Guest resolution. Default is your screen minus margins.</td></tr>
+        <tr><td><code>MEM=8G</code></td><td>Memory for the virtual machine.</td></tr>
+        <tr><td><code>APPS_IMG=path</code></td><td>Where the apps disk image lives. Default <code>out/apps.img</code>.</td></tr>
+        <tr><td><code>SHARE_DIR=path</code></td><td>The folder shared with the guest over 9p, mounted at <code>/mnt/share</code>. Default <code>share/</code>.</td></tr>
+        <tr><td><code>GRAB=opt|full|none</code></td><td>Which modifier keys the guest captures. <code>full</code> also hands Alt+Tab to the guest.</td></tr>
+        <tr><td><code>CLIPBOARD=0</code></td><td>Turns the Mac to guest clipboard mirror off.</td></tr>
+      </table>
+
+      <h2 id="first-boot">First boot</h2>
+      <p>The first boot shows a welcome dialog. "Set up the apps disk" formats the blank <code>out/apps.img</code>, a sparse 16 GB file that <code>run.sh</code> creates, downloads Debian's minimal arm64 rootfs and installs the desktop apps plus Claude Code and Codex. It takes a few minutes and uses about 1.3 GB. Everything you install or save afterwards persists on that disk; your home directory <code>/root</code> is on it.</p>
+      <p>Only one running virtual machine can hold the apps disk at a time.</p>
+
+      <h2 id="keys">Keys</h2>
+      <p>The Mac <strong>Option</strong> key is the Super key inside myLinux, Cmd stays with macOS. The set follows Omarchy's, so the same fingers work on both. Press <span class="keys"><kbd>Option</kbd><kbd>K</kbd></span> for the full list with search.</p>
+      <table class="spec">
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Space</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>Esc</kbd></span></td><td>Menu: Apps, Learn, Trigger, Style, Setup, Install, Remove, Update, About, System. Type to find anything, <code>=</code> for a calculator, <code>install</code> or <code>remove &lt;pkg&gt;</code>.</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Shift</kbd><kbd>Esc</kbd></span></td><td>System menu</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Enter</kbd></span> / <span class="keys"><kbd>Option</kbd><kbd>Shift</kbd><kbd>Enter</kbd></span> / <span class="keys"><kbd>Option</kbd><kbd>Shift</kbd><kbd>F</kbd></span></td><td>Terminal / Browser / Files</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>W</kbd></span> or <kbd>Q</kbd>, <span class="keys"><kbd>Option</kbd><kbd>M</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>F</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>Alt</kbd><kbd>F</kbd></span></td><td>Close, minimise, full screen, full width</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>T</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>J</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>Shift</kbd><kbd>T</kbd></span></td><td>Float or tile a window, toggle split direction, tiling on or off</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Arrows</kbd></span>, with <kbd>Shift</kbd>, with <kbd>Ctrl</kbd></td><td>Focus, swap, resize tiles</td></tr>
+        <tr><td><kbd>Option</kbd> + drag, <kbd>Option</kbd> + right drag</td><td>Move, resize a window</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>1</kbd></span> … <span class="keys"><kbd>Option</kbd><kbd>9</kbd></span></td><td>Switch workspace. The menu bar shows the occupied ones.</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Shift</kbd><kbd>1</kbd></span> … <kbd>9</kbd>, with <kbd>Alt</kbd></td><td>Move the window to that workspace and follow it, or move it silently</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Tab</kbd></span>, with <kbd>Shift</kbd>, with <kbd>Ctrl</kbd></td><td>Next, previous, former workspace</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>S</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>Alt</kbd><kbd>S</kbd></span></td><td>Show or hide the scratchpad, move the window to it</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>Ctrl</kbd><kbd>Space</kbd></span></td><td>Theme picker, next background</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>/</kbd></span>, <span class="keys"><kbd>Option</kbd><kbd>Alt</kbd><kbd>/</kbd></span></td><td>Scale up, down</td></tr>
+        <tr><td><span class="keys"><kbd>Option</kbd><kbd>Ctrl</kbd><kbd>C</kbd></span></td><td>Send what you copied in myLinux to the Mac clipboard</td></tr>
+        <tr><td><kbd>Print</kbd></td><td>Screenshot into your home folder</td></tr>
+      </table>
+      <p>Alt+Tab reaches the guest only with <code>GRAB=full</code>, because Alt is the Mac Cmd key and macOS keeps Cmd+Tab otherwise.</p>
+
+      <h2 id="daily">Daily use</h2>
+      <h3>Startup apps</h3>
+      <p>The desktop opens the Claude and ChatGPT app windows at start. Change the list in <code>share/mylinux.ini</code>; any command works, for example <code>/usr/bin/claude-code</code> for the terminal agent or <code>/usr/bin/foot</code>.</p>
+      <div class="window"><div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>share/mylinux.ini</div>
+<pre class="term">[session]
+autostart=/usr/bin/claude-web,/usr/bin/chatgpt</pre></div>
+      <h3>Clipboard</h3>
+      <p>Text copied on the Mac can be pasted inside myLinux right away: run.sh mirrors the Mac clipboard through the share folder and a small daemon in the guest applies it. The other direction is on request, like Omarchy: Option+Ctrl+C sends what you copied in myLinux to the Mac. Text only.</p>
+      <h3>Dock and window frames</h3>
+      <p>The dock hides below the screen edge and slides up when the pointer touches the bottom. Style › "Dock: always visible" keeps it on screen. Apps that draw their own header bar (Firefox, Chromium, Remmina) get no second title bar; plain windows get the macOS-style one. Window › "Title bars" switches between auto, always and never.</p>
+      <h3>Terminal</h3>
+      <p>Option+Enter opens a terminal in your home directory on the apps disk. The base system is BusyBox; everything installed on the apps disk is on the PATH as well, so <code>claude</code>, <code>codex</code>, <code>git</code>, <code>python3</code> and <code>apt install</code> just work inside the Debian chroot. For a full Debian shell type <code>apps-run bash</code>.</p>
+      <h3>Settings and API keys</h3>
+      <p>The gear in the menu bar opens Settings: OpenRouter, Anthropic, OpenAI and Tailscale API keys and a GitHub token. They are saved with owner-only permissions in <code>~/.config/mylinux/secrets.env</code> on the apps disk and exported to every new terminal and app.</p>
+      <h3>Tailscale and remote desktops</h3>
+      <p>Tailscale is built in. The menu bar's dot-grid icon opens its panel: Connect joins your tailnet as <code>mylinux</code>, and once connected the panel lists every machine with its online state and IP; click one for an SSH terminal. The dock's Remote Desktop icon starts Remmina for VNC, RDP or SSH profiles. For VNC servers with TLS, put the server certificate in <code>share/</code> and add a hosts line to <code>share/hosts</code>, which is merged into the guest at every start.</p>
+      <h3>Quitting</h3>
+      <p>Use Shut Down or Restart from the menu at the top left, or type <code>shut</code> into the Option+K sheet. That unmounts the apps disk cleanly. Closing the window or Cmd+Q on the Mac side is a power cut for the virtual machine: the disk is journalled and flushed every second, so you lose at most about a second of writes, but a clean shutdown is the safe habit.</p>
+
+      <h2 id="themes">Themes</h2>
+      <p>Themes use Omarchy's format: a directory with <code>colors.toml</code>, optional <code>light.mode</code> and a <code>backgrounds/</code> folder. Twenty Omarchy palettes ship in the image with generated wallpapers.</p>
+      <ul>
+        <li>Theme picker: "Download Omarchy backgrounds for all themes" fetches the real Omarchy photos, about 70 MB, into your home on the apps disk.</li>
+        <li>Install any Omarchy theme repo from GitHub: type <code>install owner/repo</code> in the theme picker, or run <code>theme-install https://github.com/owner/repo</code> in a terminal.</li>
+        <li>Your own themes go in <code>~/.config/mylinux/themes/&lt;name&gt;/</code>.</li>
+      </ul>
+
+      <h2 id="account">Account and sync</h2>
+      <p>An account on this site keeps one profile per machine: the display scale and brightness, keyboard layout, theme and background, the apps that open at start, the Debian packages you added, and free notes. The profile is exactly what <code>share/mylinux.ini</code> holds, plus a package list and notes.</p>
+      <ul>
+        <li><a href="/app">Sign in</a> and add a machine, say <code>macbook</code>.</li>
+        <li>Fill in the form, or paste the contents of <code>share/mylinux.ini</code> into "Import ini".</li>
+        <li>On another Mac, download the profile as <code>mylinux.ini</code> into <code>share/</code> before starting <code>./run.sh</code>. The packages list is a reminder for <code>install &lt;pkg&gt;</code> in the menu.</li>
+      </ul>
+
+      <h2 id="api">API</h2>
+      <p>Create a personal API token under Tokens in your account. It is shown once; the site keeps only a hash. Send it as a bearer token. Machines are addressed by name or id.</p>
+      <table class="spec">
+        <tr><td><code>GET /api/machines</code></td><td>All machines with their JSON profile</td></tr>
+        <tr><td><code>GET /api/machines/&lt;name&gt;</code></td><td>One machine</td></tr>
+        <tr><td><code>PUT /api/machines/&lt;name&gt;</code></td><td>JSON body <code>{ "config": … }</code> replaces the profile</td></tr>
+        <tr><td><code>GET /api/machines/&lt;name&gt;/ini</code></td><td>The profile as mylinux.ini text</td></tr>
+        <tr><td><code>PUT /api/machines/&lt;name&gt;/ini</code></td><td>Body is an ini file; creates the machine if needed</td></tr>
+      </table>
+      <div class="window"><div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Terminal</div>
+<pre class="term"><span class="p">$ </span>export MYLINUX_TOKEN=mlx_…
+<span class="p">$ </span>curl -sf -H "Authorization: Bearer $MYLINUX_TOKEN" \
+    https://mylinux.app/api/machines/macbook/ini -o share/mylinux.ini
+<span class="p">$ </span>curl -sf -X PUT --data-binary @share/mylinux.ini \
+    -H "Authorization: Bearer $MYLINUX_TOKEN" \
+    https://mylinux.app/api/machines/macbook/ini</pre></div>
+
+      <h2 id="build">Build the image yourself</h2>
+      <p>Building needs <a href="https://orbstack.dev">OrbStack</a> with a Debian machine named <code>debian</code>, because Buildroot wants a case-sensitive filesystem. The build tree lives inside Debian at <code>~/br</code>; the repository stays on the Mac.</p>
+      <div class="window"><div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Terminal, inside orb -m debian</div>
+<pre class="term"><span class="p">$ </span>sudo apt install -y build-essential git cmake ninja-build python3 rsync bc wget cpio unzip file \
+    libncurses-dev libssl-dev bzip2 xz-utils zstd perl-modules ccache gawk texinfo patch
+<span class="p">$ </span>mkdir -p ~/br &amp;&amp; cd ~/br &amp;&amp; git clone --branch 2026.08 --depth 1 https://gitlab.com/buildroot.org/buildroot.git
+<span class="p">$ </span>mkdir -p ~/br/output ~/br/dl</pre></div>
+      <div class="window"><div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Terminal, on the Mac in the repository</div>
+<pre class="term"><span class="p">$ </span>tools/buildroot-patch.sh
+<span class="p">$ </span>orb run -m debian sh -c "cd ~/br/output &amp;&amp; make O=\$PWD BR2_EXTERNAL=$PWD -C ~/br/buildroot mylinux_defconfig"
+<span class="p">$ </span>./build.sh              <span class="c"># first build about an hour, later builds minutes</span>
+<span class="p">$ </span>tools/sdk-update.sh     <span class="c"># once: export the SDK for the fast shell loop</span>
+<span class="p">$ </span>tools/app-build.sh shell <span class="c"># builds shell/ into share/, picked up on the next shell restart</span></pre></div>
+      <p><code>PLAN.md</code> in the repository documents every design decision and milestone.</p>
+
+      <h2 id="license">License</h2>
+      <p>GPL-3.0-or-later. The desktop shell links the Qt Wayland Compositor module, which Qt offers under the GPL v3 only. Theme palettes are from Omarchy (MIT); the Inter font is under the SIL OFL.</p>
+    </article>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <span>myLinux is free software under GPL-3.0-or-later.</span>
+      <span><a href="https://github.com/adminmylinux/mylinux">Source on GitHub</a> · <a href="/">Home</a></span>
+    </div>
+  </footer>
+</body>
+</html>

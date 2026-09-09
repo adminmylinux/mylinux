@@ -1,0 +1,15 @@
+.docs { display: grid; grid-template-columns: 200px 1fr; gap: 48px; padding-top: 48px; }
+.docs nav { position: sticky; top: 64px; align-self: start; font-size: 14px; }
+.docs nav a { display: block; color: var(--ink-2); padding: 4px 0; }
+.docs nav a:hover { color: var(--ink); text-decoration: none; }
+.docs article h1 { font-size: 2.4rem; margin-bottom: 8px; }
+.docs article h2 { margin: 48px 0 12px; padding-top: 8px; }
+.docs article h3 { margin: 24px 0 8px; }
+.docs article p, .docs article li { max-width: 68ch; color: var(--ink-2); }
+.docs article li { margin-bottom: 4px; }
+.docs article strong { color: var(--ink); font-weight: 600; }
+.docs article .window { margin: 16px 0 20px; box-shadow: none; }
+.docs article table.spec td:first-child { width: 40%; }
+.docs article table.spec { margin: 12px 0 20px; }
+.docs article code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+@media (max-width: 800px) { .docs { grid-template-columns: 1fr; } .docs nav { position: static; display: flex; flex-wrap: wrap; gap: 4px 16px; } }

@@ -1,0 +1,10 @@
+# Site block for /etc/caddy/Caddyfile on contabogit (84.46.241.200).
+# Caddy issues the certificate itself once DNS points here.
+mylinux.app {
+	encode gzip zstd
+	reverse_proxy 127.0.0.1:8801
+}
+
+www.mylinux.app {
+	redir https://mylinux.app{uri} permanent
+}

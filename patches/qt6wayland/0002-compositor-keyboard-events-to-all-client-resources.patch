@@ -1,0 +1,111 @@
+compositor: send keyboard events to every wl_keyboard of the focused client
+
+QtWayland keeps one "focus resource" per client and sends enter/leave/key/modifiers only to it,
+while pointer events go to all of a client's wl_pointer objects. Firefox binds wl_seat twice (GDK
+and its own registry): the keys reached the object GDK never reads, so typing did nothing.
+Deliver to all wl_keyboard resources of the focused client, as the pointer does.
+
+--- a/src/compositor/compositor_api/qwaylandkeyboard.cpp	2026-09-09 14:25:43.722649441 +0200
++++ b/src/compositor/compositor_api/qwaylandkeyboard.cpp	2026-09-09 14:25:43.722890401 +0200
+@@ -41,6 +41,11 @@
+ #endif
+ }
+ 
++// mylinux: keyboard events go to every wl_keyboard object the focused client bound, as pointer events
++// already do. Firefox binds wl_seat twice (GDK and its own registry); with a single "focus resource"
++// the keys reached the object GDK never reads and typing was lost.
++#define MYLINUX_FOR_CLIENT_RESOURCES(var, client) for (Resource *var : resourceMap().values(client))
++
+ QWaylandKeyboardPrivate *QWaylandKeyboardPrivate::get(QWaylandKeyboard *keyboard)
+ {
+     return keyboard->d_func();
+@@ -76,7 +81,8 @@
+     if (focus != surface) {
+         if (focusResource) {
+             uint32_t serial = compositor()->nextSerial();
+-            send_leave(focusResource->handle, serial, focus->resource());
++            MYLINUX_FOR_CLIENT_RESOURCES(r, focusResource->client())
++                send_leave(r->handle, serial, focus->resource());
+         }
+         focusDestroyListener.reset();
+         if (surface)
+@@ -85,8 +91,10 @@
+ 
+     Resource *resource = surface ? resourceMap().value(surface->waylandClient()) : 0;
+ 
+-    if (resource && (focus != surface || focusResource != resource))
+-        sendEnter(surface, resource);
++    if (resource && (focus != surface || focusResource != resource)) {
++        MYLINUX_FOR_CLIENT_RESOURCES(r, surface->waylandClient())
++            sendEnter(surface, r);
++    }
+ 
+     focusResource = resource;
+     focus = surface;
+@@ -142,8 +150,10 @@
+     uint32_t time = compositor()->currentTimeMsecs();
+     uint32_t serial = compositor()->nextSerial();
+     uint key = toWaylandKey(code);
+-    if (focusResource)
+-        send_key(focusResource->handle, serial, time, key, state);
++    if (focusResource) {
++        MYLINUX_FOR_CLIENT_RESOURCES(r, focusResource->client())
++            send_key(r->handle, serial, time, key, state);
++    }
+ }
+ 
+ #if QT_CONFIG(xkbcommon)
+@@ -213,8 +223,9 @@
+     this->group = group;
+ 
+     if (focusResource) {
+-        send_modifiers(focusResource->handle, compositor()->nextSerial(), modsDepressed,
+-                       modsLatched, modsLocked, group);
++        const uint32_t modSerial = compositor()->nextSerial();
++        MYLINUX_FOR_CLIENT_RESOURCES(r, focusResource->client())
++            send_modifiers(r->handle, modSerial, modsDepressed, modsLatched, modsLocked, group);
+ 
+         Qt::KeyboardModifiers currentState = Qt::NoModifier;
+         if (xkb_state_mod_index_is_active(xkbState(), shiftIndex, XKB_STATE_MODS_EFFECTIVE) == 1)
+@@ -253,13 +264,11 @@
+     }
+ 
+     xkb_state_update_mask(xkbState(), 0, modsLatched, modsLocked, 0, 0, 0);
+-    if (focusResource)
+-        send_modifiers(focusResource->handle,
+-                       compositor()->nextSerial(),
+-                       modsDepressed,
+-                       modsLatched,
+-                       modsLocked,
+-                       group);
++    if (focusResource) {
++        const uint32_t modSerial = compositor()->nextSerial();
++        MYLINUX_FOR_CLIENT_RESOURCES(r, focusResource->client())
++            send_modifiers(r->handle, modSerial, modsDepressed, modsLatched, modsLocked, group);
++    }
+ #endif
+ }
+ 
+@@ -488,8 +497,8 @@
+ void QWaylandKeyboard::sendKeyModifiers(QWaylandClient *client, uint32_t serial)
+ {
+     Q_D(QWaylandKeyboard);
+-    QtWaylandServer::wl_keyboard::Resource *resource = d->resourceMap().value(client->client());
+-    if (resource)
++    const auto resources = d->resourceMap().values(client->client());
++    for (QtWaylandServer::wl_keyboard::Resource *resource : resources)
+         d->send_modifiers(resource->handle, serial, d->modsDepressed, d->modsLatched, d->modsLocked, d->group);
+ }
+ 
+@@ -533,8 +542,9 @@
+             if (ke->modifiers() & Qt::AltModifier)
+                 mods |= 1 << altIndex;
+             qCDebug(qLcWaylandCompositor) << "Keyboard modifier state mismatch detected for event" << ke << "state:" << currentModifierState << "repaired:" << Qt::hex << mods;
+-            send_modifiers(focusResource->handle, compositor()->nextSerial(), mods,
+-                    0, 0, group);
++            const uint32_t repairSerial = compositor()->nextSerial();
++            MYLINUX_FOR_CLIENT_RESOURCES(r, focusResource->client())
++                send_modifiers(r->handle, repairSerial, mods, 0, 0, group);
+             currentModifierState = ke->modifiers();
+         }
+     }

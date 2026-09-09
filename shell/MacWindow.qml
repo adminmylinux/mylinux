@@ -27,7 +27,13 @@ Item {
     property bool added: false            // tiled/raised by the desktop once the app id is known (see Desktop.finishAdd)
     property bool helper: false           // a nameless 1x1 helper surface (wl-clipboard): kept invisible, never tiled
     readonly property bool mapped: surfaceItem.width > 0 && surfaceItem.height > 0
-    onMappedChanged: if (mapped && output && !added) output.windowMapped(win)
+    // Keyboard focus only goes to a surface that has content: GTK (Firefox) ignores a focus-enter it gets
+    // before its window is mapped and then drops every key, because no second enter ever comes.
+    onMappedChanged: if (mapped && output) { if (!added) output.windowMapped(win); if (output.focusedWindow === win) refocus() }
+    function refocus() {
+        if (output && output.compositor && output.compositor.defaultSeat) output.compositor.defaultSeat.keyboardFocus = null
+        surfaceItem.takeFocus()
+    }
     Connections { target: win.toplevel; function onAppIdChanged() { if (win.toplevel.appId && win.output && !win.added) win.output.finishAdd(win) } }
     function takeKeyboardFocus() { surfaceItem.takeFocus() }
     // (not "onWorkspace": names starting with "on" + a capital read as signal handlers in QML)
@@ -72,7 +78,7 @@ Item {
         let top = 0
         for (let i = 0; i < parent.children.length; ++i) top = Math.max(top, parent.children[i].z)
         z = top + 1
-        surfaceItem.takeFocus()
+        if (mapped) surfaceItem.takeFocus()     // else: refocus() runs when the first buffer arrives
         if (output) output.focusedWindow = win
     }
     function minimize() {

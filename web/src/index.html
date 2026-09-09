@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>myLinux — a Linux desktop that lives in your Mac's RAM</title>
+  <meta name="description" content="myLinux boots in a few seconds as a virtual machine on Apple-silicon Macs: a Qt Wayland desktop with a macOS look and Omarchy's keyboard workflow. Keep your setup in your account and carry it between Macs." />
+  <link rel="icon" href="./logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./landing.css" />
+  <meta property="og:title" content="myLinux" />
+  <meta property="og:description" content="A small Linux desktop that lives entirely in RAM, built for Apple-silicon Macs." />
+  <meta property="og:image" content="https://mylinux.app/screenshot.png" />
+</head>
+<body>
+  <nav class="menubar">
+    <a class="brand" href="/"><img src="./logo.svg" alt="" /> myLinux</a>
+    <a href="/docs">Docs</a>
+    <a href="https://github.com/adminmylinux/mylinux">GitHub</a>
+    <span class="spacer"></span>
+    <span class="clock" id="clock"></span>
+    <a href="/app">Sign in</a>
+  </nav>
+
+  <header class="hero wrap">
+    <div>
+      <h1>A Linux desktop that lives in your Mac's RAM.</h1>
+      <p class="lede">myLinux boots in a few seconds as a virtual machine on Apple silicon. It is a Qt&nbsp;6 Wayland desktop with a macOS look and the keyboard workflow of Omarchy: tiling windows, a launcher on Option+Space, twenty theme packs. The only thing to install on the Mac is QEMU.</p>
+      <div class="actions">
+        <a class="btn primary" href="#install">Install in three commands</a>
+        <a class="btn" href="/app">Keep your setup in an account</a>
+        <span class="hint">Free, GPL-3.0, about 110 MB.</span>
+      </div>
+    </div>
+    <div class="window" aria-label="myLinux booting and showing its desktop">
+      <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>myLinux</div>
+      <div class="machine">
+        <pre id="bootlog" aria-hidden="true"></pre>
+        <img id="desktop" src="./screenshot.png" alt="The myLinux desktop: a glass menu bar, a tiled terminal and browser, the dock at the bottom" width="1648" height="984" />
+      </div>
+    </div>
+  </header>
+
+  <section class="block">
+    <div class="wrap two">
+      <div>
+        <h2>What is inside</h2>
+        <p class="intro">A purpose-built image, not a general distribution. The kernel and root filesystem load into memory at start; the things you change live on a separate apps disk.</p>
+        <table class="spec">
+          <tr><td>Build system</td><td>Buildroot 2026.08, this repository is the external tree</td></tr>
+          <tr><td>Target</td><td>arm64, Linux 6.18, glibc, busybox init, initramfs only</td></tr>
+          <tr><td>Graphics</td><td>virtio-gpu, Mesa llvmpipe, Qt 6.11 on eglfs_kms</td></tr>
+          <tr><td>Desktop</td><td>myshell, a QML Qt Wayland compositor, foot terminal, Inter font</td></tr>
+          <tr><td>Apps disk</td><td>Debian trixie arm64 with apt: Chromium, Firefox, Remmina, btop, git, Claude Code, Codex, Tailscale</td></tr>
+          <tr><td>Host</td><td>QEMU 11 from Homebrew, Hypervisor.framework, 9p shared folder, a myLinux.app bundle</td></tr>
+        </table>
+      </div>
+      <div>
+        <h2>Two disks, one habit</h2>
+        <p class="intro">The system image is read-only and thrown away at shutdown. Your home directory, Debian packages, browsers and AI tools live on the apps disk, a sparse 16 GB file that the first boot sets up for you.</p>
+        <p class="muted">Update the image and nothing you installed is lost. Break the image and a restart gives you a clean one. The Mac clipboard flows in on its own; Option+Ctrl+C sends text the other way.</p>
+        <p class="muted">The gear in the menu bar keeps OpenRouter, Anthropic, OpenAI and Tailscale keys on the apps disk and exports them to every terminal, so Claude Code and Codex are ready without further setup.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <h2>Keys follow Omarchy</h2>
+      <p class="intro">The Mac Option key is Super inside myLinux, Cmd stays with macOS. The same fingers work on both systems. Option+K shows the full sheet, with search.</p>
+      <div class="keyrows">
+        <div><span class="keys"><kbd>Option</kbd><kbd>Space</kbd></span><span>Menu: apps, learn, style, install, update, system</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>Enter</kbd></span><span>Terminal</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>Shift</kbd><kbd>Enter</kbd></span><span>Browser</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>W</kbd></span><span>Close window</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>F</kbd></span><span>Full screen</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>T</kbd></span><span>Float or tile the window</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>←↑↓→</kbd></span><span>Move focus between tiles</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>1</kbd>…<kbd>9</kbd></span><span>Workspaces</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>S</kbd></span><span>Scratchpad</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd></span><span>Theme picker</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>/</kbd></span><span>Scale the desktop up</span></div>
+        <div><span class="keys"><kbd>Option</kbd><kbd>K</kbd></span><span>Every keybinding</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block install" id="install">
+    <div class="wrap">
+      <h2>Install in three commands</h2>
+      <p class="intro">Requirements: an Apple-silicon Mac, macOS 15 or newer, Homebrew, and about 8 GB of free RAM for the virtual machine.</p>
+      <div class="window">
+        <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Terminal<span class="spacer"></span><button class="btn small" data-copy="cmds">Copy</button></div>
+<pre class="term" id="cmds"><span class="p">$ </span>brew install qemu
+<span class="p">$ </span>git clone https://github.com/adminmylinux/mylinux.git &amp;&amp; cd mylinux
+<span class="p">$ </span>tools/get-image.sh &amp;&amp; ./run.sh</pre>
+      </div>
+      <div class="steps">
+        <div class="panel"><h3>The image downloads</h3><p>get-image.sh fetches the kernel and root filesystem of the latest release into out/ and checks their SHA-256.</p></div>
+        <div class="panel"><h3>The window opens</h3><p>run.sh wraps QEMU in myLinux.app, sized to the display under your pointer. A few seconds later the desktop is up.</p></div>
+        <div class="panel"><h3>First boot sets up the apps disk</h3><p>The welcome dialog formats out/apps.img, installs Debian's minimal rootfs, the desktop apps, Claude Code and Codex. About 1.3 GB, a few minutes, once.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="panel account">
+        <div>
+          <h2>Your setup, on every Mac</h2>
+          <p class="intro">An account keeps a profile per machine so a fresh install on another Mac looks like the one you left: theme and background, keyboard layout, display scale, the apps that open at start, the Debian packages you added, and your notes.</p>
+          <ul>
+            <li>Edit the profile on this site, or upload the mylinux.ini from the share folder.</li>
+            <li>Download it as mylinux.ini and drop it into share/ on the other Mac.</li>
+            <li>A personal API token lets a script inside myLinux do both with curl.</li>
+          </ul>
+          <a class="btn primary" href="/app">Sign in or create an account</a>
+        </div>
+        <div class="window">
+          <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Terminal</div>
+<pre class="term"><span class="c"># pull the profile "macbook" into the share folder</span>
+<span class="p">$ </span>curl -H "Authorization: Bearer mlx_…" \
+    https://mylinux.app/api/machines/macbook/ini \
+    -o share/mylinux.ini
+
+<span class="c"># push what this machine uses now</span>
+<span class="p">$ </span>curl -X PUT --data-binary @share/mylinux.ini \
+    -H "Authorization: Bearer mlx_…" \
+    https://mylinux.app/api/machines/macbook/ini</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span>myLinux is free software under GPL-3.0-or-later. Themes from Omarchy, font Inter.</span>
+      <span><a href="https://github.com/adminmylinux/mylinux">Source on GitHub</a> · <a href="/docs">Docs</a> · <a href="https://github.com/adminmylinux/mylinux/releases">Releases</a></span>
+    </div>
+  </footer>
+  <script type="module" src="./landing.ts"></script>
+</body>
+</html>
