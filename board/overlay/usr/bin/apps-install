@@ -1,13 +1,13 @@
 #!/bin/sh
 # Install a Debian package onto the apps disk with progress shown in a terminal window, then run a
-# command. Usage: apps-install <title> <apt-package> <test-path-in-chroot> <command...>
+# command. Usage: apps-install <title> "<apt-packages>" <test-path-in-chroot> <command...>
 TITLE="$1"; PKG="$2"; TEST="$3"; shift 3
 if apps-run test -e "$TEST" 2>/dev/null; then exec "$@"; fi
 exec foot -T "Installing $TITLE" sh -c '
   TITLE="$1"; PKG="$2"; TEST="$3"; shift 3
   echo "$TITLE is not on the apps disk yet - installing it now (needs network)..."; echo
   if ! mountpoint -q /mnt/apps; then echo "No apps disk mounted. Build one with tools/make-apps-disk.sh on the Mac."; exec sh; fi
-  apps-run apt-get update -q && apps-run apt-get install -y -q --no-install-recommends "$PKG" \
+  apps-run apt-get update -q && apps-run apt-get install -y -q --no-install-recommends $PKG \
     && apps-run test -e "$TEST" && { apps-path; echo; echo "Installed. Starting $TITLE..."; exec "$@"; }
   echo; echo "Installation failed - see messages above. Press Enter to close."; read x
 ' sh "$TITLE" "$PKG" "$TEST" "$@"

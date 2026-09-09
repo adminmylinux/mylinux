@@ -64,6 +64,7 @@ Item {
             { label: "Set up / repair the apps disk", hint: "apps-setup", glyph: "⤓", run: () => desktop.launch("/usr/bin/apps-setup-window") },
             { label: "Install a package…", hint: "type: install <name>", glyph: "⤓", run: () => { mode = "search"; input.text = "install " } },
             { label: "Firefox", hint: "firefox-esr", glyph: "⤓", run: () => desktop.launch("/usr/bin/firefox") },
+            { label: "Remote Desktop", hint: "Remmina: VNC, RDP, SSH in tabs", glyph: "⤓", run: () => desktop.launch("/usr/bin/remmina") },
             { label: "Claude Code", hint: "claude", glyph: "⤓", run: () => desktop.launch("/usr/bin/claude-code") },
             { label: "LibreOffice", hint: "apt: libreoffice", glyph: "⤓", run: () => installPkg("libreoffice") },
             { label: "VS Code (Codium)", hint: "apt: codium", glyph: "⤓", run: () => installPkg("codium") },

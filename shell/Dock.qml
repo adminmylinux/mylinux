@@ -15,6 +15,7 @@ Item {
         { name: "Clock",    appId: "myapp", exec: "/usr/bin/myapp", kind: "clock" },
         { name: "Firefox",  appId: "firefox-esr", exec: "/usr/bin/firefox", kind: "firefox" },
         { name: "Chromium", appId: "chromium", exec: "/usr/bin/chromium", kind: "chromium" },
+        { name: "Remote Desktop", appId: "org.remmina.Remmina", exec: "/usr/bin/remmina", kind: "remote" },
         { name: "ChatGPT",  appId: "chrome-chatgpt.com__-Default", exec: "/usr/bin/chatgpt", kind: "chatgpt" },
         { name: "Claude",   appId: "chrome-claude.ai__-Default", exec: "/usr/bin/claude-web", kind: "claude" },
         { name: "Claude Code", appId: "claude-code", exec: "/usr/bin/claude-code", kind: "claudecode" },

@@ -19,7 +19,7 @@ separate "apps disk" image that the system sets itself up on first boot.
 | Target | arm64, Linux 6.18, glibc, busybox init, initramfs only (~110 MB kernel + rootfs) |
 | Graphics | virtio-gpu, Mesa llvmpipe, Qt 6.11 `eglfs_kms` |
 | Desktop | `shell/`: QML Qt Wayland Compositor ("myshell"), foot terminal, Inter font |
-| Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, git, Claude Code, Codex, wl-clipboard |
+| Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, Remmina (VNC/RDP), git, Claude Code, Codex, wl-clipboard |
 | Host | QEMU 11 (Homebrew), HVF acceleration, 9p shared folder, macOS app bundle `myLinux.app` |
 
 ## Requirements
@@ -82,6 +82,12 @@ Option+Enter opens a terminal in your home directory (`/root`, on the apps disk)
 BusyBox; everything installed on the apps disk is on the PATH as well, so `claude`, `codex`, `git`,
 `python3`, `apt install …` just work (they run inside the Debian chroot, in the same directory). For a
 full Debian shell type `apps-run bash`.
+
+### Remote desktops
+
+The dock's Remote Desktop icon (or "Remote" in the launcher) starts Remmina, installed from Debian on
+first use. Add one profile per machine (VNC, RDP or SSH); connections open as tabs in a single window,
+so one window switches between all your machines.
 
 ## Themes (Omarchy compatible)
 

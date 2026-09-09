@@ -14,7 +14,7 @@ Item {
         terminal:   ["#8d6ffb", "#5a3fd6"], chatgpt:  ["#25b78d", "#0e8c69"],
         claude:     ["#e98661", "#c95f3b"], claudecode: ["#e98661", "#c95f3b"],
         codex:      ["#3b3b42", "#1d1d21"], firefox:  ["#7043dc", "#3a1e88"],
-        chromium:   ["#3f8dff", "#1a5bd4"], clock:    ["#ffffff", "#e9e9ee"] })
+        chromium:   ["#3f8dff", "#1a5bd4"], remote:   ["#4fb3a6", "#227a70"], clock: ["#ffffff", "#e9e9ee"] })
     readonly property var plate: plates[kind] || plates.terminal
 
     Rectangle {

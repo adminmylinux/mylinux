@@ -1,0 +1,6 @@
+#!/bin/sh
+# Remmina (VNC / RDP / SSH remote desktop client) from the apps disk; installs itself on first launch.
+# Preference seed: every connection opens as a tab in one window, so all machines live in a single window.
+P=/root/.config/remmina; mkdir -p "$P"
+[ -f "$P/remmina.pref" ] || printf '[remmina_pref]\ntab_mode=2\n' > "$P/remmina.pref"
+exec apps-install "Remmina" "remmina remmina-plugin-vnc remmina-plugin-rdp" /usr/bin/remmina apps-run remmina "$@"
