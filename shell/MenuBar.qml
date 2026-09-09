@@ -128,7 +128,7 @@ Item {
                 readonly property bool current: bar.desktop.workspace === index + 1
                 visible: current || (bar.desktop.windowsRevision, bar.desktop.workspaceOccupied(index + 1))
                 width: Theme.px(18); height: Theme.px(14); radius: Theme.px(4)
-                color: current ? Theme.accent : "#33808080"
+                color: current ? Theme.highlight : "#33808080"
                 Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; text: index + 1; font.pixelSize: Theme.fpx(10); font.bold: true; font.family: Theme.uiFont
                        color: current ? (Theme.isLight ? "#ffffff" : "#101014") : Theme.text }
                 MouseArea { anchors.fill: parent; onClicked: bar.desktop.switchWorkspace(index + 1) }
@@ -250,7 +250,7 @@ Item {
                         Rectangle { visible: !!modelData.sep; anchors.centerIn: parent; width: parent.width - 8; height: 1; color: "#26000000" }
                         Rectangle {
                             visible: !modelData.sep && hov.containsMouse && !modelData.disabled
-                            anchors.fill: parent; radius: 6; color: Theme.accent
+                            anchors.fill: parent; radius: 6; color: Theme.highlight
                         }
                         Text {
                             visible: !modelData.sep

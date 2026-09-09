@@ -221,7 +221,7 @@ Item {
             onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
             delegate: Rectangle {
                 width: list.width; height: Theme.px(46); radius: Theme.px(8)
-                color: index === spot.selected ? Theme.accent : (hov.containsMouse ? "#22ffffff" : "transparent")
+                color: index === spot.selected ? Theme.highlight : (hov.containsMouse ? "#22ffffff" : "transparent")
                 Row {
                     anchors.left: parent.left; anchors.leftMargin: Theme.px(10); anchors.verticalCenter: parent.verticalCenter; spacing: Theme.px(12)
                     Item { width: Theme.px(30); height: Theme.px(30); anchors.verticalCenter: parent.verticalCenter

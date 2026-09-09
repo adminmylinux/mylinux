@@ -51,9 +51,13 @@ void Tailscale::parse(const QByteArray &json)
         for (auto it = ps.begin(); it != ps.end(); ++it) {
             const QJsonObject p = it.value().toObject();
             QVariantMap m;
-            m["name"] = p.value("HostName").toString();
             QString dns = p.value("DNSName").toString(); if (dns.endsWith('.')) dns.chop(1);
             m["dns"] = dns;
+            // the tailnet machine name (first DNS label) is what the admin console shows; HostName can be
+            // "localhost" (iPhones) or the raw OS host name
+            const QString label = dns.section('.', 0, 0);
+            const QString host = p.value("HostName").toString();
+            m["name"] = !label.isEmpty() ? label : host;
             const QJsonArray pips = p.value("TailscaleIPs").toArray();
             m["ip"] = pips.isEmpty() ? QString() : pips.first().toString();
             m["online"] = p.value("Online").toBool();

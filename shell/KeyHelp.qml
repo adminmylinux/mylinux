@@ -77,7 +77,7 @@ Item {
                     readonly property bool hit: kh.held !== 0 && kh.modsOf(modelData.key) === kh.held
                     opacity: kh.held !== 0 && !hit ? 0.35 : 1
                     Rectangle { x: 0; width: Theme.px(170); height: Theme.px(20); radius: Theme.px(5); anchors.verticalCenter: parent.verticalCenter
-                        color: srow.hit ? Theme.accent : "#2a2a30"; border.color: srow.hit ? Qt.lighter(Theme.accent, 1.3) : "#3a3a42"
+                        color: srow.hit ? Theme.highlight : "#2a2a30"; border.color: srow.hit ? Qt.lighter(Theme.highlight, 1.3) : "#3a3a42"
                         Text { anchors.centerIn: parent; text: modelData.key; color: srow.hit ? "#ffffff" : "#e6e6ea"; font.pixelSize: Theme.fpx(12); font.family: Theme.monoFont; elide: Text.ElideRight; width: parent.width - 8; horizontalAlignment: Text.AlignHCenter } }
                     Text { x: Theme.px(184); anchors.verticalCenter: parent.verticalCenter; text: modelData.desc; color: "#d0d0d6"; font.pixelSize: Theme.fpx(13); font.family: Theme.uiFont }
                     Text { anchors.right: parent.right; anchors.rightMargin: Theme.px(6); anchors.verticalCenter: parent.verticalCenter; text: modelData.group; color: "#6e6e78"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont } }
@@ -100,7 +100,7 @@ Item {
                             opacity: dimmed ? 0.35 : 1
                             Behavior on opacity { NumberAnimation { duration: 80 } }
                             Rectangle { width: kt.width + Theme.px(14); height: Theme.px(20); radius: Theme.px(5); anchors.verticalCenter: parent.verticalCenter
-                                color: row.hit ? Theme.accent : "#2a2a30"; border.color: row.hit ? Qt.lighter(Theme.accent, 1.3) : "#3a3a42"
+                                color: row.hit ? Theme.highlight : "#2a2a30"; border.color: row.hit ? Qt.lighter(Theme.highlight, 1.3) : "#3a3a42"
                                 Text { id: kt; anchors.centerIn: parent; text: modelData[0]; color: row.hit ? "#ffffff" : "#e6e6ea"; font.pixelSize: Theme.fpx(12); font.family: Theme.monoFont; font.bold: row.hit } }
                             Text { x: Theme.px(150); anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; color: row.hit ? "#ffffff" : "#d0d0d6"; font.pixelSize: Theme.fpx(13); font.family: Theme.uiFont; font.bold: row.hit } } } } }
         }

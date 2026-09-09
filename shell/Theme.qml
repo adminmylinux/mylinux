@@ -23,6 +23,9 @@ QtObject {
     readonly property color bg: colors.background || "#1a1b26"
     readonly property color fg: colors.foreground || "#c0caf5"
     readonly property color accent: colors.accent || colors.color4 || "#7aa2f7"
+    // selection / highlight in menus, lists and the key sheet: macOS blue, not the theme accent (which
+    // may be a pale colour that reads badly under white text)
+    readonly property color highlight: "#2f6fe6"
     readonly property string background: {
         const b = themeData && themeData.backgrounds ? themeData.backgrounds : []
         return b.length ? "file://" + b[backgroundIndex % b.length] : "qrc:/qt/qml/MyShell/assets/wallpaper.png"
