@@ -89,6 +89,11 @@ autostart=/usr/bin/claude-web,/usr/bin/chatgpt
 
 Any command works there, for example `/usr/bin/claude-code` for the terminal agent or `/usr/bin/foot`.
 
+### Dock
+
+The dock hides below the screen edge and slides up when the pointer touches the bottom of the
+screen. Style › "Dock: always visible" keeps it on screen instead.
+
 ### Window frames
 
 Apps that draw their own header bar (Firefox, Chromium, Remmina and other GTK apps) get no second

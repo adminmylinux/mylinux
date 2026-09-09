@@ -124,6 +124,10 @@ Window {
         { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
     ]
     function touch() { windowsRevision++ }
+    // Dock auto-hide: revealed while the pointer is at the bottom edge or over the dock, hidden shortly after it leaves
+    property bool dockRevealed: false
+    function dockLeave() { dockHideTimer.restart() }
+    Timer { id: dockHideTimer; interval: 600; onTriggered: if (!dock.hovered && !dockEdge.containsMouse) root.dockRevealed = false }
 
     function appIdOf(w) { return w.toplevel ? (w.toplevel.appId || "") : "" }
     function appNameFor(w) {
@@ -243,7 +247,7 @@ Window {
             id: windowLayer
             anchors.fill: parent
             anchors.topMargin: menuBar.height
-            anchors.bottomMargin: dock.height + dock.anchors.bottomMargin + 6
+            anchors.bottomMargin: Theme.dockAutoHide ? Theme.px(6) : dock.height + Theme.px(10) + 6
             onWidthChanged: if (root.tiling) root.tiling.relayout()
             onHeightChanged: if (root.tiling) root.tiling.relayout()
         }
@@ -259,6 +263,8 @@ Window {
 
     Component { id: windowComponent; MacWindow {} }
 
+    MouseArea { id: dockEdge; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 3; z: 7
+               hoverEnabled: true; acceptedButtons: Qt.NoButton; onEntered: root.dockRevealed = true; onExited: dockHideTimer.restart() }
     Dock { id: dock; z: 8; desktop: root; backdrop: backdrop; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter }
     MenuBar { id: menuBar; z: 10; desktop: root; backdrop: backdrop; width: parent.width
               appName: root.appNameFor(root.focusedWindow) }

@@ -74,7 +74,9 @@ Item {
             { label: "Title bars: always", hint: "macOS-style bar on every window", glyph: "▭", run: () => Theme.setTitleBars("always") },
             { label: "Title bars: never", hint: "bare windows, Omarchy-style", glyph: "▭", run: () => Theme.setTitleBars("never") },
             { label: "Panels: solid", hint: "opaque menus and sheets" + (Theme.solidPanels ? "  ✓" : ""), glyph: "▰", run: () => Theme.setSolidPanels(true) },
-            { label: "Panels: glass", hint: "see-through, blurred" + (Theme.solidPanels ? "" : "  ✓"), glyph: "▱", run: () => Theme.setSolidPanels(false) } ]
+            { label: "Panels: glass", hint: "see-through, blurred" + (Theme.solidPanels ? "" : "  ✓"), glyph: "▱", run: () => Theme.setSolidPanels(false) },
+            { label: "Dock: auto-hide", hint: "appears when the pointer touches the bottom edge" + (Theme.dockAutoHide ? "  ✓" : ""), glyph: "▁", run: () => Theme.setDockAutoHide(true) },
+            { label: "Dock: always visible", hint: "windows stop above it" + (Theme.dockAutoHide ? "" : "  ✓"), glyph: "▂", run: () => Theme.setDockAutoHide(false) } ]
         case "setup": return [
             { label: "Display settings", hint: "Brightness · Text size · Scale", glyph: "🖥", run: () => desktop.openDisplayPanel() } ]
             .concat(Theme.layouts.map(l => ({ label: "Keyboard: " + l.label, hint: l.badge + (l.id === Theme.keyboardLayout ? "  ✓" : ""), glyph: "⌨", run: () => Theme.setKeyboardLayout(l.id) })))

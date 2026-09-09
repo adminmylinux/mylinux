@@ -58,6 +58,9 @@ QtObject {
     property string titleBars: String(Settings.value("wm/titlebars", "auto"))
     // Menus, sheets and popovers: solid (default) or see-through glass
     property bool solidPanels: String(Settings.value("look/solidPanels", "true")) === "true"
+    // Dock: hidden until the pointer touches the bottom edge (default), or always visible
+    property bool dockAutoHide: String(Settings.value("look/dockAutoHide", "true")) === "true"
+    function setDockAutoHide(v) { dockAutoHide = v; Settings.set("look/dockAutoHide", v ? "true" : "false") }
     function setSolidPanels(v) { solidPanels = v; Settings.set("look/solidPanels", v ? "true" : "false") }
     function setTitleBars(v) { titleBars = v; Settings.set("wm/titlebars", v) }
     function setTextScale(v) { textScale = v; Settings.set("display/textScale", v) }

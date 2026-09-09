@@ -22,7 +22,8 @@ orb run -m debian sh -c "
   mkdir -p '$BUILD' && cd '$BUILD'
   sleep 2   # OrbStack's shared-FS attribute cache: give fresh mtimes from the Mac time to land
   [ -f CMakeCache.txt ] || cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE='$SDK/share/buildroot/toolchainfile.cmake' -DCMAKE_BUILD_TYPE=Release '$HERE/$DIR' > cmake.log
-  ninja | tail -3
+  if ! ninja > ninja.log 2>&1; then grep -v '^\[' ninja.log | tail -25; echo 'BUILD FAILED'; exit 1; fi
+  tail -2 ninja.log
   cp -f $BIN '$HERE/share/$BIN'
 "
 ls -la share/$BIN

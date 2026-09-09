@@ -6,7 +6,12 @@ Item {
     property var desktop
     property Item backdrop
     width: row.width + Theme.px(28); height: Theme.px(74)
-    anchors.bottomMargin: Theme.px(10)
+    // Auto-hide: slide below the screen edge until the desktop reveals us (pointer at the bottom edge)
+    readonly property bool hidden: Theme.dockAutoHide && !(desktop && desktop.dockRevealed)
+    anchors.bottomMargin: hidden ? -(height + Theme.px(8)) : Theme.px(10)
+    Behavior on anchors.bottomMargin { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+    property alias hovered: hh.hovered
+    HoverHandler { id: hh; onHoveredChanged: if (!hovered && desktop) desktop.dockLeave() }
 
     GlassPanel { anchors.fill: parent; backdrop: dock.backdrop; radius: Theme.px(22); tint: "#30ffffff"; borderColor: "#70ffffff"; solid: false }
 

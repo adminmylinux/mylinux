@@ -591,6 +591,11 @@ bar stay glass (they sit over the wallpaper). Style menu: Panels: solid / glass.
 
 Autostart (2026-09-09 09:50): default is now claude-web (the claude.ai app window) + chatgpt instead of claude-code; override with [session] autostart=... in share/mylinux.ini.
 
+Dock auto-hide (2026-09-09 09:55): default on (Theme.dockAutoHide, Settings look/dockAutoHide); a 3 px hover strip at the
+bottom edge reveals the dock, it hides 600 ms after the pointer leaves dock and strip; the window layer then extends to
+the bottom. Style menu: Dock: auto-hide / always visible. tools/app-build.sh now fails loudly when ninja fails (it used
+to copy the stale binary because the exit status went through `| tail`).
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.
