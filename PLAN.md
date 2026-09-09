@@ -551,6 +551,10 @@ Windows carry a workspace number (hidden when not current), one dwindle tree per
 bar shows occupied workspaces as pills (click to switch), the Window menu tags other workspaces' windows with [n]; the
 dock activates an app on its workspace when it has no window here.
 
+Window geometry (2026-09-09 06:30): MacWindow honours xdg_surface window geometry (GTK/Chromium CSD shadow margins were
+showing as padding inside the frame): frame size = geometry, surface item offset by -geometry origin, margins clipped;
+configure sizes use the geometry. Firefox and Chromium still draw their own min/max/close buttons (CSD) - follow-up.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

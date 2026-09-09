@@ -38,7 +38,11 @@ Item {
     property real anchoredRight: 0
     property real anchoredBottom: 0
 
-    width: surfaceItem.width * surfaceScale; height: surfaceItem.height * surfaceScale + titleHeight
+    // The client's window geometry (xdg_surface.set_window_geometry): GTK/Chromium surfaces carry
+    // invisible shadow margins around the actual window, which must not show as padding in our frame.
+    readonly property rect geo: (shellSurface && shellSurface.windowGeometry.width > 0 && shellSurface.windowGeometry.height > 0)
+                                ? shellSurface.windowGeometry : Qt.rect(0, 0, surfaceItem.width, surfaceItem.height)
+    width: geo.width * surfaceScale; height: geo.height * surfaceScale + titleHeight
     z: 0
 
     // Minimise/restore: a quick scale+fade instead of a genie. Other workspaces' windows are hidden.
@@ -76,8 +80,8 @@ Item {
         placed = true
         // Oversize first window (e.g. Chromium): ask the client for a size that fits the work area.
         if (width > parent.width - 40 || height > parent.height - 40)
-            toplevel.sendConfigure(Qt.size(Math.min(surfaceItem.width, (parent.width - 80) / surfaceScale),
-                                           Math.min(surfaceItem.height, (parent.height - 80 - titleHeight) / surfaceScale)),
+            toplevel.sendConfigure(Qt.size(Math.min(geo.width, (parent.width - 80) / surfaceScale),
+                                           Math.min(geo.height, (parent.height - 80 - titleHeight) / surfaceScale)),
                                    [XdgToplevel.ActivatedState])
         const step = 36
         let px = 60 + (cascadeIndex % 8) * step, py = 30 + (cascadeIndex % 8) * step
@@ -138,7 +142,9 @@ Item {
         // The client's pixels
         ShellSurfaceItem {
             id: surfaceItem
-            y: win.titleHeight
+            // shift so the window geometry's origin sits under the title bar; the margins are clipped by the frame
+            x: -win.geo.x * win.surfaceScale
+            y: win.titleHeight - win.geo.y * win.surfaceScale
             scale: win.surfaceScale; transformOrigin: Item.TopLeft
             shellSurface: win.shellSurface
             moveItem: win
@@ -162,7 +168,7 @@ Item {
                    : (edges & (Qt.LeftEdge | Qt.RightEdge)) ? Qt.SizeHorCursor : Qt.SizeVerCursor
         onPressed: (mouse) => {
             win.raise()
-            startW = surfaceItem.width; startH = surfaceItem.height
+            startW = win.geo.width; startH = win.geo.height
             startPos = mapToItem(null, mouse.x, mouse.y)
             fixedRight = win.x + win.width; fixedBottom = win.y + win.height
             win.resizeEdges = edges
@@ -180,7 +186,7 @@ Item {
         }
         onReleased: {
             win.resizeEdges = 0
-            win.toplevel.sendConfigure(Qt.size(surfaceItem.width, surfaceItem.height), [XdgToplevel.ActivatedState])
+            win.toplevel.sendConfigure(Qt.size(win.geo.width, win.geo.height), [XdgToplevel.ActivatedState])
         }
     }
     // grab zones: `outer` px outside the frame + `inner` px inside it; corners are `corner` square
