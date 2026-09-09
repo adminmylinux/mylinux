@@ -36,6 +36,7 @@ Item {
             { label: "New Firefox Window", action: "firefox" },
             { label: "New Chromium Window", action: "browser" },
             { label: "Remote Desktop (Remmina)", action: "remote" },
+            { label: "Activity (btop)", action: "activity" },
             { label: "ChatGPT", action: "chatgpt" }, { label: "Claude", action: "claude" }, { label: "Claude Code", action: "claudecode" }, { label: "Codex", action: "codex" }, { sep: true },
             { label: "Close Window", action: "close", shortcut: mod + "W" } ] },
         { title: "Edit", items: [
@@ -71,6 +72,7 @@ Item {
         case "browser": desktop.launch("/usr/bin/chromium"); break
         case "firefox": desktop.launch("/usr/bin/firefox"); break
         case "remote": desktop.launch("/usr/bin/remmina"); break
+        case "activity": desktop.launch("/usr/bin/activity"); break
         case "chatgpt": desktop.launch("/usr/bin/chatgpt"); break
         case "claude": desktop.launch("/usr/bin/claude-web"); break
         case "claudecode": desktop.launch("/usr/bin/claude-code"); break

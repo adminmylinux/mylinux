@@ -19,7 +19,7 @@ separate "apps disk" image that the system sets itself up on first boot.
 | Target | arm64, Linux 6.18, glibc, busybox init, initramfs only (~110 MB kernel + rootfs) |
 | Graphics | virtio-gpu, Mesa llvmpipe, Qt 6.11 `eglfs_kms` |
 | Desktop | `shell/`: QML Qt Wayland Compositor ("myshell"), foot terminal, Inter font |
-| Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, Remmina (VNC/RDP), git, Claude Code, Codex, wl-clipboard |
+| Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, Remmina (VNC/RDP), btop, git, Claude Code, Codex, wl-clipboard |
 | Host | QEMU 11 (Homebrew), HVF acceleration, 9p shared folder, macOS app bundle `myLinux.app` |
 
 ## Requirements

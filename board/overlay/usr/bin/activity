@@ -1,0 +1,3 @@
+#!/bin/sh
+# Activity monitor: btop (as in Omarchy) in its own terminal window; installs itself from Debian on first use.
+exec apps-install "Activity" btop /usr/bin/btop foot -T "Activity" -a activity -W 132x42 apps-run btop "$@"

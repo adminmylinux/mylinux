@@ -34,13 +34,13 @@ if ! apps-run test -x /usr/bin/chromium; then
   apps-run apt-get clean
 fi
 # Developer basics (also added to disks set up before they were default: apps-setup is idempotent)
-if ! apps-run test -x /usr/bin/git; then
-  step "Installing git (with ssh client and less)"
+if ! apps-run test -x /usr/bin/git || ! apps-run test -x /usr/bin/btop; then
+  step "Installing git (with ssh client and less) and btop"
   apps-run apt-get update -q
-  apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends git openssh-client less
+  apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends git openssh-client less btop
   apps-run apt-get clean
 fi
 step "Installing Claude Code and Codex"
 apps-setup-ai all || echo "(agent install failed - retry later with: apps-setup-ai)"
 apps-path
-step "Done. The apps disk is ready: Chromium, Firefox (on first click), git, Claude Code, Codex."
+step "Done. The apps disk is ready: Chromium, Firefox (on first click), git, btop, Claude Code, Codex."

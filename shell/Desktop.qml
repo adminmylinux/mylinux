@@ -96,10 +96,12 @@ Window {
         // still reaches the client before it draws). A surface that maps without one is a helper.
         if (toplevel.appId) finishAdd(w)
     }
+    // Apps that open floating instead of tiled (TUI tools with a fixed useful size, like Omarchy's)
+    readonly property var floatingApps: ["activity"]
     function finishAdd(w) {
         if (w.added) return
         w.added = true
-        if (tilingEnabled) tiling.add(w, focusedWindow)
+        if (tilingEnabled && floatingApps.indexOf(appIdOf(w)) < 0) tiling.add(w, focusedWindow)
         w.raise()
     }
     // First buffer arrived. No app id and a 1x1 buffer or the title "wl-clipboard" = wl-clipboard's popup (it
@@ -160,6 +162,7 @@ Window {
         const id = appIdOf(w)
         for (const a of dock.apps) if (a.appId === id) return a.name
         if (id === "myapp") return "Clock"
+        if (id === "activity") return "Activity"
         return id || w.title || "mylinux"
     }
     function windowsFor(appId) { return windows.filter(w => !w.helper && appIdOf(w) === appId) }

@@ -607,6 +607,8 @@ rendered so frame callbacks flow), never tiled or listed, given keyboard focus f
 
 VNC to wayvnc (2026-09-09 11:10): libvncclient verifies the TLS certificate name against the typed address, so the IP fails ("The certificate's owner does not match hostname"); connect by the cert name (omarchy-imac). New hosts-sync merges share/hosts into /etc/hosts of guest + apps disk (S99shell, apps-run). Diagnosed with a small libvncclient test client compiled in the apps chroot (gcc + libvncserver-dev).
 
+Activity (2026-09-09 11:20): btop from Debian, default in apps-setup (git step) and self-installing via /usr/bin/activity (apps-install + foot -a activity -W 132x42); Desktop.floatingApps opens app id "activity" floating (btop needs >= 80x24). Menu: File > Activity, launcher Apps > Activity. Buildroot has no btop package.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

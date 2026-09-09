@@ -34,6 +34,7 @@ Item {
     function apps() {
         const a = desktop ? desktop.dockApps() : []
         return a.map(x => ({ label: x.name, hint: "Application", kind: x.kind, run: () => desktop.launch(x.exec), keys: x.appId }))
+            .concat([{ label: "Activity", hint: "btop: CPU, memory, disks, network, processes", glyph: "▤", run: () => desktop.launch("/usr/bin/activity"), keys: "btop top monitor" }])
     }
     property var categories: [
         { id: "apps",    label: "Apps",    glyph: "▦", hint: "Launch an application" },
