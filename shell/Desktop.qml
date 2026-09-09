@@ -87,7 +87,7 @@ Window {
         { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ T / ⌘ N", "New terminal"], ["⌘ Space", "Launcher"], ["⌘ ⌥ Space", "Menu"], ["⌘ K", "This list"]] },
         { group: "Windows", keys: [["⌘ W", "Close window"], ["⌘ Q", "Quit app"], ["⌘ M", "Minimise"], ["⌘ F", "Fullscreen"], ["⌘ V", "Float / tile window"], ["⌘ Tab", "Cycle windows"], ["⌘ ⇧ T", "Tiling on/off"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
-        { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window to workspace (and follow)"], ["Menu bar numbers", "Occupied workspaces; click to switch"]] },
+        { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
         { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["Menu bar icons", "Agents · Keyboard layout · Display"]] }
     ]
     function touch() { windowsRevision++ }

@@ -566,6 +566,10 @@ surface = CSD shadow margins) drops our title bar/frame for GTK/Chromium windows
 
 Chromium (2026-09-09 08:15): --test-type silences the "--no-sandbox unsupported flag" bar (cosmetic; the sandbox is off because the chroot runs as root - the proper fix is an unprivileged user on the apps disk); apps-run rewrites its chroot helper files every run so flag changes reach existing disks.
 
+Key sheet (2026-09-09 09:05): KeyGrab publishes the held modifiers (Q_PROPERTY modifiers); the ⌘K sheet highlights the
+bindings whose modifiers equal the held set (⌘, ⌘⇧, ⌘^, ⌘⌥) and dims the rest; panel tint raised so windows behind do not
+bleed through. tools/qmp.py gained kdown/kup to hold keys in tests.
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

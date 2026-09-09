@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Drive QEMU over QMP with a sequence of ops:
-   qmp.py <qmp.sock> move X Y | down | up | click X Y | shot FILE | sleep S | type TEXT | key QCODE ...   (screen coords; SCREEN=WxH env, default 1920x1200)"""
+   qmp.py <qmp.sock> move X Y | down | up | click X Y | shot FILE | sleep S | type TEXT | key QCODE | combo A-B | kdown QCODE | kup QCODE ...   (screen coords; SCREEN=WxH env, default 1920x1200)"""
 import socket, json, sys, time
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect(sys.argv[1]); f = s.makefile('rw')
 def cmd(name, **args):
@@ -39,5 +39,6 @@ while i < len(a):
     elif op == "type": type_text(a[i+1]); i += 2          # literal text, use "\n" for Enter
     elif op == "key": cmd("send-key", keys=[{"type": "qcode", "data": a[i+1]}]); i += 2
     elif op == "combo": cmd("send-key", keys=[{"type": "qcode", "data": k} for k in a[i+1].split("-")]); i += 2   # e.g. meta_l-w
+    elif op in ("kdown", "kup"): cmd("input-send-event", events=[{"type": "key", "data": {"down": op == "kdown", "key": {"type": "qcode", "data": a[i+1]}}}]); i += 2   # hold / release a key
     else: sys.exit("bad op " + op)
     time.sleep(0.15)
