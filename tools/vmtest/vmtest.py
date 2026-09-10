@@ -297,6 +297,59 @@ def scenario_scale_relayout(vm):
     vm.qmp("combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-1", "sleep", 0.5)
 
 
+def scenario_client_fullscreen(vm):
+    """A client's own fullscreen request (Firefox F11) goes through the same state path as ⌘F."""
+    if "ok" not in vm.serial("apps-run test -x /usr/bin/firefox-esr && echo ok", 3):
+        raise Fail("Firefox not on the test disk")
+    vm.serial("killall firefox-esr 2>/dev/null; rm -rf /tmp/vmtest-ffprof; mkdir -p /tmp/vmtest-ffprof; cd /root; env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 MOZ_DISABLE_AUTO_SAFE_MODE=1 setsid apps-run firefox-esr --no-remote --profile /tmp/vmtest-ffprof file:///mnt/share/vmtest/typing.html >/dev/null 2>&1 </dev/null &", 2)
+    ff = lambda d: [w for w in d["windows"] if w["appId"] == "firefox-esr" and "typing-fixture" in w["title"]]
+    d = vm.wait_for(lambda d: ff(d) and ff(d)[0]["mapped"], "Firefox with the fixture", 40)
+    w = ff(d)[0]
+    vm.qmp("click", d["layerX"] + w["x"] + w["width"] // 2, d["layerY"] + w["y"] + w["height"] // 2, "sleep", 0.6, "key", "f11", "sleep", 1)
+    d = vm.wait_for(lambda d: ff(d) and ff(d)[0]["fullscreen"] and ff(d)[0]["clientFullscreen"] and not ff(d)[0]["inTree"], "Firefox fullscreen on its own request", 15)
+    w = ff(d)[0]
+    if w["x"] != 0 or w["y"] != 0 or abs(w["width"] - d["layerW"]) > 2:
+        raise Fail("client-requested fullscreen does not cover the work area: %s" % w)
+    vm.qmp("key", "f11", "sleep", 1)
+    d = vm.wait_for(lambda d: ff(d) and not ff(d)[0]["fullscreen"] and not ff(d)[0]["clientFullscreen"] and ff(d)[0]["inTree"], "Firefox back in its tile after leaving fullscreen", 15)
+    vm.serial("killall firefox-esr", 2)
+
+
+def scenario_agent_usage_fixtures(vm):
+    """AgentUsage's scanner and limits parser on synthetic logs, run in the guest through the shell binary's test hooks."""
+    fx = os.path.join(SHARE, "vmtest", "agent")
+    if os.path.exists(fx): subprocess.run(["rm", "-rf", fx])
+    subprocess.run(["cp", "-R", os.path.join(ROOT, "tools", "vmtest", "fixtures", "agent"), fx], check=True)
+    binary = "/mnt/share/myshell" if os.path.exists(os.path.join(SHARE, "myshell")) else "/usr/bin/myshell"
+    vm.serial("%s --agent-scan /mnt/share/vmtest/agent 2026-09-10 > /mnt/share/vmtest/agent/scan1.json 2>/dev/null; sleep 1; %s --agent-scan /mnt/share/vmtest/agent 2026-09-10 > /mnt/share/vmtest/agent/scan2.json 2>/dev/null; %s --claude-limits /mnt/share/vmtest/agent/limits-fractions.json > /mnt/share/vmtest/agent/limits.json 2>/dev/null; echo done" % (binary, binary, binary), 6)
+    try:
+        s1 = json.load(open(os.path.join(fx, "scan1.json"))); s2 = json.load(open(os.path.join(fx, "scan2.json"))); lim = json.load(open(os.path.join(fx, "limits.json")))
+    except Exception as e:
+        raise Fail("scan output unreadable: %r" % e)
+    c = s1["claude"]
+    days = {r["label"]: r["tokens"] for r in c["days"]}
+    if len(c["days"]) != 7: raise Fail("expected 7 day rows, got %d" % len(c["days"]))
+    if days["Today"] != 200: raise Fail("today's Claude tokens: streamed duplicate must count once (200), got %s" % days["Today"])
+    total = sum(r["tokens"] for r in c["days"])
+    if total != 1200: raise Fail("seven-day window must include 2026-09-04 and exclude 2026-09-03: total %s, wanted 1200" % total)
+    models = {r["name"]: r["tokens"] for r in c["models"]}
+    if models.get("Fable 5.1") != 200 or "Opus 4.5" not in models: raise Fail("model rows wrong: %s" % models)
+    x = s1["codex"]
+    xd = {r["label"]: r["tokens"] for r in x["days"]}
+    if xd["Today"] != 470: raise Fail("Codex today tokens: %s (wanted 470)" % xd["Today"])
+    L = {l["label"]: l for l in x["limits"]}
+    if L["Session"]["resetsAt"] != "2026-09-10T08:00:10Z" or L["Weekly"]["resetsAt"] != "2026-09-11T07:00:10Z":
+        raise Fail("Codex reset times must be anchored to the log timestamp: %s" % L)
+    if abs(L["Session"]["pct"] - 0.125) > 1e-6: raise Fail("Codex used_percent is a percent: %s" % L["Session"])
+    if s2["codex"]["limits"] != x["limits"]: raise Fail("a second scan of unchanged logs moved the reset deadline: %s vs %s" % (s2["codex"]["limits"], x["limits"]))
+    if s2["claude"]["days"] != c["days"]: raise Fail("second scan differs from the first")
+    if s1["cachedFiles"] != 2: raise Fail("cache should hold both log files, has %s" % s1["cachedFiles"])
+    P = {l["label"]: l["pct"] for l in lim}
+    if abs(P["Session"] - 0.005) > 1e-9 or abs(P["Weekly"] - 0.0025) > 1e-9: raise Fail("utilization below 1 must still read as percent (0.5 -> 0.5%%): %s" % P)
+    if abs(P["Opus Weekly"] - 0.0075) > 1e-9: raise Fail("percent field below 1: %s" % P)
+    if P.get("Sonnet Weekly") != -1: raise Fail("an unknown field must give 'unknown' (-1), got %s" % P.get("Sonnet Weekly"))
+
+
 SCENARIOS = [
     ("boot", scenario_boot),
     ("foot_typing", scenario_foot_typing),
@@ -308,7 +361,10 @@ SCENARIOS = [
     ("fullscreen", scenario_fullscreen),
     ("single_activation", scenario_single_activation),
     ("scale_relayout", scenario_scale_relayout),
+    ("client_fullscreen", scenario_client_fullscreen),
+    ("agent_usage_fixtures", scenario_agent_usage_fixtures),
 ]
+
 
 
 

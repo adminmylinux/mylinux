@@ -10,6 +10,9 @@ Tailscale::Tailscale(QObject *parent) : QObject(parent)
 {
     connect(&m_timer, &QTimer::timeout, this, &Tailscale::refresh);
     m_timer.start(30000);
+    m_watchdog.setSingleShot(true); m_watchdog.setInterval(8000);
+    connect(&m_watchdog, &QTimer::timeout, this, &Tailscale::onWatchdog);
+
     QTimer::singleShot(3000, this, &Tailscale::refresh);
 }
 
@@ -23,17 +26,54 @@ void Tailscale::setActive(bool a)
     if (a) refresh();
 }
 
+// One status query at a time, with a bounded lifetime: a query that fails to start or hangs is dropped
+// (watchdog) so the next refresh can run; the failure is kept in lastError.
 void Tailscale::refresh()
 {
     if (!available() || m_proc) return;
     m_proc = new QProcess(this);
-    connect(m_proc, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
-        const QByteArray out = m_proc->readAllStandardOutput();
-        m_proc->deleteLater(); m_proc = nullptr;
+    QProcess *p = m_proc;
+    connect(p, &QProcess::finished, this, [this, p](int code, QProcess::ExitStatus st) {
+        const QByteArray out = p->readAllStandardOutput();
+        dropProcess();
+        if (st != QProcess::NormalExit || code != 0) setError(QStringLiteral("tailscale status exited with %1").arg(code));
+        else setError(QString());
         parse(out);
     });
-    m_proc->start("/usr/bin/tailscale", {"status", "--json", "--peers=true"});
+    connect(p, &QProcess::errorOccurred, this, [this, p](QProcess::ProcessError) {
+        const QString e = p->errorString();
+        dropProcess();
+        setError("tailscale status: " + e);
+        parse(QByteArray());
+    });
+    m_watchdog.start();
+    p->start("/usr/bin/tailscale", {"status", "--json", "--peers=true"});
 }
+
+void Tailscale::dropProcess()
+{
+    m_watchdog.stop();
+    if (!m_proc) return;
+    m_proc->disconnect(this);
+    if (m_proc->state() != QProcess::NotRunning) m_proc->kill();
+    m_proc->deleteLater(); m_proc = nullptr;
+}
+
+void Tailscale::onWatchdog()
+{
+    if (!m_proc) return;
+    dropProcess();
+    setError(QStringLiteral("tailscale status did not answer within 8 s"));
+    parse(QByteArray());
+}
+
+void Tailscale::setError(const QString &e)
+{
+    if (m_error == e) return;
+    if (!e.isEmpty()) qWarning() << "tailscale:" << e;
+    m_error = e; emit changed();
+}
+
 
 void Tailscale::parse(const QByteArray &json)
 {

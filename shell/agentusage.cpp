@@ -16,20 +16,22 @@
 #include <algorithm>
 
 static const char *kAppsHome = "/mnt/apps/root";
+static const int kWindowDays = 7;          // the chart shows today and the six days before it
 
 AgentUsage::AgentUsage(QObject *parent) : QObject(parent) {}
+AgentUsage::~AgentUsage() { if (m_thread) { m_thread->wait(); delete m_thread; } }
 
 QString AgentUsage::home() const
 {
     return QFileInfo(kAppsHome).isDir() ? QString::fromLatin1(kAppsHome) : QDir::homePath();
 }
 
-static QVariantList dayRows(const QMap<QString, qint64> &byDay)
+// ---- pure helpers -----------------------------------------------------------------------------------
+static QVariantList dayRows(const QMap<QString, qint64> &byDay, const QDate &today)
 {
-    // last 7 days, oldest first, labelled Mon..Sun / Today
+    // last 7 days (today and six before), oldest first, labelled Mon..Sun / Today
     QVariantList rows;
-    const QDate today = QDate::currentDate();
-    for (int i = 6; i >= 0; --i) {
+    for (int i = kWindowDays - 1; i >= 0; --i) {
         const QDate d = today.addDays(-i);
         QVariantMap r;
         r["label"] = i == 0 ? QStringLiteral("Today") : d.toString("ddd");
@@ -51,7 +53,7 @@ static QVariantList modelRows(const QMap<QString, qint64> &byModel)
     return rows;
 }
 
-// "claude-fable-5-1" -> "Fable 5.1", "claude-opus-4-5-20251101" -> "Opus 4.5", "gpt-5.3-codex" -> "Gpt 5.3 codex"
+// "claude-fable-5-1" -> "Fable 5.1", "claude-opus-4-5-20251101" -> "Opus 4.5", "gpt-5.3-codex" -> "GPT 5.3 codex"
 static QString friendlyModel(const QString &id)
 {
     QStringList parts = id.split('-', Qt::SkipEmptyParts);
@@ -70,12 +72,11 @@ static QString friendlyModel(const QString &id)
     for (QString r : rest) { r[0] = r[0].toUpper(); name += " " + r; }
     return name;
 }
-
 static QVariantList modelRowsNamed(const QMap<QString, qint64> &byModel)
 {
     QMap<QString, qint64> named;
     for (auto it = byModel.begin(); it != byModel.end(); ++it) {
-        if (it.value() <= 0 || it.key().startsWith('<')) continue;   // "<synthetic>" placeholder rows
+        if (it.value() <= 0 || it.key().startsWith('<')) continue;
         named[friendlyModel(it.key())] += it.value();
     }
     return modelRows(named);
@@ -91,13 +92,14 @@ static QString planLabel(const QJsonObject &oauth)
     return oauth["subscriptionType"].toString().toUpper();
 }
 
-// Claude Code keeps aggregate counters in stats-cache.json; used when no transcripts are on disk (Omarchy does the same).
-static bool statsCacheFallback(const QString &dir, QMap<QString, qint64> &byDay, QMap<QString, qint64> &byModel)
+// Claude Code keeps aggregate counters in stats-cache.json; used when no transcripts are on disk (Omarchy does the
+// same). dailyModelTokens gives per-day figures inside the window; the older modelUsage block only has all-time
+// totals, which are reported as such (allTime = true), never as a seven-day figure.
+static bool statsCacheFallback(const QString &dir, const QDate &cutoff, QMap<QString, qint64> &byDay, QMap<QString, qint64> &byModel, bool &allTime)
 {
     QFile f(dir + "/stats-cache.json");
     if (!f.open(QIODevice::ReadOnly)) return false;
     const QJsonObject d = QJsonDocument::fromJson(f.readAll()).object();
-    const QDate cutoff = QDate::currentDate().addDays(-7);
     for (const QJsonValue &v : d["dailyModelTokens"].toArray()) {
         const QJsonObject e = v.toObject();
         const QDate day = QDate::fromString(e["date"].toString(), Qt::ISODate);
@@ -108,74 +110,156 @@ static bool statsCacheFallback(const QString &dir, QMap<QString, qint64> &byDay,
             byDay[day.toString(Qt::ISODate)] += t; byModel[it.key()] += t;
         }
     }
-    if (byModel.isEmpty()) {                                        // older caches: all-time totals per model
+    allTime = false;
+    if (byModel.isEmpty()) {
         const QJsonObject mu = d["modelUsage"].toObject();
         for (auto it = mu.begin(); it != mu.end(); ++it) {
             const QJsonObject u = it.value().toObject();
             byModel[it.key()] += u["inputTokens"].toDouble() + u["outputTokens"].toDouble()
                                + u["cacheReadInputTokens"].toDouble() + u["cacheCreationInputTokens"].toDouble();
         }
+        allTime = !byModel.isEmpty();
     }
     return !byModel.isEmpty();
 }
 
-void AgentUsage::scanClaude()
+// One Claude Code transcript (JSONL). Token totals per assistant message: input + output + cache creation +
+// cache read (the four counters are distinct buckets in the API's usage object; a message's input_tokens does
+// not include its cached input). Streamed duplicates (same message id + request id) count once.
+static void parseClaudeFile(const QString &path, AgentFileStats &st)
 {
-    QMap<QString, qint64> byDay, byModel;
+    QFile f(path); if (!f.open(QIODevice::ReadOnly)) return;
     QSet<QString> seen;
-    const QDate cutoff = QDate::currentDate().addDays(-7);
-    const QString dir = home() + "/.claude";
-    QDirIterator it(dir + "/projects", {"*.jsonl"}, QDir::Files, QDirIterator::Subdirectories);
-    int files = 0;
-    while (it.hasNext()) {
-        QFile f(it.next()); if (!f.open(QIODevice::ReadOnly)) continue; ++files;
-        while (!f.atEnd()) {
-            const QByteArray line = f.readLine();
-            if (!line.contains("\"usage\"")) continue;
-            const QJsonObject d = QJsonDocument::fromJson(line).object();
-            const QJsonObject m = d["message"].toObject();
-            if (d["type"].toString() != "assistant" && m["role"].toString() != "assistant") continue;
-            const QJsonObject u = m["usage"].toObject();
-            if (u.isEmpty()) continue;
-            const QString id = m["id"].toString() + "/" + d["requestId"].toString();
-            if (!id.startsWith("/") && seen.contains(id)) continue;   // streamed duplicates
-            seen.insert(id);
-            const QDate day = QDateTime::fromString(d["timestamp"].toString(), Qt::ISODateWithMs).toLocalTime().date();
-            if (!day.isValid() || day < cutoff) continue;
-            const qint64 t = u["input_tokens"].toDouble() + u["output_tokens"].toDouble()
-                           + u["cache_creation_input_tokens"].toDouble() + u["cache_read_input_tokens"].toDouble();
-            if (t <= 0) continue;
-            byDay[day.toString(Qt::ISODate)] += t;
-            QString model = m["model"].toString(); if (model.isEmpty()) model = "claude";
-            byModel[model] += t;
-        }
+    while (!f.atEnd()) {
+        const QByteArray line = f.readLine();
+        if (!line.contains("\"usage\"")) continue;
+        const QJsonObject d = QJsonDocument::fromJson(line).object();
+        const QJsonObject m = d["message"].toObject();
+        if (d["type"].toString() != "assistant" && m["role"].toString() != "assistant") continue;
+        const QJsonObject u = m["usage"].toObject();
+        if (u.isEmpty()) continue;
+        const QString id = m["id"].toString() + "/" + d["requestId"].toString();
+        if (!id.startsWith("/") && seen.contains(id)) continue;
+        seen.insert(id);
+        const QDate day = QDateTime::fromString(d["timestamp"].toString(), Qt::ISODateWithMs).toLocalTime().date();
+        if (!day.isValid()) continue;
+        const qint64 t = u["input_tokens"].toDouble() + u["output_tokens"].toDouble()
+                       + u["cache_creation_input_tokens"].toDouble() + u["cache_read_input_tokens"].toDouble();
+        if (t <= 0) continue;
+        st.byDay[day.toString(Qt::ISODate)] += t;
+        QString model = m["model"].toString(); if (model.isEmpty()) model = "claude";
+        st.byModel[model] += t;
     }
-    bool fromCache = false;
-    if (byModel.isEmpty()) fromCache = statsCacheFallback(dir, byDay, byModel);
-    QVariantMap c = m_claude;
-    c["installed"] = QFileInfo(home() + "/.local/bin/claude").exists() || QFileInfo(dir).isDir();
-    c["days"] = dayRows(byDay);
-    c["models"] = modelRowsNamed(byModel);
-    c["files"] = files;
-    c["fromCache"] = fromCache;
-    // plan name and sign-in state from the credentials file (no secrets copied out)
-    QFile cred(dir + "/.credentials.json");
-    if (cred.open(QIODevice::ReadOnly)) {
-        const QJsonObject o = QJsonDocument::fromJson(cred.readAll()).object()["claudeAiOauth"].toObject();
-        c["plan"] = planLabel(o);
-        c["signedIn"] = !o["accessToken"].toString().isEmpty();
-    } else { c["plan"] = ""; c["signedIn"] = false; }
-    m_claude = c;
 }
 
-// The endpoint reports percentages (37.0) today; older payloads used fractions (0.37). Any value >= 1 in the
-// payload means percent scale, so 1.0 renders as 1%, not 100% (same rule as Omarchy's collector).
-static double normalizeUtil(const QJsonValue &v, bool percentScale)
+// One Codex session (JSONL): token_count events carry the last turn's usage and, sometimes, rate limits whose
+// resets_in_seconds is relative to that event's timestamp (not to whenever this runs).
+static void parseCodexFile(const QString &path, AgentFileStats &st)
 {
+    QFile f(path); if (!f.open(QIODevice::ReadOnly)) return;
+    QString model = "codex";
+    while (!f.atEnd()) {
+        const QByteArray line = f.readLine();
+        if (!line.contains("token_count") && !line.contains("turn_context")) continue;
+        const QJsonObject d = QJsonDocument::fromJson(line).object();
+        const QJsonObject p = d["payload"].toObject();
+        if (p["type"].toString() == "turn_context" || p.contains("model")) { const QString m = p["model"].toString(); if (!m.isEmpty()) model = m; continue; }
+        if (p["type"].toString() != "token_count") continue;
+        const QDateTime when = QDateTime::fromString(d["timestamp"].toString(), Qt::ISODateWithMs);
+        const QDate day = when.toLocalTime().date();
+        const QJsonObject last = p["info"].toObject()["last_token_usage"].toObject();
+        const qint64 t = last["input_tokens"].toDouble() + last["output_tokens"].toDouble() + last["cached_input_tokens"].toDouble();
+        if (day.isValid()) { st.byDay[day.toString(Qt::ISODate)] += t; st.byModel[model] += t; }
+        const QJsonObject rl = p["rate_limits"].toObject();
+        if (!rl.isEmpty() && when.isValid() && d["timestamp"].toString() > st.limitsStamp) {
+            st.limitsStamp = d["timestamp"].toString(); st.limits.clear();
+            auto add = [&](const char *key, const QString &label) {
+                if (!rl.contains(key)) return;
+                const QJsonObject w = rl[key].toObject();
+                QVariantMap l; l["label"] = label;
+                l["pct"] = w.contains("used_percent") ? w["used_percent"].toDouble() / 100.0 : -1.0;   // field name says percent
+                const qint64 secs = w["resets_in_seconds"].toDouble();
+                l["resetsAt"] = secs > 0 ? when.toUTC().addSecs(secs).toString(Qt::ISODate) : w["resets_at"].toString();
+                l["observedAt"] = st.limitsStamp;
+                st.limits << l;
+            };
+            add("primary", "Session"); add("secondary", "Weekly");
+        }
+    }
+}
+
+AgentScanResult AgentUsage::scan(const QString &home, QHash<QString, AgentFileStats> cache, const QDate &today)
+{
+    AgentScanResult r;
+    const QDate cutoff = today.addDays(-(kWindowDays - 1));
+    QSet<QString> live;
+    auto visit = [&](const QString &dir, bool claude, QMap<QString, qint64> &byDay, QMap<QString, qint64> &byModel, int &files, QVariantList *limits, QString *stamp) {
+        QDirIterator it(dir, {"*.jsonl"}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next(); const QFileInfo fi(path);
+            live.insert(path); ++files;
+            AgentFileStats &st = cache[path];
+            const qint64 mt = fi.lastModified().toMSecsSinceEpoch(), sz = fi.size();
+            if (st.mtime != mt || st.size != sz) {                       // changed or new: parse again
+                st = AgentFileStats(); st.mtime = mt; st.size = sz;
+                if (claude) parseClaudeFile(path, st); else parseCodexFile(path, st);
+            }
+            for (auto d = st.byDay.begin(); d != st.byDay.end(); ++d) {
+                const QDate day = QDate::fromString(d.key(), Qt::ISODate);
+                if (day.isValid() && day >= cutoff && day <= today) byDay[d.key()] += d.value();
+            }
+            // model totals follow the same window: files whose days all fall outside it contribute nothing
+            bool inWindow = false;
+            for (auto d = st.byDay.begin(); d != st.byDay.end(); ++d) { const QDate day = QDate::fromString(d.key(), Qt::ISODate); if (day.isValid() && day >= cutoff && day <= today) { inWindow = true; break; } }
+            if (inWindow) for (auto m = st.byModel.begin(); m != st.byModel.end(); ++m) byModel[m.key()] += m.value();
+            if (limits && !st.limitsStamp.isEmpty() && st.limitsStamp > *stamp) { *stamp = st.limitsStamp; *limits = st.limits; }
+        }
+    };
+    // Claude
+    {
+        QMap<QString, qint64> byDay, byModel; int files = 0;
+        const QString dir = home + "/.claude";
+        visit(dir + "/projects", true, byDay, byModel, files, nullptr, nullptr);
+        bool fromCache = false, allTime = false;
+        if (byModel.isEmpty()) fromCache = statsCacheFallback(dir, cutoff, byDay, byModel, allTime);
+        QVariantMap c;
+        c["installed"] = QFileInfo(home + "/.local/bin/claude").exists() || QFileInfo(dir).isDir();
+        c["days"] = dayRows(byDay, today);
+        c["models"] = modelRowsNamed(byModel);
+        c["files"] = files; c["fromCache"] = fromCache; c["allTime"] = allTime;
+        QFile cred(dir + "/.credentials.json");            // plan name and sign-in state only; no token copied out
+        if (cred.open(QIODevice::ReadOnly)) {
+            const QJsonObject o = QJsonDocument::fromJson(cred.readAll()).object()["claudeAiOauth"].toObject();
+            c["plan"] = planLabel(o); c["signedIn"] = !o["accessToken"].toString().isEmpty();
+        } else { c["plan"] = ""; c["signedIn"] = false; }
+        r.claude = c;
+    }
+    // Codex
+    {
+        QMap<QString, qint64> byDay, byModel; int files = 0; QVariantList limits; QString stamp;
+        visit(home + "/.codex/sessions", false, byDay, byModel, files, &limits, &stamp);
+        QVariantMap c;
+        c["installed"] = QFileInfo(home + "/.local/bin/codex").exists() || QFileInfo(home + "/.codex").isDir();
+        c["signedIn"] = QFileInfo(home + "/.codex/auth.json").exists();
+        c["days"] = dayRows(byDay, today); c["models"] = modelRows(byModel); c["limits"] = limits; c["files"] = files; c["plan"] = "";
+        c["limitsObservedAt"] = stamp;
+        r.codex = c;
+    }
+    for (auto it = cache.begin(); it != cache.end();) { if (live.contains(it.key())) ++it; else it = cache.erase(it); }
+    r.cache = cache;
+    return r;
+}
+
+// Utilization units come from the field name, never from the magnitude of the numbers: `utilization` and
+// `percent` are the endpoint's documented percent fields (37.0 = 37 %). Any other field, or a value that does
+// not parse, is "unknown" (pct = -1) and shown as such rather than as 0 % or 100 %.
+static double percentField(const QJsonObject &o, const char *field)
+{
+    if (!o.contains(field)) return -1;
+    const QJsonValue v = o[field];
     double n = v.isString() ? v.toString().remove('%').trimmed().toDouble() : v.toDouble(-1);
     if (!(n >= 0)) return -1;
-    if (percentScale || n > 1) return std::min(1.0, n / 100.0);
-    return std::min(1.0, n);
+    return std::min(1.0, n / 100.0);
 }
 static QString normalizeResetAt(const QJsonValue &v)
 {
@@ -191,25 +275,19 @@ static QString scopedWindow(const QString &kind)
     return "";
 }
 
-static QVariantList parseClaudeLimits(const QJsonObject &o)
+QVariantList AgentUsage::parseClaudeLimits(const QJsonObject &o)
 {
     // flat buckets: five_hour, seven_day (or seven_day_oauth_apps); model-scoped windows live in the "limits" array
     const QJsonObject session = o["five_hour"].toObject();
     const QJsonObject weekly = o.contains("seven_day_oauth_apps") && o["seven_day_oauth_apps"].isObject()
                              ? o["seven_day_oauth_apps"].toObject() : o["seven_day"].toObject();
     const QJsonArray entries = o["limits"].toArray();
-    bool percentScale = false;
-    auto sample = [&](const QJsonValue &v) { if (v.isDouble() && v.toDouble() >= 1) percentScale = true; if (v.isString() && v.toString().remove('%').toDouble() >= 1) percentScale = true; };
-    sample(session["utilization"]); sample(weekly["utilization"]);
-    for (const QJsonValue &e : entries) sample(e.toObject()["percent"]);
-
     QVariantList lim;
     auto add = [&](const QString &label, double pct, const QJsonValue &resets) {
-        if (pct < 0) return;
         QVariantMap l; l["label"] = label; l["pct"] = pct; l["resetsAt"] = normalizeResetAt(resets); lim << l;
     };
-    if (!session.isEmpty()) add("Session", normalizeUtil(session["utilization"], percentScale), session["resets_at"]);
-    if (!weekly.isEmpty()) add("Weekly", normalizeUtil(weekly["utilization"], percentScale), weekly["resets_at"]);
+    if (!session.isEmpty()) add("Session", percentField(session, "utilization"), session["resets_at"]);
+    if (!weekly.isEmpty()) add("Weekly", percentField(weekly, "utilization"), weekly["resets_at"]);
     QSet<QString> seenScoped;
     for (const QJsonValue &v : entries) {
         const QJsonObject e = v.toObject();
@@ -220,16 +298,52 @@ static QVariantList parseClaudeLimits(const QJsonObject &o)
         if (name.isEmpty() || seenScoped.contains(name + "|" + kind)) continue;
         seenScoped.insert(name + "|" + kind);
         const QString w = scopedWindow(kind);
-        add(w.isEmpty() ? name : name + " " + w, normalizeUtil(e["percent"], percentScale), e["resets_at"]);
+        add(w.isEmpty() ? name : name + " " + w, percentField(e, "percent"), e["resets_at"]);
     }
-    // legacy per-model buckets, only when the array did not already cover them
-    if (seenScoped.isEmpty()) {
+    if (seenScoped.isEmpty()) {         // legacy per-model buckets, only when the array did not already cover them
         for (const auto &pair : { qMakePair(QString("seven_day_opus"), QString("Opus Weekly")), qMakePair(QString("seven_day_sonnet"), QString("Sonnet Weekly")) }) {
             const QJsonObject w = o[pair.first].toObject();
-            if (!w.isEmpty()) add(pair.second, normalizeUtil(w["utilization"], percentScale), w["resets_at"]);
+            if (!w.isEmpty()) add(pair.second, percentField(w, "utilization"), w["resets_at"]);
         }
     }
     return lim;
+}
+
+// ---- the object -------------------------------------------------------------------------------------
+void AgentUsage::refresh()
+{
+    if (m_scanning) { m_pending = true; return; }      // coalesced: one more scan after the current one
+    startScan();
+    fetchClaudeLimits();
+}
+
+void AgentUsage::startScan()
+{
+    m_scanning = true; emit changed();
+    if (m_thread) { m_thread->wait(); delete m_thread; m_thread = nullptr; }
+    const QString h = home(); const QHash<QString, AgentFileStats> cache = m_cache; const QDate today = QDate::currentDate();
+    m_thread = QThread::create([this, h, cache, today] {
+        const AgentScanResult r = scan(h, cache, today);
+        QMetaObject::invokeMethod(this, [this, r] { scanDone(r); }, Qt::QueuedConnection);
+    });
+    m_thread->start();
+}
+
+void AgentUsage::scanDone(const AgentScanResult &r)
+{
+    m_cache = r.cache;
+    QVariantMap c = r.claude;                                  // keep the network-derived fields
+    for (const char *k : {"limits", "limitsError"}) if (m_claude.contains(k)) c[k] = m_claude[k];
+    m_claude = c;
+    QVariantMap x = r.codex;                                   // stale Codex limits (window already over) are dropped
+    QVariantList kept;
+    for (const QVariant &v : x["limits"].toList()) {
+        const QDateTime resets = QDateTime::fromString(v.toMap()["resetsAt"].toString(), Qt::ISODate);
+        if (!resets.isValid() || resets > QDateTime::currentDateTimeUtc()) kept << v;
+    }
+    x["limits"] = kept; m_codex = x;
+    m_scanning = false; emit changed();
+    if (m_pending) { m_pending = false; startScan(); }
 }
 
 void AgentUsage::fetchClaudeLimits()
@@ -277,53 +391,4 @@ void AgentUsage::fetchClaudeLimits()
         c["limits"] = kept;
         m_claude = c; r->deleteLater(); emit changed();
     });
-}
-
-void AgentUsage::scanCodex()
-{
-    QMap<QString, qint64> byDay, byModel;
-    QVariantList limits; QString lastLimitsStamp;
-    const QDate cutoff = QDate::currentDate().addDays(-7);
-    QDirIterator it(home() + "/.codex/sessions", {"*.jsonl"}, QDir::Files, QDirIterator::Subdirectories);
-    int files = 0;
-    while (it.hasNext()) {
-        QFile f(it.next()); if (!f.open(QIODevice::ReadOnly)) continue; ++files;
-        QString model = "codex";
-        while (!f.atEnd()) {
-            const QByteArray line = f.readLine();
-            if (!line.contains("token_count") && !line.contains("turn_context")) continue;
-            const QJsonObject d = QJsonDocument::fromJson(line).object();
-            const QJsonObject p = d["payload"].toObject();
-            if (p["type"].toString() == "turn_context" || p.contains("model")) { const QString m = p["model"].toString(); if (!m.isEmpty()) model = m; continue; }
-            if (p["type"].toString() != "token_count") continue;
-            const QDate day = QDateTime::fromString(d["timestamp"].toString(), Qt::ISODateWithMs).toLocalTime().date();
-            const QJsonObject last = p["info"].toObject()["last_token_usage"].toObject();
-            const qint64 t = last["input_tokens"].toDouble() + last["output_tokens"].toDouble() + last["cached_input_tokens"].toDouble();
-            if (day.isValid() && day >= cutoff) { byDay[day.toString(Qt::ISODate)] += t; byModel[model] += t; }
-            const QJsonObject rl = p["rate_limits"].toObject();
-            if (!rl.isEmpty() && d["timestamp"].toString() > lastLimitsStamp) {
-                lastLimitsStamp = d["timestamp"].toString(); limits.clear();
-                auto add = [&](const char *key, const QString &label) {
-                    if (!rl.contains(key)) return;
-                    const QJsonObject w = rl[key].toObject();
-                    QVariantMap l; l["label"] = label; l["pct"] = w["used_percent"].toDouble() / 100.0;
-                    const qint64 secs = w["resets_in_seconds"].toDouble();
-                    l["resetsAt"] = secs > 0 ? QDateTime::currentDateTimeUtc().addSecs(secs).toString(Qt::ISODate) : w["resets_at"].toString();
-                    limits << l;
-                };
-                add("primary", "Session"); add("secondary", "Weekly");
-            }
-        }
-    }
-    QVariantMap c;
-    c["installed"] = QFileInfo(home() + "/.local/bin/codex").exists() || QFileInfo(home() + "/.codex").isDir();
-    c["signedIn"] = QFileInfo(home() + "/.codex/auth.json").exists();
-    c["days"] = dayRows(byDay); c["models"] = modelRows(byModel); c["limits"] = limits; c["files"] = files; c["plan"] = "";
-    m_codex = c;
-}
-
-void AgentUsage::refresh()
-{
-    scanClaude(); scanCodex(); emit changed();
-    fetchClaudeLimits();
 }

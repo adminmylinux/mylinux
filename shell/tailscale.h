@@ -22,6 +22,7 @@ class Tailscale : public QObject
     Q_PROPERTY(QVariantList peers READ peers NOTIFY changed)
     Q_PROPERTY(int onlineCount READ onlineCount NOTIFY changed)
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)   // panel open: poll faster
+    Q_PROPERTY(QString lastError READ lastError NOTIFY changed)               // last failed status query ("" when fine)
 public:
     explicit Tailscale(QObject *parent = nullptr);
     bool available() const;
@@ -33,6 +34,7 @@ public:
     QVariantList peers() const { return m_peers; }
     int onlineCount() const { return m_online; }
     bool active() const { return m_active; }
+    QString lastError() const { return m_error; }
     void setActive(bool a);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void connectNow();      // tailscale-login window (opens the login page)
@@ -42,8 +44,13 @@ signals:
     void activeChanged();
 private:
     void parse(const QByteArray &json);
-    QTimer m_timer;
+    void dropProcess();
+    void onWatchdog();
+    void setError(const QString &e);
+    QTimer m_timer, m_watchdog;
     QProcess *m_proc = nullptr;
+    QString m_error;
+
     bool m_active = false;
     QString m_state, m_selfName, m_selfIp, m_tailnet;
     QVariantList m_peers;

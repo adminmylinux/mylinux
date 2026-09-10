@@ -85,5 +85,12 @@ Item {
                     Text { anchors.centerIn: parent; text: modelData + "x"; color: "#e6e6ea"; font.pixelSize: Theme.fpx(12); font.family: Theme.monoFont }
                     MouseArea { anchors.fill: parent; onClicked: Theme.setScale(modelData) }
                 } } }
+        Rectangle { width: parent.width; height: 1; color: "#33ffffff" }
+        // where settings go: the share (persistent) or /tmp (this boot only, when the share is not mounted)
+        Label { width: parent.width; wrapMode: Text.WordWrap
+                color: Settings.lastError.length ? "#ff6b6b" : (Settings.location === "share" ? "#8a8a92" : "#f0c674")
+                text: Settings.lastError.length ? "SETTINGS NOT SAVED: " + Settings.lastError.toUpperCase()
+                    : Settings.location === "share" ? "SETTINGS SAVED IN share/mylinux.ini" : "SHARE NOT MOUNTED: SETTINGS KEPT IN /tmp UNTIL REBOOT" }
     }
+
 }

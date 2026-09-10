@@ -11,9 +11,13 @@ Launcher::Launcher(QObject *parent) : QObject(parent) {}
 
 QString Launcher::socketName() const { return QStringLiteral("wayland-0"); }
 
+// Detached start: the compositor never waits on a client (no waitForStarted on the UI thread) and keeps no
+// QProcess object per launch; a start failure is reported at once through failed(). The client's output goes
+// to /var/log/apps.log.
 bool Launcher::launch(const QString &program, const QStringList &args)
 {
-    auto *p = new QProcess(this);
+    QProcess proc;
+    QProcess *p = &proc;
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     // Clients are ordinary Wayland apps: no direct evdev/KMS access.
     for (const char *k : {"QT_QPA_GENERIC_PLUGINS", "QT_QPA_EGLFS_INTEGRATION", "QT_QPA_EGLFS_DISABLE_INPUT",
@@ -27,19 +31,20 @@ bool Launcher::launch(const QString &program, const QStringList &args)
     env.insert("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1"); // the shell draws the frames
     if (!env.contains("TERM")) env.insert("TERM", "foot");
     p->setProcessEnvironment(env);
-    p->setProcessChannelMode(QProcess::ForwardedChannels);
+    p->setStandardOutputFile(QStringLiteral("/var/log/apps.log"), QIODevice::Append);
+    p->setStandardErrorFile(QStringLiteral("/var/log/apps.log"), QIODevice::Append);
     p->setProgram(program);
     p->setArguments(args);
-    connect(p, &QProcess::errorOccurred, this, [this, p, program](QProcess::ProcessError) {
+    qint64 pid = 0;
+    if (!p->startDetached(&pid)) {
         qWarning() << "launch failed:" << program << p->errorString();
         emit failed(program, p->errorString());
-    });
-    connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), p, &QObject::deleteLater);
-    p->start();
-    if (!p->waitForStarted(3000)) return false;
-    emit launched(program, p->processId());
+        return false;
+    }
+    emit launched(program, pid);
     return true;
 }
+
 
 void Launcher::setTerminalFont(int pt)
 {

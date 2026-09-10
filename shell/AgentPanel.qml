@@ -27,6 +27,11 @@ Item {
         return "Resets in " + (d > 0 ? d + "d " + (h % 24) + "h" : h + "h " + m + "m")
     }
     function maxTokens(rows) { let m = 1; for (const r of rows || []) m = Math.max(m, Number(r.tokens)); return m }
+    function ago(iso) {
+        const ms = Date.now() - new Date(iso).getTime(); if (isNaN(ms)) return iso
+        const m = Math.floor(ms / 6e4), h = Math.floor(m / 60), d = Math.floor(h / 24)
+        return d > 0 ? d + "d ago" : h > 0 ? h + "h ago" : m + "m ago"
+    }
 
     Column {
         id: col
@@ -57,9 +62,9 @@ Item {
             Column { width: col.width; spacing: Theme.px(4)
                 Item { width: parent.width; height: Theme.px(18)
                     Text { text: modelData.label; color: "#e6e6ea"; font.pixelSize: Theme.fpx(14); font.family: Theme.uiFont; anchors.left: parent.left }
-                    Value { text: Math.round(modelData.pct * 100) + "%"; anchors.right: parent.right } }
-                Bar { frac: modelData.pct }
-                Text { text: panel.resetsIn(modelData.resetsAt); color: "#8a8a92"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont } } }
+                    Value { text: modelData.pct < 0 ? "unknown" : Math.round(modelData.pct * 100) + "%"; anchors.right: parent.right } }
+                Bar { frac: Math.max(0, modelData.pct) }
+                Text { text: panel.resetsIn(modelData.resetsAt) + (modelData.observedAt ? "  · as of " + panel.ago(modelData.observedAt) : ""); color: "#8a8a92"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont } } }
         Rectangle { width: parent.width; height: 1; color: "#33ffffff" }
 
         Label { text: "TOKENS BY DAY" }
@@ -72,7 +77,10 @@ Item {
 
         Label { text: "TOKENS BY MODEL" }
         Text { visible: !(panel.usage && panel.usage.models && panel.usage.models.length); text: "No sessions in the last 7 days"; color: "#9a9aa2"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
-        Text { visible: !!(panel.usage && panel.usage.fromCache); text: "From Claude Code's stats cache (no transcripts on disk)"; color: "#8a8a92"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont }
+        Text { visible: !!(panel.usage && panel.usage.fromCache); width: col.width; wrapMode: Text.WordWrap
+               text: panel.usage && panel.usage.allTime ? "All-time totals from Claude Code's stats cache (no transcripts and no daily figures on disk)" : "From Claude Code's stats cache (no transcripts on disk)"
+               color: "#8a8a92"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont }
+
         Repeater { model: panel.usage && panel.usage.models ? panel.usage.models : []
             Rectangle { width: col.width; height: Theme.px(30); radius: Theme.px(6); color: "#2a2a30"
                 Text { text: modelData.name; color: "#e6e6ea"; font.pixelSize: Theme.fpx(13); font.family: Theme.uiFont; anchors.left: parent.left; anchors.leftMargin: Theme.px(10); anchors.verticalCenter: parent.verticalCenter }

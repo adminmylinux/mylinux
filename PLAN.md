@@ -708,3 +708,12 @@ tools/manifest-update.sh refreshes the pins explicitly (apps-setup-ai --latest f
 theme-install tells owner/repo, GitHub URLs and other git URLs apart, validates the name, refuses links and
 path escapes in archives, requires background/foreground/accent in colors.toml, promotes atomically with
 rollback. WebP conversion runs in the thread pool (ThemeStore.converting). Tests in tools/tests/guest.sh.
+
+Review section 10 (2026-09-10): Launcher::launch is a detached start (no waitForStarted, no QProcess kept;
+client output in /var/log/apps.log); Tailscale's status query has an 8 s watchdog and errorOccurred cleanup
+(lastError). AgentUsage scans in a worker thread with a per-file mtime/size cache and coalesced refreshes;
+Codex reset deadlines are anchored to the log entry's timestamp (shown "as of"); the chart window is today and
+six days back everywhere; utilization units come from the field name (utilization/percent/used_percent),
+anything else is "unknown"; the stats-cache all-time fallback is labelled all-time. Settings reports share vs
+/tmp and QSettings write errors in the Display panel. Test hooks: myshell --agent-scan DIR [date] and
+--claude-limits FILE, driven by vmtest agent_usage_fixtures on synthetic logs.
