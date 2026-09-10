@@ -8,7 +8,7 @@
 # Usage: apps-setup
 . /usr/lib/mylinux/disk.sh
 . /usr/lib/mylinux/fetch.sh
-A=/mnt/apps; M=$A/.mylinux; STATUS=/run/apps-setup.status; LOCK=/run/apps-setup.lock
+A=/mnt/apps; M=$A/.mylinux; STATUS=/run/apps-setup.status; LOCKD=/run/apps-setup.lock.d
 SETUP_VERSION=2
 STAGE=identify
 status() { { echo "state=$1"; echo "stage=$2"; echo "message=$3"; echo "time=$(date +%s)"; } > $STATUS.tmp && mv -f $STATUS.tmp $STATUS; }
@@ -18,10 +18,29 @@ done_stage() { mkdir -p $M && echo "$SETUP_VERSION $(date +%s)" > "$M/stage-$1-d
 
 has_stage() { [ -f "$M/stage-$1-done" ]; }
 
-exec 9> $LOCK
-flock -n 9 || { echo "apps-setup is already running in another window (lock $LOCK)."; exit 3; }
-trap 'rc=$?; if [ $rc -ne 0 ] && [ "$(sed -n s/^state=//p $STATUS 2>/dev/null)" = running ]; then status failed "$STAGE" "stopped during stage $STAGE (exit $rc); run apps-setup again to continue"; fi' EXIT
+# The lock is a directory with the owner's pid (not a flock: an inherited lock fd would let an orphaned apt-get
+# keep the lock after this script died). A stale lock from a dead pid is taken over.
+take_lock() {
+  if mkdir "$LOCKD" 2>/dev/null; then echo $$ > "$LOCKD/pid"; return 0; fi
+  other=$(cat "$LOCKD/pid" 2>/dev/null)
+  [ -n "$other" ] && [ -d "/proc/$other" ] && return 1
+  rm -rf "$LOCKD"; mkdir "$LOCKD" 2>/dev/null && echo $$ > "$LOCKD/pid"
+}
+take_lock || { echo "apps-setup is already running in another window (pid $(cat "$LOCKD/pid" 2>/dev/null))."; exit 3; }
+# every descendant (apps-run -> chroot -> apt-get -> dpkg): ended when this script stops, so nothing installs on
+# after a closed window or a shutdown, and the next run starts from the recorded stage
+descendants() { for p in /proc/[0-9]*; do [ "$(sed 's/^.*) //' "$p/stat" 2>/dev/null | cut -d' ' -f2)" = "$1" ] && { echo "${p##*/}"; descendants "${p##*/}"; }; done; }
+cleanup() {
+  rc=$?
+  kids=$(descendants $$)
+  # shellcheck disable=SC2086
+  if [ -n "$kids" ]; then kill -TERM $kids 2>/dev/null; sleep 2; kill -KILL $kids 2>/dev/null; fi
+  if [ $rc -ne 0 ] && [ "$(sed -n s/^state=//p $STATUS 2>/dev/null)" = running ]; then status failed "$STAGE" "stopped during stage $STAGE (exit $rc); run apps-setup again to continue"; fi
+  rm -rf "$LOCKD"
+}
+trap cleanup EXIT
 trap 'exit 143' TERM INT HUP     # a killed installer (closed window, shutdown) still records the failed stage
+
 
 status running identify "looking for the apps disk"
 

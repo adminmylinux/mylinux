@@ -121,7 +121,7 @@ def scenario_lock():
     vm = DiskVM()
     try:
         vm.boot()
-        out = vm.sh("rm -f /run/apps-setup.status; setsid sh -c 'exec 9>/run/apps-setup.lock; flock 9; sleep 15' < /dev/null > /dev/null 2>&1 & sleep 1; apps-setup > /mnt/share/setup-lock.log 2>&1; echo rc=$?; cat /mnt/share/setup-lock.log", 6)
+        out = vm.sh("rm -f /run/apps-setup.status; setsid sh -c 'mkdir /run/apps-setup.lock.d; echo $$ > /run/apps-setup.lock.d/pid; sleep 15; rm -rf /run/apps-setup.lock.d' < /dev/null > /dev/null 2>&1 & sleep 1; apps-setup > /mnt/share/setup-lock.log 2>&1; echo rc=$?; cat /mnt/share/setup-lock.log", 6)
         expect("rc=3" in out and "already running" in out, "apps-setup did not respect the lock: %r" % out)
         vm.sh("sleep 15; setsid sh -c 'apps-setup > /mnt/share/setup1.log 2>&1' < /dev/null & echo bg", 18)
         deadline = time.time() + 900
