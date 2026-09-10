@@ -6,3 +6,4 @@ share/*
 *.log
 .DS_Store
 board/overlay/etc/mylinux-release
+__pycache__/
