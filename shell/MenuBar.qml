@@ -6,7 +6,7 @@ Item {
     property var desktop
     property Item backdrop
     property string appName: "mylinux"
-    height: Theme.px(24)      // 24 px, like the macOS bar (was 20; the icons on the right sat cramped)
+    height: Theme.px(20)      // slimmer than the 24 pt macOS bar, per user preference
     property bool displayOpen: false
     property bool agentOpen: false
     property bool tailscaleOpen: false
@@ -165,7 +165,8 @@ Item {
     }
 
     Row {
-        anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter; spacing: Theme.px(16)
+        // the icons read centred a little above the geometric middle of the slim bar (user preference: 4 px up)
+        anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -Theme.px(4); spacing: Theme.px(16)
         // Activity (btop): three little bars, like an activity monitor
         Item {
             id: activityIcon
