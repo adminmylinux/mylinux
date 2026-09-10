@@ -6,7 +6,7 @@ Item {
     property var desktop
     property Item backdrop
     property string appName: "mylinux"
-    height: Theme.px(20)      // slimmer than the 24 pt macOS bar, per user preference
+    height: Theme.px(24)      // 24 px, like the macOS bar (was 20; the icons on the right sat cramped)
     property bool displayOpen: false
     property bool agentOpen: false
     property bool tailscaleOpen: false
