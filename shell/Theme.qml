@@ -6,17 +6,21 @@ import MyShell
 // `brightness` dims the whole screen (software, there is no backlight in a VM).
 QtObject {
     id: theme
-    property real scale: Number(Settings.value("display/scale", 1.0))
-    property real textScale: Number(Settings.value("display/textScale", 1.0))
-    property real brightness: Number(Settings.value("display/brightness", 1.0))
-    property int terminalFontPt: Number(Settings.value("display/terminalFontPt", 11))
+    // Persisted numbers are clamped: a hand-edited or imported ini must never produce a zero or
+    // negative scale (the compositor divides by it) or an invisible screen.
+    function bounded(key, def, lo, hi) { const n = Number(Settings.value(key, def)); return isFinite(n) && n >= lo && n <= hi ? n : def }
+    property real scale: bounded("display/scale", 1.0, 0.5, 3)
+    property real textScale: bounded("display/textScale", 1.0, 0.5, 3)
+    property real brightness: bounded("display/brightness", 1.0, 0.2, 1)
+    property int terminalFontPt: bounded("display/terminalFontPt", 11, 6, 40)
     // keyboard layout sent to Wayland clients (xkb): us / no / is, Apple-keyboard variant
-    property string keyboardLayout: String(Settings.value("input/layout", "us"))
+    // "en" is what the website used to write for the US layout
+    property string keyboardLayout: { const l = String(Settings.value("input/layout", "us")); return l === "en" ? "us" : (["us", "no", "is"].indexOf(l) >= 0 ? l : "us") }
     readonly property var layouts: [ { id: "us", label: "English", badge: "EN" }, { id: "no", label: "Norsk", badge: "NO" }, { id: "is", label: "Íslenska", badge: "IS" } ]
     function setKeyboardLayout(l) { keyboardLayout = l; Settings.set("input/layout", l) }
     // ---- colour theme (Omarchy-compatible palettes in /usr/share/mylinux/themes) ----
     property string themeId: String(Settings.value("theme/id", "mylinux"))
-    property int backgroundIndex: Number(Settings.value("theme/background", 0))
+    property int backgroundIndex: Math.max(0, Math.floor(bounded("theme/background", 0, 0, 999)))
     readonly property var themeData: (ThemeStore.themes, ThemeStore.theme(themeId))
     readonly property var colors: themeData && themeData.colors ? themeData.colors : {}
     readonly property bool isLight: !!(themeData && themeData.light)

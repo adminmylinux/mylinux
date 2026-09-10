@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Machine, type MachineConfig } from "./api";
 import { go } from "./App";
 
-const LAYOUTS = [["en", "English (US)"], ["no", "Norwegian"], ["is", "Icelandic"]];
+const LAYOUTS = [["us", "English (US)"], ["no", "Norwegian"], ["is", "Icelandic"]];
 const THEMES = ["tokyo-night", "catppuccin", "catppuccin-latte", "everforest", "gruvbox", "kanagawa", "matte-black", "nord", "osaka-jade", "ristretto", "rose-pine", "hackerman", "flexoki-light"];
 
 function ListField({ label, hint, values, onChange, placeholder }: { label: string; hint?: string; values: string[]; onChange: (v: string[]) => void; placeholder: string }) {
