@@ -60,12 +60,12 @@ Window {
     function toggleScratch() {
         if (!windows.some(w => w.scratch && !w.helper)) return
         scratchVisible = !scratchVisible; windowsRevision++
-        if (scratchVisible) { for (const w of windows) if (w.scratch) w.raise() } else { focusedWindow = null; focusTopmost() }
+        if (scratchVisible) { for (const w of windows) if (w.scratch && !w.minimized) w.raise() } else focusTopmost()
     }
     function moveFocusedToScratch() {
         const w = focusedWindow; if (!w || w.scratch) return
         if (w.tiled) tilingOf(w).remove(w)
-        w.scratch = true; scratchVisible = false; focusedWindow = null; windowsRevision++; focusTopmost()
+        w.scratch = true; scratchVisible = false; windowsRevision++; focusTopmost()
     }
     function toggleSplit() { if (focusedWindow && focusedWindow.tiled) tilingOf(focusedWindow).toggleSplit(focusedWindow) }
     function closeAll() { for (const w of realWindows()) w.toplevel.sendClose() }
@@ -98,10 +98,14 @@ Window {
     }
     // Apps that open floating instead of tiled (TUI tools with a fixed useful size, like Omarchy's)
     readonly property var floatingApps: ["activity"]
+    // The one rule for "does this window take part in tiling": not a helper, not on the scratchpad,
+    // not a floating-by-policy app. Every tiling path uses it (add, toggle, restore).
+    function tileable(w) { return !!w && !w.helper && !w.scratch && floatingApps.indexOf(appIdOf(w)) < 0 }
     function finishAdd(w) {
         if (w.added) return
         w.added = true
-        if (tilingEnabled && floatingApps.indexOf(appIdOf(w)) < 0) tiling.add(w, focusedWindow)
+        // the window's own workspace tree: it may have been created on an earlier workspace
+        if (tilingEnabled && tileable(w)) tilingOf(w).add(w, w.workspace === workspace ? focusedWindow : null)
         w.raise()
     }
     // First buffer arrived. No app id and a 1x1 buffer or the title "wl-clipboard" = wl-clipboard's popup (it
@@ -110,11 +114,11 @@ Window {
     function windowMapped(w) {
         if (w.added) return
         const t = w.toplevel ? (w.toplevel.title || "") : ""
-        if (appIdOf(w) === "" && (t === "" || t === "wl-clipboard" || (w.geo.width <= 2 && w.geo.height <= 2))) {
+        const tiny = w.geo.width <= 2 && w.geo.height <= 2
+        if (appIdOf(w) === "" && (t === "wl-clipboard" || tiny)) {
             w.helper = true; w.added = true; windowsRevision++
             w.x = 0; w.y = 0
             w.takeKeyboardFocus()
-            if (compositor && compositor.defaultSeat && w.shellSurface) compositor.defaultSeat.keyboardFocus = w.shellSurface.surface
             helperFocusBack.restart()
         } else finishAdd(w)
     }
@@ -127,19 +131,24 @@ Window {
         if (i >= 0) windows.splice(i, 1)
         if (w.tiled) tilingOf(w).remove(w)
         if (focusedWindow === w) focusedWindow = null
+        if (w.scratch && !windows.some(x => x.scratch && !x.helper)) scratchVisible = false   // last scratchpad window gone
         windowsRevision++
         focusTopmost()
     }
     function setFloating(w, floating) {
         if (floating && w.tiled) { tilingOf(w).remove(w); w.raise() }
-        else if (!floating && !w.tiled) tilingOf(w).add(w, w.workspace === workspace ? focusedWindow : null)
+        else if (!floating && !w.tiled && !w.helper && !w.scratch) tilingOf(w).add(w, w.workspace === workspace ? focusedWindow : null)
     }
     function toggleTiling() {
         tilingEnabled = !tilingEnabled; Settings.set("wm/tiling", tilingEnabled ? "true" : "false")
-        if (tilingEnabled) { for (const w of windows) if (!w.tiled && !w.minimized) tilingOf(w).add(w, null) }
+        if (tilingEnabled) { for (const w of windows) if (!w.tiled && !w.minimized && w.added && tileable(w)) tilingOf(w).add(w, null) }
         else { for (const w of windows.slice()) if (w.tiled) tilingOf(w).remove(w) }
     }
-    function focusDir(dir) { if (!focusedWindow) { focusTopmost(); return } const n = tiling.neighbour(focusedWindow, dir); if (n) n.raise() }
+    function focusDir(dir) {
+        if (!focusedWindow || !focusedWindow.tiled) { focusTopmost(); return }
+        const n = tiling.neighbour(focusedWindow, dir)
+        if (n && !n.minimized && n.mapped) n.raise()
+    }
     function swapDir(dir) { if (focusedWindow) tiling.swap(focusedWindow, dir) }
     function resizeDir(dir) { if (focusedWindow) tiling.resize(focusedWindow, dir) }
     // Single source of truth for the key help (⌘ = the Super/Option key)
@@ -166,7 +175,7 @@ Window {
         return id || w.title || "mylinux"
     }
     function windowsFor(appId) { return windows.filter(w => !w.helper && appIdOf(w) === appId) }
-    function visibleWindows() { return windows.filter(w => !w.helper && !w.minimized && (w.scratch ? scratchVisible : w.workspace === workspace)) }
+    function visibleWindows() { return windows.filter(w => !w.helper && !w.minimized && w.mapped && (w.scratch ? scratchVisible : w.workspace === workspace)) }
     function currentWindows() { return windows.filter(w => !w.helper && (w.scratch ? scratchVisible : w.workspace === workspace)) }
     function hasMinimized(appId) { return windowsFor(appId).some(w => w.minimized) }
     function isRunning(appId) { return windowsFor(appId).length > 0 }
@@ -179,6 +188,12 @@ Window {
     function focusTopmost() {
         const t = topmost(visibleWindows())
         if (t) t.raise()
+        else clearSeatFocus()
+    }
+    // Assigning null to the seat's keyboardFocus property from QML is a no-op, so the seat is cleared in C++.
+    function clearSeatFocus() {
+        focusedWindow = null
+        if (compositor && compositor.defaultSeat) Launcher.setSeatFocus(compositor.defaultSeat, null)
     }
     // Dock icon click: windows on this workspace first (restore minimised, else raise); otherwise
     // switch to the workspace of the app's topmost window; otherwise launch.
@@ -291,6 +306,30 @@ Window {
     }
 
     Component { id: windowComponent; MacWindow {} }
+
+    // Test diagnostics (tools/vmtest): with [test] diag=true in the share's mylinux.ini, a file
+    // /mnt/share/diag-request makes the shell dump its window inventory to /mnt/share/diag.json.
+    // Off by default; no network involved.
+    readonly property bool diagEnabled: String(Settings.value("test/diag", "false")) === "true"
+    property var seatFocusSurface: null
+    Connections { target: root.compositor ? root.compositor.defaultSeat : null; function onKeyboardFocusChanged(surf) { root.seatFocusSurface = surf } }
+    Timer { interval: 300; running: root.diagEnabled; repeat: true
+        onTriggered: if (Launcher.fileExists("/mnt/share/diag-request")) { Launcher.removeFile("/mnt/share/diag-request"); root.writeDiag() } }
+    function writeDiag() {
+        const seatFocus = seatFocusSurface
+        const list = windows.map(w => ({
+            appId: appIdOf(w), title: w.title, workspace: w.workspace, mapped: w.mapped, helper: w.helper,
+            scratch: w.scratch, tiled: w.tiled, added: w.added, minimized: w.minimized, visible: w.visible,
+            z: w.z, x: Math.round(w.x), y: Math.round(w.y), width: Math.round(w.width), height: Math.round(w.height),
+            focused: focusedWindow === w, seatFocus: !!(seatFocus && w.shellSurface && w.shellSurface.surface === seatFocus),
+            inTree: tilings.some(t => !!t.findLeaf(t.root, w))
+        }))
+        const trees = tilings.map((t, i) => ({ workspace: i + 1, leaves: t.leaves(t.root).map(l => l.win ? appIdOf(l.win) + "|" + l.win.title : "?") }))
+        Launcher.writeFile("/mnt/share/diag.json", JSON.stringify({ workspace: workspace, scratchVisible: scratchVisible, layerX: windowLayer.x, layerY: windowLayer.y,
+            seatFocus: seatFocusSurface ? (windows.filter(w => w.shellSurface && w.shellSurface.surface === seatFocusSurface).map(w => appIdOf(w) + "|" + w.title + (w.helper ? "|helper" : ""))[0] || "surface not a window") : null,
+            tilingEnabled: tilingEnabled, focused: focusedWindow ? appIdOf(focusedWindow) + "|" + focusedWindow.title : null,
+            seatFocusNull: !seatFocus, windows: list, trees: trees, time: Date.now() }))
+    }
 
     MouseArea { id: dockEdge; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: Theme.px(16); z: 7   // reveal zone (hover only, clicks pass through)
                hoverEnabled: true; acceptedButtons: Qt.NoButton; onEntered: root.dockRevealed = true; onExited: dockHideTimer.restart() }

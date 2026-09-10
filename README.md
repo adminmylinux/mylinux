@@ -201,6 +201,20 @@ tools/                      build, SDK, apps-disk, automation helpers
 run.sh / build.sh           run on the Mac / build inside Debian
 ```
 
+## Checks and tests
+
+```bash
+tools/check.sh              # web typecheck + tests, shell syntax, Python syntax, QML lint, script tests
+tools/vmtest/vmtest.py      # boots the throwaway test VM and runs the smoke scenarios (typing, focus, tiling)
+```
+
+The VM suite uses `out/apps-fresh.img` and `out/fresh-share` only and drives QEMU through its QMP
+socket; it asserts on a diagnostics dump the shell writes when `[test] diag=true` is set in that
+share's `mylinux.ini`. `./build.sh` and `tools/get-image.sh` promote a kernel + rootfs pair only after
+a successful build or verified download and keep the previous pair as `out/*.prev`; `out/IMAGE-REVISION`
+names the git revision or release the images came from. `DRYRUN=1 ./run.sh` prints the QEMU command
+instead of starting it.
+
 ## License
 
 GPL-3.0-or-later (see `LICENSE`). The desktop shell links the Qt Wayland Compositor module,

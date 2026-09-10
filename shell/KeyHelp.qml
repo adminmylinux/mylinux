@@ -24,7 +24,7 @@ Item {
     }
     function showSearch(seed) { tab = "search"; query = seed || ""; search.text = query; search.forceActiveFocus() }
     function showSheet() { tab = "sheet"; query = ""; search.text = ""; kh.forceActiveFocus() }
-    onVisibleChanged: { if (visible) { showSheet(); if (desktop && desktop.compositor) desktop.compositor.defaultSeat.keyboardFocus = null } else if (desktop && desktop.focusedWindow) desktop.focusedWindow.raise() }
+    onVisibleChanged: { if (visible) { showSheet(); if (desktop) desktop.clearSeatFocus() } else if (desktop && desktop.focusedWindow) desktop.focusedWindow.raise() }
     Keys.onPressed: (ev) => {
         if (ev.key === Qt.Key_Escape || ev.key === Qt.Key_K) { kh.visible = false; ev.accepted = true }
         else if (ev.key === Qt.Key_Tab) { showSearch(""); ev.accepted = true }

@@ -17,7 +17,7 @@ Item {
             && (shellSurface.windowGeometry.width < surfaceItem.width - 2 || shellSurface.windowGeometry.height < surfaceItem.height - 2)
     readonly property bool showTitle: !helper && (Theme.titleBars === "always" || (Theme.titleBars === "auto" && !selfDecorated))
     readonly property int titleHeight: showTitle ? Theme.px(34) : 0
-    onTitleHeightChanged: if (tiled && output && output.tiling) output.tiling.relayout()   // re-send the tile size
+    onTitleHeightChanged: if (tiled && output && output.tilings) output.tilingOf(win).relayout()   // re-send the tile size
     readonly property int radius: Theme.px(12)
     // fractional UI scale is applied to the client surface as an item scale; integer scale is HiDPI in the client
     readonly property real surfaceScale: Theme.scale / Theme.outputScale
@@ -30,10 +30,8 @@ Item {
     // Keyboard focus only goes to a surface that has content: GTK (Firefox) ignores a focus-enter it gets
     // before its window is mapped and then drops every key, because no second enter ever comes.
     onMappedChanged: if (mapped && output) { if (!added) output.windowMapped(win); if (output.focusedWindow === win) refocus() }
-    function refocus() {
-        if (output && output.compositor && output.compositor.defaultSeat) output.compositor.defaultSeat.keyboardFocus = null
-        surfaceItem.takeFocus()
-    }
+    // raise() defers the seat focus until the first buffer, so this is the first enter the client sees
+    function refocus() { surfaceItem.takeFocus(); if (output) output.focusedWindow = win }
     Connections { target: win.toplevel; function onAppIdChanged() { if (win.toplevel.appId && win.output && !win.added) win.output.finishAdd(win) } }
     function takeKeyboardFocus() { surfaceItem.takeFocus() }
     // (not "onWorkspace": names starting with "on" + a capital read as signal handlers in QML)

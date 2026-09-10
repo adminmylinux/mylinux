@@ -636,6 +636,21 @@ release (xkb reports Key_Super_L, not Key_Meta) so the ⌘-drag layer stayed ena
 shortcut -> Super_L/R and AltGr recognised. Diagnosed with WAYLAND_DEBUG=1 inside the chroot (set it inside apps-run's
 sh -c: env -i strips it).
 
+Review fixes, sections 1-5 (2026-09-10, branch fix/review-2026-09): tools/check.sh (web typecheck + bun tests, sh -n,
+python ast, qmllint, script tests) and tools/vmtest (QMP/serial driver + compositor diagnostics dump behind [test]
+diag=true; scenarios boot, foot typing, Firefox typing via a local fixture page, empty-workspace focus, helper not
+tiled, scratchpad, close button). Web: ini.ts rewritten with a validated contract (prototype-safe dicts, bounded
+numbers, layout enum with en->us migration, no newline injection, extra can not shadow managed keys, problems
+reported), store.ts with transactional limits, routes with bounded bodies and uniform 4xx; 20 bun tests. Guest:
+Theme.qml clamps persisted numbers and maps en->us. Scripts: build.sh real exit status + staged promotion + revision
+file; get-image.sh single release + staging + .prev; make-app-bundle.sh temp+move with unbranded fallback; run.sh
+works from any directory, absolute/relative overrides, argument list instead of word splitting, validation, cleanup
+traps, DRYRUN, instance-scoped host commands; host-window.sh by window title. Compositor: tileable() predicate used
+by every tiling path, per-window trees (finishAdd, title height), seat focus cleared through C++ when nothing is
+focusable (assigning null to keyboardFocus in QML is a no-op: Spotlight/KeyHelp/Settings relied on it), helper =
+nameless AND (1x1 or "wl-clipboard"), scratchVisible reset when the last scratch window closes, directional focus only
+among mapped visible windows. Not done here: a real-Postgres run of the route tests (needs TEST_DATABASE_URL).
+
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.

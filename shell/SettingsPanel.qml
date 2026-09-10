@@ -17,7 +17,7 @@ Item {
     ]
     property bool reveal: false
     onVisibleChanged: {
-        if (visible) { if (desktop && desktop.compositor) desktop.compositor.defaultSeat.keyboardFocus = null; reveal = false; firstField.forceActiveFocus() }
+        if (visible) { if (desktop) desktop.clearSeatFocus(); reveal = false; firstField.forceActiveFocus() }
         else if (desktop && desktop.focusedWindow) desktop.focusedWindow.raise()
     }
     property Item firstField

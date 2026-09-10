@@ -19,8 +19,7 @@ Item {
     function show(m) {
         if (m === "theme") ThemeStore.rescan()
         mode = m; stack = []; input.text = ""; selected = 0; open = true
-        if (desktop && desktop.compositor && desktop.compositor.defaultSeat)
-            desktop.compositor.defaultSeat.keyboardFocus = null     // keys come to us, not the app
+        if (desktop) desktop.clearSeatFocus()     // keys come to us, not the app
         input.forceActiveFocus()
         refresh()
     }
