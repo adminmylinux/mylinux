@@ -670,3 +670,12 @@ possible with it; UTM's QEMU build or a source build with virglrenderer+ANGLE wo
 5. Stage B (Mesa + eglfs) build → verify GPU path, drop software backend
 6. Real application work in `app/`
 7. Phase 7 items as they become relevant
+
+Review section 6 (2026-09-10): MacWindow builds every xdg configure in one place (`configure()`/`states()`):
+ActivatedState only for the focused window (losing focus re-sends the size without it), FullscreenState for
+⌘F / client set_fullscreen (title bar off, out of the tiling tree, re-added or restored to the saved floating
+geometry on exit), MaximizedState for zoom (green button, double-click, ⌘⌥F, client set_maximized; a tiled
+window's maximize request is answered with its tile). Client min/max sizes clamp manual resizes; Tiling refuses
+a split that would leave a window below its minimum (the window floats) and never produces negative or
+overlapping rects; a scale or title-bar change relays out every workspace tree. vmtest: fullscreen,
+single_activation, scale_relayout (diag now reports client-acked states and the work-area size).

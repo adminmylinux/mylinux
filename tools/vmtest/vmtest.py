@@ -211,6 +211,92 @@ def scenario_close_button(vm):
     vm.qmp("combo", "meta_l-1", "sleep", 0.5)
 
 
+def _open_terminal(vm, ws, count=1, timeout=20):
+    """Open `count` terminals on workspace `ws`; returns the diag once they are all mapped."""
+    vm.qmp("combo", "meta_l-%d" % ws, "sleep", 0.5)
+    for _ in range(count):
+        vm.qmp("combo", "meta_l-ret", "sleep", 0.3)
+    return vm.wait_for(lambda d: d["workspace"] == ws and len([w for w in d["windows"] if w["appId"] == "foot" and w["mapped"] and w["workspace"] == ws]) >= count,
+                       "%d terminal(s) on workspace %d" % (count, ws), timeout)
+
+
+def _no_overlap(d, ws):
+    """Tiled, visible windows on a workspace must have non-negative rects inside the work area and not overlap."""
+    tiles = [w for w in d["windows"] if w["workspace"] == ws and w["tiled"] and w["visible"] and not w["helper"]]
+    for w in tiles:
+        if w["width"] <= 0 or w["height"] <= 0 or w["x"] < 0 or w["y"] < 0:
+            raise Fail("degenerate tile rect: %s" % w)
+        if w["x"] + w["width"] > d["layerW"] + 2 or w["y"] + w["height"] > d["layerH"] + 2:
+            raise Fail("tile outside the work area (%dx%d): %s" % (d["layerW"], d["layerH"], w))
+    for i, a in enumerate(tiles):
+        for b in tiles[i + 1:]:
+            if a["x"] < b["x"] + b["width"] - 1 and b["x"] < a["x"] + a["width"] - 1 and a["y"] < b["y"] + b["height"] - 1 and b["y"] < a["y"] + a["height"] - 1:
+                raise Fail("overlapping tiles: %s and %s" % (a["title"], b["title"]))
+    return tiles
+
+
+def scenario_fullscreen(vm):
+    d = _open_terminal(vm, 3)
+    foot = lambda d: [w for w in d["windows"] if w["appId"] == "foot" and w["workspace"] == 3]
+    if not foot(d)[0]["inTree"]:
+        raise Fail("terminal did not start tiled: %s" % foot(d))
+    vm.qmp("combo", "meta_l-f", "sleep", 0.5)
+    d = vm.wait_for(lambda d: foot(d) and foot(d)[0]["fullscreen"] and foot(d)[0]["clientFullscreen"], "fullscreen acknowledged by the client", 10)
+    w = foot(d)[0]
+    if w["inTree"] or w["tiled"]:
+        raise Fail("fullscreen window still in the tiling tree: %s" % w)
+    if w["x"] != 0 or w["y"] != 0 or w["titleHeight"] != 0 or abs(w["width"] - d["layerW"]) > 2 or abs(w["height"] - d["layerH"]) > 2:
+        raise Fail("fullscreen window does not cover the work area %dx%d: %s" % (d["layerW"], d["layerH"], w))
+    # a window opened while another is fullscreen: tiled normally, activation moves to it, fullscreen one keeps its state
+    vm.qmp("combo", "meta_l-ret", "sleep", 0.5)
+    d = vm.wait_for(lambda d: len([w for w in foot(d) if w["mapped"]]) >= 2, "second terminal", 15)
+    d = vm.wait_for(lambda d: [w for w in foot(d) if w["clientActivated"]] and all(w["clientActivated"] == w["focused"] for w in foot(d)),
+                    "exactly the focused window activated", 10)
+    fs = [w for w in foot(d) if w["fullscreen"]]; other = [w for w in foot(d) if not w["fullscreen"]]
+    if len(fs) != 1 or len(other) != 1 or not other[0]["inTree"] or not fs[0]["clientFullscreen"]:
+        raise Fail("state after opening a second window: fullscreen=%s other=%s" % (fs, other))
+    # close the new one: focus returns to the fullscreen window; leave fullscreen -> back into its tree
+    vm.qmp("combo", "meta_l-w", "sleep", 0.8)
+    d = vm.wait_for(lambda d: len(foot(d)) == 1 and foot(d)[0]["focused"], "focus back on the fullscreen window", 10)
+    vm.qmp("combo", "meta_l-f", "sleep", 0.5)
+    d = vm.wait_for(lambda d: foot(d) and not foot(d)[0]["fullscreen"] and not foot(d)[0]["clientFullscreen"] and foot(d)[0]["inTree"], "restored into the tiling tree", 10)
+    _no_overlap(d, 3)
+    vm.qmp("combo", "meta_l-w", "sleep", 0.8, "combo", "meta_l-1", "sleep", 0.5)
+
+
+def scenario_single_activation(vm):
+    d = _open_terminal(vm, 3, 2)
+    foot = lambda d: [w for w in d["windows"] if w["appId"] == "foot" and w["workspace"] == 3]
+    d = vm.wait_for(lambda d: len([w for w in foot(d) if w["clientActivated"]]) == 1 and all(w["clientActivated"] == w["focused"] for w in foot(d)),
+                    "one activated terminal", 10)
+    before = [w for w in foot(d) if w["focused"]][0]["title"]
+    # move focus with ⌘← / ⌘→ (whichever side the neighbour is on): the old window must drop ActivatedState
+    vm.qmp("combo", "meta_l-left", "sleep", 0.4, "combo", "meta_l-right", "sleep", 0.4, "combo", "meta_l-left", "sleep", 0.6)
+    d = vm.wait_for(lambda d: len([w for w in foot(d) if w["clientActivated"]]) == 1 and all(w["clientActivated"] == w["focused"] for w in foot(d)),
+                    "still exactly one activated terminal after moving focus", 10)
+    _no_overlap(d, 3)
+    vm.qmp("combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-1", "sleep", 0.5)
+
+
+def scenario_scale_relayout(vm):
+    d = _open_terminal(vm, 3, 2)
+    d = vm.wait_for(lambda d: len([w for w in d["windows"] if w["appId"] == "foot" and w["workspace"] == 3 and w["inTree"]]) == 2, "two tiled terminals", 10)
+    scale0 = d["scale"]
+    vm.qmp("combo", "meta_l-1", "sleep", 0.5)                      # workspace 3's tree is now hidden
+    vm.qmp("combo", "meta_l-slash", "sleep", 1.5)                  # scale up: every tree must be relaid, not only the visible one
+    d = vm.wait_for(lambda d: d["scale"] > scale0, "scale increased", 8)
+    _no_overlap(d, 1)
+    vm.qmp("combo", "meta_l-3", "sleep", 1.2)
+    d = vm.wait_for(lambda d: d["workspace"] == 3, "workspace 3")
+    tiles = _no_overlap(d, 3)
+    if len(tiles) != 2:
+        raise Fail("expected two tiles on workspace 3 after the scale change, got %s" % [t["title"] for t in tiles])
+    vm.qmp("combo", "alt-meta_l-slash", "sleep", 1.5)
+    d = vm.wait_for(lambda d: abs(d["scale"] - scale0) < 0.01, "scale restored", 8)
+    _no_overlap(d, 3)
+    vm.qmp("combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-1", "sleep", 0.5)
+
+
 SCENARIOS = [
     ("boot", scenario_boot),
     ("foot_typing", scenario_foot_typing),
@@ -219,7 +305,11 @@ SCENARIOS = [
     ("helper_not_tiled", scenario_helper_not_tiled),
     ("scratchpad", scenario_scratchpad),
     ("close_button", scenario_close_button),
+    ("fullscreen", scenario_fullscreen),
+    ("single_activation", scenario_single_activation),
+    ("scale_relayout", scenario_scale_relayout),
 ]
+
 
 
 def main(argv):

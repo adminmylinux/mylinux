@@ -15,7 +15,7 @@ Item {
     // mode is no use here, because foot (configured without any decoration) also reports client-side.
     readonly property bool selfDecorated: shellSurface && surfaceItem.width > 0 && shellSurface.windowGeometry.width > 0
             && (shellSurface.windowGeometry.width < surfaceItem.width - 2 || shellSurface.windowGeometry.height < surfaceItem.height - 2)
-    readonly property bool showTitle: !helper && (Theme.titleBars === "always" || (Theme.titleBars === "auto" && !selfDecorated))
+    readonly property bool showTitle: !helper && !fullscreen && (Theme.titleBars === "always" || (Theme.titleBars === "auto" && !selfDecorated))
     readonly property int titleHeight: showTitle ? Theme.px(34) : 0
     onTitleHeightChanged: if (tiled && output && output.tilings) output.tilingOf(win).relayout()   // re-send the tile size
     readonly property int radius: Theme.px(12)
@@ -29,28 +29,120 @@ Item {
     readonly property bool mapped: surfaceItem.width > 0 && surfaceItem.height > 0
     // Keyboard focus only goes to a surface that has content: GTK (Firefox) ignores a focus-enter it gets
     // before its window is mapped and then drops every key, because no second enter ever comes.
-    onMappedChanged: if (mapped && output) { if (!added) output.windowMapped(win); if (output.focusedWindow === win) refocus() }
+    onMappedChanged: if (mapped && output) { if (!added) output.windowMapped(win); if (output.focusedWindow === win) refocus(); reconfigure() }
     // raise() defers the seat focus until the first buffer, so this is the first enter the client sees
     function refocus() { surfaceItem.takeFocus(); if (output) output.focusedWindow = win }
-    Connections { target: win.toplevel; function onAppIdChanged() { if (win.toplevel.appId && win.output && !win.added) win.output.finishAdd(win) } }
+    // Client requests go through the same state model as the shell's own shortcuts. A tiled window's
+    // maximize request is answered with its tile (no MaximizedState), so the client learns it was refused.
+    Connections { target: win.toplevel
+        function onAppIdChanged() { if (win.toplevel.appId && win.output && !win.added) win.output.finishAdd(win) }
+        function onSetFullscreen(o) { win.setFullscreen(true) }
+        function onUnsetFullscreen() { win.setFullscreen(false) }
+        function onSetMaximized() { if (win.tiled || win.fullscreen) win.reconfigure(); else win.zoom() }
+        function onUnsetMaximized() { win.unzoom() }
+        function onSetMinimized() { win.minimize() }
+    }
+    // the work area (window layer) changed size: fullscreen and zoomed windows follow it
+    Connections { target: win.parent
+        function onWidthChanged() { if (win.fullscreen) win.applyFullscreen(); else if (win.zoomed) win.applyZoom() }
+        function onHeightChanged() { if (win.fullscreen) win.applyFullscreen(); else if (win.zoomed) win.applyZoom() }
+    }
     function takeKeyboardFocus() { surfaceItem.takeFocus() }
     // (not "onWorkspace": names starting with "on" + a capital read as signal handlers in QML)
     readonly property bool shownWorkspace: !output || (scratch ? output.scratchVisible : output.workspace === workspace)
     property bool placed: false
     property bool tiled: false
+    // ---- window state: every xdg configure is built here from the window's role ----
+    // fullscreen: covers the work area, no title bar, taken out of the tiling tree (re-added on exit).
+    // zoomed: maximized to the work area (green button, title double-click, client set_maximized).
+    // Only the focused window is sent ActivatedState; losing focus re-sends the same size without it.
     property bool fullscreen: false
+    property bool zoomed: false
+    property rect savedGeo: Qt.rect(0, 0, 0, 0)      // floating geometry before fullscreen / zoom (surface units)
+    property bool savedTiled: false                  // was in the tiling tree when fullscreen started
+    readonly property bool activated: !!output && output.focusedWindow === win
+    onActivatedChanged: reconfigure()
     property rect tileRect: Qt.rect(0, 0, 0, 0)
+    function states(extra) {
+        const s = []
+        if (activated) s.push(XdgToplevel.ActivatedState)
+        if (fullscreen) s.push(XdgToplevel.FullscreenState)
+        else if (zoomed) s.push(XdgToplevel.MaximizedState)
+        if (extra) for (const e of extra) s.push(e)
+        return s
+    }
+    // the client's own limits (xdg set_min_size / set_max_size), in surface units
+    function clampSize(w, h) {
+        const mn = toplevel ? toplevel.minSize : Qt.size(0, 0), mx = toplevel ? toplevel.maxSize : Qt.size(0, 0)
+        if (mn.width > 0) w = Math.max(w, mn.width)
+        if (mn.height > 0) h = Math.max(h, mn.height)
+        if (mx.width > 0) w = Math.min(w, mx.width)
+        if (mx.height > 0) h = Math.min(h, mx.height)
+        return Qt.size(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
+    }
+    // size in surface units; fullscreen sizes are the output's and bypass the client's limits
+    function configure(w, h, extra) {
+        if (!toplevel) return
+        const s = fullscreen ? Qt.size(Math.max(1, Math.round(w)), Math.max(1, Math.round(h))) : clampSize(w, h)
+        toplevel.sendConfigure(s, states(extra))
+    }
+    // the current size again with the current states (focus, fullscreen or zoom changed)
+    function reconfigure() {
+        if (!toplevel) return
+        if (fullscreen) applyFullscreen()
+        else if (zoomed) applyZoom()
+        else if (tiled && tileRect.width > 0) configure(tileRect.width / surfaceScale, (tileRect.height - titleHeight) / surfaceScale)
+        else if (geo.width > 0) configure(geo.width, geo.height)
+    }
     // Tiling assigns a rect: move the frame there and ask the client for the matching surface size.
     function setTileRect(r) {
+        if (fullscreen) return
+        zoomed = false
         tileRect = r; placed = true
         x = r.x; y = r.y
-        toplevel.sendConfigure(Qt.size(Math.max(100, r.width / surfaceScale), Math.max(60, (r.height - titleHeight) / surfaceScale)), [XdgToplevel.ActivatedState])
+        configure(r.width / surfaceScale, (r.height - titleHeight) / surfaceScale)
     }
-    function toggleFullscreen() {
-        fullscreen = !fullscreen
-        if (fullscreen) { raise(); toplevel.sendConfigure(Qt.size(parent.width / surfaceScale, (parent.height - titleHeight) / surfaceScale), [XdgToplevel.ActivatedState]); x = 0; y = 0 }
-        else if (tiled && output) output.tiling.relayout()
-        else zoom()
+    function applyFullscreen() {
+        if (!fullscreen || !parent) return
+        x = 0; y = 0
+        configure(parent.width / surfaceScale, parent.height / surfaceScale)
+    }
+    function setFullscreen(on) {
+        if (on === fullscreen) return
+        if (on) {
+            savedTiled = tiled
+            if (tiled && output) output.tilingOf(win).remove(win)
+            else if (!zoomed) savedGeo = Qt.rect(x, y, geo.width, geo.height)
+            fullscreen = true
+            raise(); applyFullscreen()
+        } else {
+            fullscreen = false
+            if (savedTiled && output && output.tilingEnabled && output.tileable(win) && output.tilingOf(win).add(win, null)) { raise(); return }
+            if (zoomed) applyZoom()
+            else if (savedGeo.width > 0) { x = savedGeo.x; y = savedGeo.y; configure(savedGeo.width, savedGeo.height) }
+            else reconfigure()
+            raise()
+        }
+    }
+    function toggleFullscreen() { setFullscreen(!fullscreen) }
+    function applyZoom() {
+        if (!zoomed || !parent) return
+        x = 20; y = 20
+        configure((parent.width - 40) / surfaceScale, (parent.height - 40 - titleHeight) / surfaceScale)
+    }
+    // green button / title double-click / ⌘⌥F: maximize to the work area, floating; again restores
+    function zoom() {
+        if (fullscreen) return
+        if (zoomed) { unzoom(); return }
+        if (tiled && output) output.setFloating(win, true)
+        savedGeo = Qt.rect(x, y, geo.width, geo.height)
+        zoomed = true; raise(); applyZoom()
+    }
+    function unzoom() {
+        if (!zoomed) return
+        zoomed = false
+        if (savedGeo.width > 0) { x = savedGeo.x; y = savedGeo.y; configure(savedGeo.width, savedGeo.height) }
+        else reconfigure()
     }
     property int resizeEdges: 0          // non-zero while a ResizeHandle drags
     property real anchoredRight: 0
@@ -88,20 +180,13 @@ Item {
         if (output) output.touch()
         raise()
     }
-    function zoom() {
-        raise()
-        toplevel.sendConfigure(Qt.size((parent.width - 40) / surfaceScale, (parent.height - 40 - titleHeight) / surfaceScale), [XdgToplevel.ActivatedState])
-        x = 20; y = 20
-    }
     // First time we know our size: cascade within the layer and keep clear of its edges.
     function place() {
-        if (placed || tiled || width <= 0 || height <= titleHeight) return
+        if (placed || tiled || fullscreen || zoomed || width <= 0 || height <= titleHeight) return
         placed = true
         // Oversize first window (e.g. Chromium): ask the client for a size that fits the work area.
         if (width > parent.width - 40 || height > parent.height - 40)
-            toplevel.sendConfigure(Qt.size(Math.min(geo.width, (parent.width - 80) / surfaceScale),
-                                           Math.min(geo.height, (parent.height - 80 - titleHeight) / surfaceScale)),
-                                   [XdgToplevel.ActivatedState])
+            configure(Math.min(geo.width, (parent.width - 80) / surfaceScale), Math.min(geo.height, (parent.height - 80 - titleHeight) / surfaceScale))
         const step = 36
         let px = 60 + (cascadeIndex % 8) * step, py = 30 + (cascadeIndex % 8) * step
         px = Math.max(0, Math.min(px, parent.width - width))
@@ -140,7 +225,7 @@ Item {
                 drag.minimumX: -win.width + 80; drag.maximumX: win.parent.width - 80
                 drag.minimumY: 0; drag.maximumY: win.parent.height - win.titleHeight
                 onPressed: win.raise()
-                onPositionChanged: if (drag.active && win.tiled && win.output) win.output.setFloating(win, true)
+                onPositionChanged: if (drag.active) { win.zoomed = false; if (win.tiled && win.output) win.output.setFloating(win, true) }
                 onDoubleClicked: win.zoom()
             }
             Row {
@@ -186,16 +271,19 @@ Item {
         property point last; property real sw; property real sh
         onPressed: (m) => {
             win.raise()
+            if (win.fullscreen) return
+            win.zoomed = false
             if (m.button === Qt.LeftButton && win.tiled && win.output) win.output.setFloating(win, true)
             last = mapToItem(null, m.x, m.y); sw = win.geo.width; sh = win.geo.height
         }
         onPositionChanged: (m) => {
+            if (win.fullscreen) return
             const p = mapToItem(null, m.x, m.y)
             if (pressedButtons & Qt.LeftButton) { win.x += p.x - last.x; win.y += p.y - last.y; last = p }
             else if (pressedButtons & Qt.RightButton)
-                win.toplevel.sendConfigure(Qt.size(Math.max(240, sw + (p.x - last.x) / win.surfaceScale), Math.max(120, sh + (p.y - last.y) / win.surfaceScale)), [XdgToplevel.ResizingState, XdgToplevel.ActivatedState])
+                win.configure(Math.max(240, sw + (p.x - last.x) / win.surfaceScale), Math.max(120, sh + (p.y - last.y) / win.surfaceScale), [XdgToplevel.ResizingState])
         }
-        onReleased: (m) => { if (m.button === Qt.RightButton) win.toplevel.sendConfigure(Qt.size(win.geo.width, win.geo.height), [XdgToplevel.ActivatedState]) }
+        onReleased: (m) => { if (m.button === Qt.RightButton && !win.fullscreen) win.configure(win.geo.width, win.geo.height) }
     }
 
     // Resize handles on every edge and corner. The client picks the final size (xdg configure);
@@ -204,12 +292,15 @@ Item {
         property int edges          // Qt.LeftEdge | Qt.RightEdge | Qt.TopEdge | Qt.BottomEdge
         property real startW; property real startH; property point startPos
         property real fixedRight; property real fixedBottom
+        enabled: !win.fullscreen
         hoverEnabled: true
+
         cursorShape: (edges === (Qt.LeftEdge | Qt.TopEdge) || edges === (Qt.RightEdge | Qt.BottomEdge)) ? Qt.SizeFDiagCursor
                    : (edges === (Qt.RightEdge | Qt.TopEdge) || edges === (Qt.LeftEdge | Qt.BottomEdge)) ? Qt.SizeBDiagCursor
                    : (edges & (Qt.LeftEdge | Qt.RightEdge)) ? Qt.SizeHorCursor : Qt.SizeVerCursor
         onPressed: (mouse) => {
             win.raise()
+            win.zoomed = false
             startW = win.geo.width; startH = win.geo.height
             startPos = mapToItem(null, mouse.x, mouse.y)
             fixedRight = win.x + win.width; fixedBottom = win.y + win.height
@@ -223,13 +314,13 @@ Item {
             if (edges & Qt.TopEdge) dh = -dh
             if (!(edges & (Qt.LeftEdge | Qt.RightEdge))) dw = 0
             if (!(edges & (Qt.TopEdge | Qt.BottomEdge))) dh = 0
-            const s = Qt.size(Math.max(240, startW + dw / win.surfaceScale), Math.max(120, startH + dh / win.surfaceScale))
-            win.toplevel.sendConfigure(s, [XdgToplevel.ResizingState, XdgToplevel.ActivatedState])
+            win.configure(Math.max(240, startW + dw / win.surfaceScale), Math.max(120, startH + dh / win.surfaceScale), [XdgToplevel.ResizingState])
         }
         onReleased: {
             win.resizeEdges = 0
-            win.toplevel.sendConfigure(Qt.size(win.geo.width, win.geo.height), [XdgToplevel.ActivatedState])
+            win.configure(win.geo.width, win.geo.height)
         }
+
     }
     // grab zones: `outer` px outside the frame + `inner` px inside it; corners are `corner` square
     readonly property int outer: 12

@@ -42,7 +42,7 @@ Window {
         if (w.tiled) tilingOf(w).remove(w)
         w.scratch = false
         w.workspace = n
-        if (tilingEnabled && !w.minimized) tilings[n - 1].add(w, null)
+        if (tilingEnabled && !w.minimized && !w.fullscreen && tileable(w)) tilings[n - 1].add(w, null)
         windowsRevision++
         if (follow === false) { if (focusedWindow === w) focusedWindow = null; focusTopmost(); return }
         switchWorkspaceTracked(n)
@@ -74,6 +74,12 @@ Window {
         const f = "/root/screenshot-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + ".png"
         backdrop.grabToImage(r => { r.saveToFile(f); console.log("screenshot saved:", f) })
     }
+    // A scale change resizes every tile and title bar: relayout all workspace trees, not only the visible one.
+    function relayoutAll() {
+        for (const t of tilings) t.relayout()
+        for (const w of windows) { if (w.fullscreen) w.applyFullscreen(); else if (w.zoomed) w.applyZoom() }
+    }
+    Connections { target: Theme; function onScaleChanged() { root.relayoutAll() } function onTitleBarsChanged() { root.relayoutAll() } }
     function scaleStep(up) {
         const steps = [1, 1.25, 1.5, 2]
         let i = steps.findIndex(v => Math.abs(v - Theme.scale) < 0.01); if (i < 0) i = 0
@@ -141,7 +147,7 @@ Window {
     }
     function toggleTiling() {
         tilingEnabled = !tilingEnabled; Settings.set("wm/tiling", tilingEnabled ? "true" : "false")
-        if (tilingEnabled) { for (const w of windows) if (!w.tiled && !w.minimized && w.added && tileable(w)) tilingOf(w).add(w, null) }
+        if (tilingEnabled) { for (const w of windows) if (!w.tiled && !w.minimized && !w.fullscreen && w.added && tileable(w)) tilingOf(w).add(w, null) }
         else { for (const w of windows.slice()) if (w.tiled) tilingOf(w).remove(w) }
     }
     function focusDir(dir) {
@@ -154,7 +160,7 @@ Window {
     // Single source of truth for the key help (⌘ = the Super/Option key)
     readonly property var keybindings: [
         { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ ⇧ F", "Files"], ["⌘ Space / ⌘ Esc", "Menu: type to find anything"], ["⌘ ⇧ Esc", "System menu"], ["⌘ K", "This list"]] },
-        { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / full width"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
+        { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / maximise"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
         { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["⌘ ⇧ ⌥ 1 … 9", "Move window there silently"], ["⌘ Tab / ⌘ ⇧ Tab", "Next / previous workspace"], ["⌘ ⌃ Tab", "Former workspace"], ["⌘ S", "Show / hide the scratchpad"], ["⌘ ⌥ S", "Move window to the scratchpad"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
         { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["⌘ ⌃ C", "Send clipboard to Mac"], ["Menu bar icons", "Activity · Tailscale · Agents · Keyboard · Display · Settings"]] }
@@ -239,7 +245,8 @@ Window {
     Shortcut { sequences: ["Meta+Shift+Return", "Meta+Shift+Enter", "Meta+Shift+B"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/firefox") }
     Shortcut { sequences: ["Meta+Shift+F"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/files") }
     Shortcut { sequences: ["Meta+K"]; context: Qt.ApplicationShortcut; onActivated: keyHelp.visible = !keyHelp.visible }
-    Shortcut { sequences: ["Meta+F", "Meta+Alt+F", "Meta+Ctrl+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.toggleFullscreen() }
+    Shortcut { sequences: ["Meta+F", "Meta+Ctrl+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.toggleFullscreen() }
+    Shortcut { sequences: ["Meta+Alt+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.zoom() }
     Shortcut { sequences: ["Meta+T"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.setFloating(root.focusedWindow, root.focusedWindow.tiled) }
     Shortcut { sequences: ["Meta+J"]; context: Qt.ApplicationShortcut; onActivated: root.toggleSplit() }
     Shortcut { sequences: ["Meta+Shift+T"]; context: Qt.ApplicationShortcut; onActivated: root.toggleTiling() }
@@ -322,10 +329,16 @@ Window {
             scratch: w.scratch, tiled: w.tiled, added: w.added, minimized: w.minimized, visible: w.visible,
             z: w.z, x: Math.round(w.x), y: Math.round(w.y), width: Math.round(w.width), height: Math.round(w.height),
             focused: focusedWindow === w, seatFocus: !!(seatFocus && w.shellSurface && w.shellSurface.surface === seatFocus),
-            inTree: tilings.some(t => !!t.findLeaf(t.root, w))
+            inTree: tilings.some(t => !!t.findLeaf(t.root, w)),
+            fullscreen: w.fullscreen, zoomed: w.zoomed, titleHeight: w.titleHeight,
+            // what the client last acknowledged (xdg configure states)
+            clientActivated: !!(w.toplevel && w.toplevel.activated), clientFullscreen: !!(w.toplevel && w.toplevel.fullscreen),
+            clientMaximized: !!(w.toplevel && w.toplevel.maximized)
         }))
         const trees = tilings.map((t, i) => ({ workspace: i + 1, leaves: t.leaves(t.root).map(l => l.win ? appIdOf(l.win) + "|" + l.win.title : "?") }))
         Launcher.writeFile("/mnt/share/diag.json", JSON.stringify({ workspace: workspace, scratchVisible: scratchVisible, layerX: windowLayer.x, layerY: windowLayer.y,
+            layerW: windowLayer.width, layerH: windowLayer.height, scale: Theme.scale,
+
             seatFocus: seatFocusSurface ? (windows.filter(w => w.shellSurface && w.shellSurface.surface === seatFocusSurface).map(w => appIdOf(w) + "|" + w.title + (w.helper ? "|helper" : ""))[0] || "surface not a window") : null,
             tilingEnabled: tilingEnabled, focused: focusedWindow ? appIdOf(focusedWindow) + "|" + focusedWindow.title : null,
             seatFocusNull: !seatFocus, windows: list, trees: trees, time: Date.now() }))
