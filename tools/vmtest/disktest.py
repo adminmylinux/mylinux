@@ -121,16 +121,16 @@ def scenario_lock():
     vm = DiskVM()
     try:
         vm.boot()
-        out = vm.sh("rm -f /run/apps-setup.status; setsid sh -c 'exec 9>/run/apps-setup.lock; flock 9; sleep 15' < /dev/null > /dev/null 2>&1 & sleep 1; apps-setup > /tmp/setup2.log 2>&1; echo rc=$?; cat /tmp/setup2.log", 6)
+        out = vm.sh("rm -f /run/apps-setup.status; setsid sh -c 'exec 9>/run/apps-setup.lock; flock 9; sleep 15' < /dev/null > /dev/null 2>&1 & sleep 1; apps-setup > /mnt/share/setup-lock.log 2>&1; echo rc=$?; cat /mnt/share/setup-lock.log", 6)
         expect("rc=3" in out and "already running" in out, "apps-setup did not respect the lock: %r" % out)
-        vm.sh("sleep 15; setsid sh -c 'apps-setup > /tmp/setup1.log 2>&1' < /dev/null & echo bg", 18)
+        vm.sh("sleep 15; setsid sh -c 'apps-setup > /mnt/share/setup1.log 2>&1' < /dev/null & echo bg", 18)
         deadline = time.time() + 900
         status = ""
         while time.time() < deadline:
             status = vm.sh("cat /run/apps-setup.status", 2)
             if "state=running" not in status: break
             time.sleep(10)
-        expect("state=done" in status or "state=partial" in status, "apps-setup did not finish: %r\n%s" % (status, vm.sh("tail -30 /tmp/setup1.log", 3)))
+        expect("state=done" in status or "state=partial" in status, "apps-setup did not finish: %r\n%s" % (status, vm.sh("tail -30 /mnt/share/setup1.log", 3)))
         marks = vm.sh("ls /mnt/apps/.mylinux; cat /mnt/apps/.mylinux/ready")
         for s in ("stage-rootfs-done", "stage-desktop-done", "stage-devtools-done", "ready"):
             expect(s in marks, "marker %s missing after repair: %r" % (s, marks))
@@ -177,29 +177,29 @@ def scenario_blank():
         expect(st.startswith("blank"), "new disk not reported blank: %r" % st)
         expect("/run/tailscale-state" in st, "tailscaled should use the volatile state dir before the disk exists: %r" % st)
         # first run, interrupted during the desktop stage
-        vm.sh("setsid sh -c 'apps-setup > /tmp/setup1.log 2>&1' < /dev/null & echo bg", 2)
+        vm.sh("setsid sh -c 'apps-setup > /mnt/share/setup1.log 2>&1' < /dev/null & echo bg", 2)
         deadline = time.time() + 600
         while time.time() < deadline:
             s = vm.sh("cat /run/apps-setup.status 2>/dev/null", 2)
             if "stage=desktop" in s and "state=running" in s: break
-            if "state=failed" in s: raise Fail("setup failed before the desktop stage: %r\n%s" % (s, vm.sh("tail -20 /tmp/setup1.log")))
+            if "state=failed" in s: raise Fail("setup failed before the desktop stage: %r\n%s" % (s, vm.sh("tail -20 /mnt/share/setup1.log", 3)))
             time.sleep(5)
         else:
             raise Fail("never reached the desktop stage")
         time.sleep(8)
-        out = vm.sh("pkill -TERM -f 'apps-setup' ; pkill -TERM apt-get; pkill -TERM dpkg; sleep 3; cat /run/apps-setup.status; ls /mnt/apps/.mylinux", 8)
+        out = vm.sh("killall -TERM apps-setup; killall -TERM apt-get dpkg 2>/dev/null; sleep 4; cat /run/apps-setup.status; ls /mnt/apps/.mylinux", 10)
         expect("state=failed" in out and "stage=desktop" in out, "interrupted run not reported as failed at the desktop stage: %r" % out)
         expect("stage-rootfs-done" in out and "stage-desktop-done" not in out, "stage markers wrong after interruption: %r" % out)
         expect("ready" not in out.split("state=")[0] and "\nready" not in out, "ready marker must not exist after an interrupted setup: %r" % out)
         # second run continues
-        vm.sh("setsid sh -c 'apps-setup > /tmp/setup2.log 2>&1' < /dev/null & echo bg", 2)
+        vm.sh("setsid sh -c 'apps-setup > /mnt/share/setup2.log 2>&1' < /dev/null & echo bg", 2)
         deadline = time.time() + 1500; s = ""
         while time.time() < deadline:
             s = vm.sh("cat /run/apps-setup.status 2>/dev/null", 2)
             if "state=running" not in s: break
             time.sleep(10)
-        expect("state=done" in s or "state=partial" in s, "second run did not finish: %r\n%s" % (s, vm.sh("tail -30 /tmp/setup2.log")))
-        fin = vm.sh("ls /mnt/apps/.mylinux; cat /mnt/apps/.mylinux/ready; cat /run/apps-disk.state; apps-run chromium --version 2>/dev/null | head -1; cat /run/tailscaled.state-dir; grep -c 'Downloading Debian' /tmp/setup2.log")
+        expect("state=done" in s or "state=partial" in s, "second run did not finish: %r\n%s" % (s, vm.sh("tail -30 /mnt/share/setup2.log", 3)))
+        fin = vm.sh("ls /mnt/apps/.mylinux; cat /mnt/apps/.mylinux/ready; cat /run/apps-disk.state; apps-run chromium --version 2>/dev/null | head -1; cat /run/tailscaled.state-dir; grep -c 'Downloading Debian' /mnt/share/setup2.log")
         for m in ("stage-rootfs-done", "stage-desktop-done", "stage-devtools-done", "ready", "mounted"):
             expect(m in fin, "%s missing after the second run: %r" % (m, fin))
         expect("Chromium" in fin, "Chromium not runnable: %r" % fin)

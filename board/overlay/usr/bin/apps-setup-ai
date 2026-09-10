@@ -26,7 +26,7 @@ if [ "$WHAT" = all ] || [ "$WHAT" = codex ]; then
   URL="$CODEX_URL"; SUM="$CODEX_SHA256"; VER="$CODEX_VERSION"
   if [ $LATEST = 1 ]; then URL=https://github.com/openai/codex/releases/latest/download/codex-aarch64-unknown-linux-musl.tar.gz; SUM=""; VER=latest; fi
   echo "== Codex $VER"
-  if fetch_verified "$URL" "$SUM" /tmp/codex.tgz && mkdir -p /tmp/codex-x && tar -xzf /tmp/codex.tgz -C /tmp/codex-x \
+  if fetch_verified "$URL" "$SUM" /tmp/codex.tgz && mkdir -p /tmp/codex-x && gunzip -c /tmp/codex.tgz | tar -x -C /tmp/codex-x \
      && [ -f /tmp/codex-x/codex-aarch64-unknown-linux-musl ] \
      && mkdir -p /root/.local/bin && cp /tmp/codex-x/codex-aarch64-unknown-linux-musl /root/.local/bin/codex.tmp \
      && chmod +x /root/.local/bin/codex.tmp && mv -f /root/.local/bin/codex.tmp /root/.local/bin/codex \

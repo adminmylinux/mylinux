@@ -150,7 +150,13 @@ def scenario_foot_typing(vm):
 
 def ensure_firefox(vm):
     """Firefox ESR on the test disk (installed on first use, like the dock icon does; a few minutes once)."""
-    if "ok" in vm.serial("apps-run test -x /usr/bin/firefox-esr && echo ok", 3): return
+    def present():
+        p = os.path.join(SHARE, "vmtest", "ff-present")
+        if os.path.exists(p): os.remove(p)
+        vm.serial("apps-run test -x /usr/bin/firefox-esr && touch /mnt/share/vmtest/ff-present; echo", 2)
+        time.sleep(0.5)
+        return os.path.exists(p)
+    if present(): return
     marker = os.path.join(SHARE, "vmtest", "ff-install.done")
     if os.path.exists(marker): os.remove(marker)
     vm.serial("setsid sh -c 'apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends firefox-esr; apps-path; echo rc=$? > /mnt/share/vmtest/ff-install.done' < /dev/null > /var/log/vmtest-ff.log 2>&1 &", 2)
@@ -158,8 +164,9 @@ def ensure_firefox(vm):
     while time.time() < deadline:
         if os.path.exists(marker): break
         time.sleep(5)
-    if "ok" not in vm.serial("apps-run test -x /usr/bin/firefox-esr && echo ok", 3):
-        raise Fail("Firefox could not be installed on the test disk (see /var/log/vmtest-ff.log in the guest)")
+    if not present():
+        vm.serial("cp /var/log/vmtest-ff.log /mnt/share/vmtest/ff-install.log; echo", 2)
+        raise Fail("Firefox could not be installed on the test disk (see out/fresh-share/vmtest/ff-install.log)")
 
 
 def scenario_firefox_typing(vm):
@@ -241,7 +248,7 @@ def scenario_clipboard_fidelity(vm):
     if os.path.exists(out): os.remove(out)
     deadline = time.time() + 15; got = None
     while time.time() < deadline:
-        vm.serial("apps-run wl-paste -n -t text/plain > /mnt/share/vmtest/pasted.txt 2>/dev/null; echo", 2)
+        vm.serial("env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 apps-run wl-paste -n -t text/plain > /mnt/share/vmtest/pasted.txt 2>/dev/null; echo", 2)
         if os.path.exists(out):
             got = open(out, "rb").read()
             if got == text: break
@@ -254,7 +261,7 @@ def scenario_clipboard_fidelity(vm):
     # the same sequence again must not re-copy (bridge state), a new one with the same bytes must
     n_before = vm.serial("grep -c . /var/log/clipboard.log 2>/dev/null; echo", 1)
     mac_clipboard(text); time.sleep(2)
-    vm.serial("apps-run wl-paste -n -t text/plain > /mnt/share/vmtest/pasted.txt 2>/dev/null; echo", 2)
+    vm.serial("env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 apps-run wl-paste -n -t text/plain > /mnt/share/vmtest/pasted.txt 2>/dev/null; echo", 2)
     if open(out, "rb").read() != text:
         raise Fail("clipboard content changed after an identical re-copy")
 
