@@ -21,6 +21,8 @@ has_stage() { [ -f "$M/stage-$1-done" ]; }
 exec 9> $LOCK
 flock -n 9 || { echo "apps-setup is already running in another window (lock $LOCK)."; exit 3; }
 trap 'rc=$?; if [ $rc -ne 0 ] && [ "$(sed -n s/^state=//p $STATUS 2>/dev/null)" = running ]; then status failed "$STAGE" "stopped during stage $STAGE (exit $rc); run apps-setup again to continue"; fi' EXIT
+trap 'exit 143' TERM INT HUP     # a killed installer (closed window, shutdown) still records the failed stage
+
 status running identify "looking for the apps disk"
 
 DEV=$(cat /run/apps-disk 2>/dev/null)
@@ -64,7 +66,10 @@ if ! has_stage rootfs; then
 fi
 apps-mounts prepare || fail "preparing the chroot mounts failed"
 
-apt_install() { apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "$@" && apps-run apt-get clean; }
+# An interrupted earlier run (power cut, killed installer) leaves dpkg half-configured; finish that first, it is a
+# no-op otherwise.
+apt_install() { apps-run env DEBIAN_FRONTEND=noninteractive dpkg --configure -a && apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "$@" && apps-run apt-get clean; }
+
 STAGE=desktop
 if ! has_stage desktop; then
   status running desktop "installing Chromium and the desktop packages"

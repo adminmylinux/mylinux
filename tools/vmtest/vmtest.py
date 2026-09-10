@@ -159,7 +159,7 @@ def ensure_firefox(vm):
     if present(): return
     marker = os.path.join(SHARE, "vmtest", "ff-install.done")
     if os.path.exists(marker): os.remove(marker)
-    vm.serial("setsid sh -c 'apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends firefox-esr; apps-path; echo rc=$? > /mnt/share/vmtest/ff-install.done' < /dev/null > /var/log/vmtest-ff.log 2>&1 &", 2)
+    vm.serial("setsid sh -c 'apps-run env DEBIAN_FRONTEND=noninteractive dpkg --configure -a; apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends firefox-esr; apps-path; echo rc=$? > /mnt/share/vmtest/ff-install.done' < /dev/null > /var/log/vmtest-ff.log 2>&1 &", 2)
     deadline = time.time() + 600
     while time.time() < deadline:
         if os.path.exists(marker): break
