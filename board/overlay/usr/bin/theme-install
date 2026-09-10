@@ -1,24 +1,73 @@
 #!/bin/sh
-# Install an Omarchy-format theme (colors.toml + backgrounds/) from a git repository into
-# ~/.config/mylinux/themes/<name>. GitHub repos are fetched as a tarball (no git needed); other hosts
-# use git from the apps disk.   Usage: theme-install <url | owner/repo>
-set -e
-URL="$1"; [ -n "$URL" ] || { echo "usage: theme-install <github url | owner/repo | git url>"; exit 2; }
-DEST="${HOME:-/root}/.config/mylinux/themes"; mkdir -p "$DEST"
-case "$URL" in
-  https://github.com/*|http://github.com/*|github.com/*|*/*)
-    REPO=$(echo "$URL" | sed -E 's#^(https?://)?github\.com/##; s#\.git$##; s#/+$##')
-    NAME=$(basename "$REPO" | sed -E 's/^omarchy-//; s/-theme$//' | tr 'A-Z' 'a-z')
-    TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-    echo "Downloading github.com/$REPO ..."
-    curl -fL --progress-bar -o "$TMP/theme.tgz" "https://codeload.github.com/$REPO/tar.gz/HEAD"
-    gunzip -c "$TMP/theme.tgz" | tar -x -C "$TMP"
-    SRC=$(dirname "$(find "$TMP" -name colors.toml | head -1)")
-    [ -n "$SRC" ] && [ -f "$SRC/colors.toml" ] || { echo "No colors.toml found in that repository - not an Omarchy theme."; exit 1; }
-    rm -rf "$DEST/$NAME"; mv "$SRC" "$DEST/$NAME" ;;
-  *)
-    NAME=$(basename "${URL%%.git}" | sed -E 's/^omarchy-//; s/-theme$//' | tr 'A-Z' 'a-z')
-    apps-run test -x /usr/bin/git || apps-run apt-get install -y -q git
-    rm -rf "$DEST/$NAME"; apps-run git clone --depth 1 "$URL" "/root/.config/mylinux/themes/$NAME" ;;
+# Install an Omarchy-format theme (colors.toml [+ backgrounds/] [+ light.mode]) into ~/.config/mylinux/themes/<name>.
+# Sources, told apart explicitly:  owner/repo  |  https://github.com/owner/repo[.git]  (GitHub: tarball, no git
+# needed)  |  any other https:// or git:// clone URL (git from the apps disk). The archive is unpacked into a
+# staging directory, checked (a colors.toml with the mandatory keys, no symlinks, no path escapes), then swapped
+# into place; a previous copy of the theme is restored if anything fails.   Usage: theme-install <source> [--dry-run]
+DEST="${THEME_DEST:-${HOME:-/root}/.config/mylinux/themes}"
+usage() { echo "usage: theme-install <owner/repo | github url | git url> [--dry-run]" >&2; exit 2; }
+SRC=""; DRY=0
+for a in "$@"; do case "$a" in --dry-run) DRY=1 ;; -*) usage ;; *) [ -z "$SRC" ] && SRC="$a" || usage ;; esac; done
+[ -n "$SRC" ] || usage
+
+# ---- classify the source -------------------------------------------------------------------------
+KIND=""; REPO=""; URL=""
+case "$SRC" in
+  https://github.com/*|http://github.com/*|github.com/*|git@github.com:*)
+    REPO=$(printf '%s' "$SRC" | sed -E 's#^(https?://|git@)github\.com[:/]##; s#\.git$##; s#/+$##; s#/tree/.*$##')
+    KIND=github ;;
+  https://*|http://*|git://*|ssh://*|git@*:*) KIND=git; URL="$SRC" ;;
+  */*) REPO="$SRC"; KIND=github ;;
+  *) echo "theme-install: '$SRC' is not owner/repo, a GitHub URL or a git URL" >&2; exit 2 ;;
 esac
+if [ "$KIND" = github ]; then
+  case "$REPO" in
+    */*/*|*/|/*|.*|*/.*|*' '*|'') echo "theme-install: bad GitHub repository '$REPO' (want owner/repo)" >&2; exit 2 ;;
+  esac
+  case "$REPO" in *[!A-Za-z0-9_./-]*) echo "theme-install: bad GitHub repository '$REPO'" >&2; exit 2 ;; esac
+  BASE=${REPO#*/}
+else
+  BASE=$(basename "${URL%%.git}")
+fi
+# theme directory name: lower-case, without omarchy-/-theme decoration, [a-z0-9-] only, no dots or traversal
+NAME=$(printf '%s' "$BASE" | tr 'A-Z' 'a-z' | sed -E 's/^omarchy-//; s/-theme$//')
+
+case "$NAME" in ''|.|..|*[!a-z0-9-]*|-*) echo "theme-install: '$BASE' does not give a usable theme name (letters, digits, dashes)" >&2; exit 2 ;; esac
+if [ $DRY = 1 ]; then echo "kind=$KIND name=$NAME repo=$REPO url=$URL"; exit 0; fi
+
+# ---- fetch into staging --------------------------------------------------------------------------
+set -e
+mkdir -p "$DEST"
+TMP=$(mktemp -d "$DEST/.staging-$NAME.XXXXXX"); trap 'rm -rf "$TMP"' EXIT
+if [ "$KIND" = github ]; then
+  echo "Downloading github.com/$REPO ..."
+  curl -fL --progress-bar -o "$TMP/theme.tgz" "https://codeload.github.com/$REPO/tar.gz/HEAD"
+  # refuse anything in the archive that could escape or alias: absolute paths, .., symlinks, hard links
+  if gunzip -c "$TMP/theme.tgz" | tar -tv 2>/dev/null | awk '{ n=$NF; t=substr($1,1,1); if (t=="l" || t=="h" || n ~ /^\// || n ~ /(^|\/)\.\.(\/|$)/) { bad=1 } } END { exit bad }'; then :; else
+    echo "theme-install: the archive contains links or paths outside the theme; refused" >&2; exit 1; fi
+  mkdir -p "$TMP/x"; gunzip -c "$TMP/theme.tgz" | tar -x -C "$TMP/x"
+else
+  apps-run test -x /usr/bin/git || apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q git
+  echo "Cloning $URL ..."
+  mkdir -p "$TMP/x"
+  # git runs in the chroot: the staging path is the same there (/root is the same directory)
+  apps-run git clone --depth 1 "$URL" "$TMP/x/repo"
+fi
+# the theme root is the directory holding colors.toml (repositories keep it at the top or one level down)
+THEME=$(find "$TMP/x" -maxdepth 3 -name colors.toml -type f 2>/dev/null | head -1)
+[ -n "$THEME" ] || { echo "theme-install: no colors.toml in that repository; not an Omarchy theme." >&2; exit 1; }
+THEME=$(dirname "$THEME")
+if find "$THEME" -type l | grep -q .; then echo "theme-install: the theme contains symlinks; refused" >&2; exit 1; fi
+for key in background foreground; do
+  grep -Eq "^[[:space:]]*$key[[:space:]]*=[[:space:]]*\"#[0-9A-Fa-f]{6}\"" "$THEME/colors.toml" || { echo "theme-install: colors.toml lacks a valid '$key' colour" >&2; exit 1; }
+done
+grep -Eq '^[[:space:]]*(accent|color4|blue)[[:space:]]*=[[:space:]]*"#[0-9A-Fa-f]{6}"' "$THEME/colors.toml" || { echo "theme-install: colors.toml lacks an accent/blue colour" >&2; exit 1; }
+
+# ---- promote atomically, keep the old copy until the new one is in place --------------------------
+NEW="$DEST/.new-$NAME.$$"; OLD="$DEST/.old-$NAME.$$"
+rm -rf "$NEW" "$OLD"
+mv "$THEME" "$NEW"
+if [ -e "$DEST/$NAME" ]; then mv "$DEST/$NAME" "$OLD"; fi
+if mv "$NEW" "$DEST/$NAME"; then rm -rf "$OLD"
+else [ -e "$OLD" ] && mv "$OLD" "$DEST/$NAME"; echo "theme-install: could not install '$NAME'; the previous version is back" >&2; exit 1; fi
 echo "Installed theme '$NAME' -> $DEST/$NAME  (open the theme picker: ⌘⌃⇧Space)"

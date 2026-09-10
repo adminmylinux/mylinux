@@ -6,6 +6,7 @@
 #include <QDirIterator>
 #include <QImage>
 #include <QLibrary>
+#include <QThreadPool>
 #include <QDebug>
 #include <algorithm>
 
@@ -23,7 +24,7 @@ ThemeStore::ThemeStore(QObject *parent) : QObject(parent) { rescan(); }
 void ThemeStore::rescan()
 {
     QMap<QString, QVariantMap> byId;
-    QStringList order;
+    QStringList order, toConvert;
     for (const QString &base : kDirs) {
         QDir d(base); if (!d.exists()) continue;
         for (const QString &id : d.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
@@ -55,7 +56,7 @@ void ThemeStore::rescan()
             t["colors"] = colors;
             QStringList bgs;
             QDir bd(base + "/" + id + "/backgrounds");
-            if (!bd.entryList({"*.webp"}, QDir::Files).isEmpty()) convertWebp(bd.path());   // e.g. downloaded by an older script
+            if (!bd.entryList({"*.webp"}, QDir::Files).isEmpty()) toConvert << bd.path();   // e.g. downloaded by an older script
             for (const QString &b : bd.entryList({"*.png", "*.jpg", "*.jpeg"}, QDir::Files, QDir::Name)) bgs << bd.filePath(b);
             t["backgrounds"] = bgs;
             if (byId.contains(id)) {          // later dirs (user) override colours; their backgrounds come first
@@ -69,7 +70,21 @@ void ThemeStore::rescan()
     QVariantList list;
     for (const QString &id : order) list << byId[id];
     m_themes = list; emit changed();
+    if (!toConvert.isEmpty()) convertLater(toConvert);
 }
+
+// Decoding and re-encoding wallpapers takes seconds per image: never on the compositor thread. One batch
+// at a time; the picker shows "converting" meanwhile and the list refreshes when the PNGs exist.
+void ThemeStore::convertLater(const QStringList &dirs)
+{
+    if (m_converting) return;
+    m_converting = true; emit changed();
+    QThreadPool::globalInstance()->start([this, dirs] {
+        for (const QString &d : dirs) convertWebp(d);
+        QMetaObject::invokeMethod(this, [this] { m_converting = false; rescan(); }, Qt::QueuedConnection);
+    });
+}
+
 
 QVariantMap ThemeStore::theme(const QString &id) const
 {

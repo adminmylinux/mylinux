@@ -12,9 +12,11 @@ class ThemeStore : public QObject
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(QVariantList themes READ themes NOTIFY changed)
+    Q_PROPERTY(bool converting READ converting NOTIFY changed)   // WebP backgrounds being converted in a worker thread
 public:
     explicit ThemeStore(QObject *parent = nullptr);
     QVariantList themes() const { return m_themes; }
+    bool converting() const { return m_converting; }
     Q_INVOKABLE QVariantMap theme(const QString &id) const;
     Q_INVOKABLE void rescan();
     Q_INVOKABLE void applyTerminal(const QString &id, int fontPt);   // rewrite foot.ini colours + font
@@ -24,5 +26,8 @@ public:
 signals:
     void changed();
 private:
+    void convertLater(const QStringList &dirs);   // off the UI thread; rescans when done
     QVariantList m_themes;
+    bool m_converting = false;
 };
+

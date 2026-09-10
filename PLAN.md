@@ -700,3 +700,11 @@ Remmina get none; the interactive-shell profile parses the same way. Clipboard: 
 counters (mac.seq/guest.seq) on both sides, cmp-based change detection on the Mac (tools/clipboard-host.sh),
 empty text not mirrored, 1 MB bound, state kept across bridge restarts, files removed by run.sh's cleanup;
 "Clipboard sharing: on/off" in Setup (input/clipboard, /run/clipboard.off). Tests in tools/tests/guest.sh.
+
+Review section 9 (2026-09-10): /usr/share/mylinux/manifest.env pins the Debian rootfs (commit-addressed raw URL +
+sha256) and the Codex release (tag + sha256); fetch.sh downloads to a staged .part file and verifies before
+moving; the Claude installer has no upstream checksum (documented, TLS only, staged file with exit checks).
+tools/manifest-update.sh refreshes the pins explicitly (apps-setup-ai --latest for an unpinned Codex).
+theme-install tells owner/repo, GitHub URLs and other git URLs apart, validates the name, refuses links and
+path escapes in archives, requires background/foreground/accent in colors.toml, promotes atomically with
+rollback. WebP conversion runs in the thread pool (ThemeStore.converting). Tests in tools/tests/guest.sh.
