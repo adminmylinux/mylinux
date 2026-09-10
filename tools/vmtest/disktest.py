@@ -10,7 +10,7 @@ states     the set-up test disk plus a foreign disk and a second blank disk: onl
 lock       a second apps-setup while one runs is refused; the first completes (repairs the legacy markers,
            reinstalls the agents from the manifest); status file and markers checked
 shutdown   S45apps stop with a chroot program running: processes ended, every nested mount unwound
-blank      a brand-new blank disk: state blank, tailscaled on the volatile path; apps-setup interrupted during
+blank      (first) wipes the test disk: state blank, tailscaled on the volatile path; apps-setup interrupted during
            the desktop stage and run again -> completes, ready marker, stages, tailscaled on the disk
 """
 import hashlib, json, os, subprocess, sys, time
@@ -20,8 +20,6 @@ from vmtest import Fail, ROOT, OUT, SHARE, QMP, SERIAL
 
 FOREIGN = os.path.join(OUT, "vmtest-foreign.img")
 EXTRA_BLANK = os.path.join(OUT, "vmtest-extra-blank.img")
-BLANK = os.path.join(OUT, "vmtest-blank.img")
-BLANK_SHARE = os.path.join(OUT, "vmtest-blank-share")
 
 
 def sha(path):
@@ -74,8 +72,7 @@ class DiskVM(vmtest.VM):
         raise Fail("VM did not come up")
 
     def stop(self):
-        subprocess.run(["pkill", "-f", "apps-fresh.img"], capture_output=True)
-        subprocess.run(["pkill", "-f", "vmtest-blank.img"], capture_output=True)
+        super().stop(os.path.basename(self.apps_img) if self.apps_img else "apps-fresh.img")
 
     def sh(self, cmd, settle=3):
         """Run a command in the guest, return its stdout+stderr (via a file on the share)."""
@@ -124,9 +121,9 @@ def scenario_lock():
     vm = DiskVM()
     try:
         vm.boot()
-        vm.sh("rm -f /run/apps-setup.status; setsid sh -c 'apps-setup > /tmp/setup1.log 2>&1' < /dev/null & sleep 2; apps-setup > /tmp/setup2.log 2>&1; echo rc=$?; cat /tmp/setup2.log", 6)
-        out = open(os.path.join(SHARE, "disktest.out")).read()
-        expect("rc=3" in out and "already running" in out, "second apps-setup was not refused: %r" % out)
+        out = vm.sh("rm -f /run/apps-setup.status; setsid sh -c 'exec 9>/run/apps-setup.lock; flock 9; sleep 15' < /dev/null > /dev/null 2>&1 & sleep 1; apps-setup > /tmp/setup2.log 2>&1; echo rc=$?; cat /tmp/setup2.log", 6)
+        expect("rc=3" in out and "already running" in out, "apps-setup did not respect the lock: %r" % out)
+        vm.sh("sleep 15; setsid sh -c 'apps-setup > /tmp/setup1.log 2>&1' < /dev/null & echo bg", 18)
         deadline = time.time() + 900
         status = ""
         while time.time() < deadline:
@@ -166,13 +163,17 @@ def scenario_shutdown():
 
 
 def scenario_blank():
-    for p in (BLANK,):
-        if os.path.exists(p): os.remove(p)
-    if os.path.exists(BLANK_SHARE): subprocess.run(["rm", "-rf", BLANK_SHARE])
-    vm = DiskVM(apps_img=BLANK, share=BLANK_SHARE)
+    """Wipes the throwaway test disk and share (tools/fresh-start.sh without `keep`), so the scenarios after it
+    run on a disk set up by the current apps-setup."""
+    fresh = os.path.join(OUT, "apps-fresh.img")
+    if os.path.exists(fresh): os.remove(fresh)
+    if os.path.exists(SHARE): subprocess.run(["rm", "-rf", SHARE])
+    if os.path.exists(os.path.join(ROOT, "share", "myshell")): 
+        os.makedirs(SHARE, exist_ok=True)
+    vm = DiskVM()
     try:
         vm.boot()
-        st = vm.sh("cat /run/apps-disk.state; cat /run/apps-disk; pgrep -a tailscaled | head -1; ls /mnt/apps 2>/dev/null | wc -l")
+        st = vm.sh("cat /run/apps-disk.state; cat /run/apps-disk; cat /run/tailscaled.state-dir; ls /mnt/apps 2>/dev/null | wc -l")
         expect(st.startswith("blank"), "new disk not reported blank: %r" % st)
         expect("/run/tailscale-state" in st, "tailscaled should use the volatile state dir before the disk exists: %r" % st)
         # first run, interrupted during the desktop stage
@@ -198,7 +199,7 @@ def scenario_blank():
             if "state=running" not in s: break
             time.sleep(10)
         expect("state=done" in s or "state=partial" in s, "second run did not finish: %r\n%s" % (s, vm.sh("tail -30 /tmp/setup2.log")))
-        fin = vm.sh("ls /mnt/apps/.mylinux; cat /mnt/apps/.mylinux/ready; cat /run/apps-disk.state; apps-run chromium --version 2>/dev/null | head -1; pgrep -a tailscaled | head -1; grep -c 'Downloading Debian' /tmp/setup2.log")
+        fin = vm.sh("ls /mnt/apps/.mylinux; cat /mnt/apps/.mylinux/ready; cat /run/apps-disk.state; apps-run chromium --version 2>/dev/null | head -1; cat /run/tailscaled.state-dir; grep -c 'Downloading Debian' /tmp/setup2.log")
         for m in ("stage-rootfs-done", "stage-desktop-done", "stage-devtools-done", "ready", "mounted"):
             expect(m in fin, "%s missing after the second run: %r" % (m, fin))
         expect("Chromium" in fin, "Chromium not runnable: %r" % fin)
@@ -231,7 +232,7 @@ def scenario_reboot():
         vm.stop(); time.sleep(1)
 
 
-SCENARIOS = [("states", scenario_states), ("lock", scenario_lock), ("shutdown", scenario_shutdown), ("reboot", scenario_reboot), ("blank", scenario_blank)]
+SCENARIOS = [("blank", scenario_blank), ("states", scenario_states), ("lock", scenario_lock), ("shutdown", scenario_shutdown), ("reboot", scenario_reboot)]
 
 
 

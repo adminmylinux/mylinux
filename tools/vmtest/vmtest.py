@@ -66,8 +66,17 @@ class VM:
                              capture_output=True, text=True).stdout.strip()
         return out.split("=")[1] if "=" in out else "1688x1016"
 
-    def stop(self):
-        subprocess.run(["pkill", "-f", "apps-fresh.img"], capture_output=True)
+    def stop(self, pattern="apps-fresh.img"):
+        """Clean shutdown first (a killed QEMU is a power cut: files rewritten just before it can come back
+        empty on the test disk), then a kill if the guest does not power off within 30 s."""
+        try:
+            if os.path.exists(SERIAL): self.serial("poweroff", 1)
+        except Exception:
+            pass
+        for _ in range(30):
+            if subprocess.run(["pgrep", "-f", pattern], capture_output=True).returncode != 0: return
+            time.sleep(1)
+        subprocess.run(["pkill", "-f", pattern], capture_output=True)
 
     # ---- input / output ----
     def qmp(self, *ops):
@@ -139,9 +148,22 @@ def scenario_foot_typing(vm):
     vm.qmp("combo", "meta_l-w", "sleep", 0.8)
 
 
-def scenario_firefox_typing(vm):
+def ensure_firefox(vm):
+    """Firefox ESR on the test disk (installed on first use, like the dock icon does; a few minutes once)."""
+    if "ok" in vm.serial("apps-run test -x /usr/bin/firefox-esr && echo ok", 3): return
+    marker = os.path.join(SHARE, "vmtest", "ff-install.done")
+    if os.path.exists(marker): os.remove(marker)
+    vm.serial("setsid sh -c 'apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends firefox-esr; apps-path; echo rc=$? > /mnt/share/vmtest/ff-install.done' < /dev/null > /var/log/vmtest-ff.log 2>&1 &", 2)
+    deadline = time.time() + 600
+    while time.time() < deadline:
+        if os.path.exists(marker): break
+        time.sleep(5)
     if "ok" not in vm.serial("apps-run test -x /usr/bin/firefox-esr && echo ok", 3):
-        raise Fail("Firefox not on the test disk (install it once: apps-run apt-get install firefox-esr)")
+        raise Fail("Firefox could not be installed on the test disk (see /var/log/vmtest-ff.log in the guest)")
+
+
+def scenario_firefox_typing(vm):
+    ensure_firefox(vm)
     # a throwaway profile: no session restore, no "Troubleshoot Mode?" prompt after a killed instance
     vm.serial("killall firefox-esr 2>/dev/null; rm -rf /tmp/vmtest-ffprof; mkdir -p /tmp/vmtest-ffprof; cd /root; env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 MOZ_DISABLE_AUTO_SAFE_MODE=1 setsid apps-run firefox-esr --no-remote --profile /tmp/vmtest-ffprof file:///mnt/share/vmtest/typing.html >/dev/null 2>&1 </dev/null &", 2)
     d = vm.wait_for(lambda d: any(w["appId"] == "firefox-esr" and w["mapped"] and "typing-fixture" in w["title"] for w in d["windows"]), "Firefox with the fixture", 40)
@@ -343,8 +365,8 @@ def scenario_scale_relayout(vm):
 
 def scenario_client_fullscreen(vm):
     """A client's own fullscreen request (Firefox F11) goes through the same state path as ⌘F."""
-    if "ok" not in vm.serial("apps-run test -x /usr/bin/firefox-esr && echo ok", 3):
-        raise Fail("Firefox not on the test disk")
+    ensure_firefox(vm)
+
     vm.serial("killall firefox-esr 2>/dev/null; rm -rf /tmp/vmtest-ffprof; mkdir -p /tmp/vmtest-ffprof; cd /root; env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 MOZ_DISABLE_AUTO_SAFE_MODE=1 setsid apps-run firefox-esr --no-remote --profile /tmp/vmtest-ffprof file:///mnt/share/vmtest/typing.html >/dev/null 2>&1 </dev/null &", 2)
     ff = lambda d: [w for w in d["windows"] if w["appId"] == "firefox-esr" and "typing-fixture" in w["title"]]
     d = vm.wait_for(lambda d: ff(d) and ff(d)[0]["mapped"], "Firefox with the fixture", 40)

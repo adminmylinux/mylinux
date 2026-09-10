@@ -29,7 +29,12 @@ case "$1" in
     if ! mkdir -p $A/root || ! mount --bind $A/root /root; then umount $A; state mount-failed "$DEV mounted but /root could not be bound"; exit 0; fi
     echo "home: /root -> apps disk"
     # Disks set up before the ready marker existed: complete by definition here (nothing installs at boot).
-    if [ ! -f $A/.mylinux/ready ] && [ -f $A/etc/debian_version ] && [ -x $A/usr/bin/chromium ]; then mkdir -p $A/.mylinux && echo legacy > $A/.mylinux/ready; fi
+    if [ ! -f $A/.mylinux/ready ] && [ -f $A/etc/debian_version ] && [ -x $A/usr/bin/chromium ]; then
+      mkdir -p $A/.mylinux && echo legacy > $A/.mylinux/ready
+      for s in rootfs desktop; do [ -f $A/.mylinux/stage-$s-done ] || echo "legacy $(date +%s)" > $A/.mylinux/stage-$s-done; done
+      [ -x $A/usr/bin/git ] && [ -x $A/usr/bin/btop ] && { [ -f $A/.mylinux/stage-devtools-done ] || echo "legacy $(date +%s)" > $A/.mylinux/stage-devtools-done; }
+    fi
+
     apps-mounts prepare || echo "apps disk: chroot preparation failed; apps-run will refuse to start (apps-mounts prepare to retry)"
     if [ -f $A/.mylinux/ready ]; then state mounted "$DEV mounted at $A"; else state setup "$DEV mounted at $A; setup is incomplete (apps-setup continues it)"; fi
     apps-path &   # apps-disk commands on the PATH (background: ~1 s)

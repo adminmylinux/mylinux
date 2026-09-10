@@ -14,7 +14,8 @@ STAGE=identify
 status() { { echo "state=$1"; echo "stage=$2"; echo "message=$3"; echo "time=$(date +%s)"; } > $STATUS.tmp && mv -f $STATUS.tmp $STATUS; }
 step() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 fail() { status failed "$STAGE" "$*"; printf '\napps-setup: %s\n' "$*" >&2; exit 1; }
-done_stage() { mkdir -p $M && echo "$SETUP_VERSION $(date +%s)" > "$M/stage-$1-done"; }
+done_stage() { mkdir -p $M && echo "$SETUP_VERSION $(date +%s)" > "$M/stage-$1-done"; sync; }   # a stage's files reach the disk before its marker
+
 has_stage() { [ -f "$M/stage-$1-done" ]; }
 
 exec 9> $LOCK
@@ -43,8 +44,13 @@ echo "$DEV" > /run/apps-disk; echo setup > /run/apps-disk.state; echo "$DEV moun
 mkdir -p $M
 /etc/init.d/S47tailscale migrate 2>/dev/null || true    # a Tailscale login made before the disk existed moves onto it
 
+# Disks set up before the markers existed: an unpacked Debian is a finished rootfs stage (extracting the tarball
+# again would overwrite /etc/passwd, /etc/group and every configured file). The apt stages are re-run: they are
+# idempotent and prove the packages are configured before the marker is written.
 STAGE=rootfs
+if ! has_stage rootfs && [ -f $A/etc/debian_version ] && [ -x $A/usr/bin/dpkg ]; then echo "rootfs already unpacked (older setup)"; done_stage rootfs; fi
 if ! has_stage rootfs; then
+
   status running rootfs "downloading Debian"
   step "Downloading Debian trixie (arm64) minimal rootfs: $DEBIAN_ROOTFS_NOTE"
   fetch_verified "$DEBIAN_ROOTFS_URL" "$DEBIAN_ROOTFS_SHA256" /tmp/rootfs.tar.gz || fail "the Debian rootfs download failed or did not match its checksum (network? see above)"
