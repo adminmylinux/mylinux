@@ -63,7 +63,7 @@ Item {
     readonly property bool activated: !!output && output.focusedWindow === win
     onActivatedChanged: reconfigure()
     property rect tileRect: Qt.rect(0, 0, 0, 0)
-    function states(extra) {
+    function xdgStates(extra) {
         const s = []
         if (activated) s.push(XdgToplevel.ActivatedState)
         if (fullscreen) s.push(XdgToplevel.FullscreenState)
@@ -84,7 +84,7 @@ Item {
     function configure(w, h, extra) {
         if (!toplevel) return
         const s = fullscreen ? Qt.size(Math.max(1, Math.round(w)), Math.max(1, Math.round(h))) : clampSize(w, h)
-        toplevel.sendConfigure(s, states(extra))
+        toplevel.sendConfigure(s, xdgStates(extra))
     }
     // the current size again with the current states (focus, fullscreen or zoom changed)
     function reconfigure() {

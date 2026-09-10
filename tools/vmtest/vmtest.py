@@ -167,9 +167,7 @@ def scenario_empty_workspace_focus(vm):
 def scenario_helper_not_tiled(vm):
     # a wl-clipboard helper (mac -> guest copy) must never enter the tiling tree or the window lists
     d0 = vm.diag()
-    os.makedirs(os.path.join(SHARE, "clipboard"), exist_ok=True)
-    p = os.path.join(SHARE, "clipboard", "mac.txt")
-    open(p + ".tmp", "w").write("vmtest clip %d" % int(time.time())); os.replace(p + ".tmp", p)
+    mac_clipboard(b"vmtest clip %d" % int(time.time()))
     time.sleep(2.5)
     # toggle tiling off and on: helpers and scratchpad windows must stay out of the trees
     vm.qmp("combo", "shift-meta_l-t", "sleep", 0.8, "combo", "shift-meta_l-t", "sleep", 1.2)
@@ -200,6 +198,52 @@ def scenario_scratchpad(vm):
     if any(w["scratch"] and w["inTree"] for w in d["windows"]):
         raise Fail("scratchpad window entered tiling after a tiling toggle")
     vm.qmp("combo", "meta_l-w", "sleep", 0.8, "combo", "meta_l-1", "sleep", 0.5)
+
+
+def mac_clipboard(data):
+    """What run.sh's host loop does: byte-exact mac.txt, then bump mac.seq (the guest bridge applies new sequences)."""
+    d = os.path.join(SHARE, "clipboard"); os.makedirs(d, exist_ok=True)
+    p = os.path.join(d, "mac.txt"); s = os.path.join(d, "mac.seq")
+    open(p + ".tmp", "wb").write(data); os.replace(p + ".tmp", p)
+    try: n = int(open(s).read().strip())
+    except Exception: n = 0
+    open(s + ".tmp", "w").write("%d\n" % (n + 1)); os.replace(s + ".tmp", s)
+
+
+def scenario_clipboard_fidelity(vm):
+    """Mac -> guest text arrives byte-exact (Unicode, blank lines, trailing newline) and focus stays where it was."""
+    d0 = vm.wait_for(lambda d: d["focused"] is not None, "a focused window", 10)
+    text = ("vmtest ünïcödé — 日本語 🎉 $(not run) `x`\n\nline three  \n").encode("utf-8")
+    mac_clipboard(text)
+    out = os.path.join(SHARE, "vmtest", "pasted.txt")
+    if os.path.exists(out): os.remove(out)
+    deadline = time.time() + 15; got = None
+    while time.time() < deadline:
+        vm.serial("apps-run wl-paste -n -t text/plain > /mnt/share/vmtest/pasted.txt 2>/dev/null; echo", 2)
+        if os.path.exists(out):
+            got = open(out, "rb").read()
+            if got == text: break
+        time.sleep(1)
+    if got != text:
+        raise Fail("pasted bytes differ: got %r" % (got[:80] if got else got))
+    d = vm.diag()
+    if d["focused"] != d0["focused"] or (d.get("seatFocus") or "").endswith("|helper"):
+        raise Fail("focus changed by the clipboard helper: before %s, after %s (seat %s)" % (d0["focused"], d["focused"], d.get("seatFocus")))
+    # the same sequence again must not re-copy (bridge state), a new one with the same bytes must
+    n_before = vm.serial("grep -c . /var/log/clipboard.log 2>/dev/null; echo", 1)
+    mac_clipboard(text); time.sleep(2)
+    vm.serial("apps-run wl-paste -n -t text/plain > /mnt/share/vmtest/pasted.txt 2>/dev/null; echo", 2)
+    if open(out, "rb").read() != text:
+        raise Fail("clipboard content changed after an identical re-copy")
+
+
+def scenario_shell_restart(vm):
+    """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
+    vm.serial("/etc/init.d/S99shell restart; echo", 2)
+    time.sleep(4)
+    d = vm.wait_for(lambda d: len(vm.windows(d, helper=False)) >= 1 and d["workspace"] == 1, "shell back with a window after restart", 60)
+    if d["seatFocusNull"] and vm.windows(d, helper=False, mapped=True):
+        raise Fail("windows present after the restart but nothing focused")
 
 
 def scenario_close_button(vm):
@@ -363,7 +407,10 @@ SCENARIOS = [
     ("scale_relayout", scenario_scale_relayout),
     ("client_fullscreen", scenario_client_fullscreen),
     ("agent_usage_fixtures", scenario_agent_usage_fixtures),
+    ("clipboard_fidelity", scenario_clipboard_fidelity),
+    ("shell_restart", scenario_shell_restart),
 ]
+
 
 
 
