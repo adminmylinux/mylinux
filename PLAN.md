@@ -679,3 +679,15 @@ window's maximize request is answered with its tile). Client min/max sizes clamp
 a split that would leave a window below its minimum (the window floats) and never produces negative or
 overlapping rects; a scale or title-bar change relays out every workspace tree. vmtest: fullscreen,
 single_activation, scale_relayout (diag now reports client-acked states and the work-area size).
+
+Review section 7 (2026-09-10): the apps disk is identified by its virtio serial (/sys/block/vdX/serial =
+mylinux-apps; fallback: the single unlabelled-serial disk carrying the ext4 label "apps"); a disk is "blank" only
+when its whole first MiB reads back as zeros (a short or failed read is "unreadable"); anything else is reported
+in /run/apps-disk.state and never formatted. apps-setup runs in stages under a lock with markers on the disk
+(.mylinux/stage-*-done) and a status file (/run/apps-setup.status); the ready marker (.mylinux/ready) gates
+autostart, the agents are an optional stage reported as "partial". S45apps prepares the chroot mounts and helper
+files once per boot (apps-mounts prepare; apps-run only checks), and at stop ends chroot processes and unwinds
+the nested mounts innermost first. Tailscale keeps its state in /run until /root is the apps disk; apps-setup
+migrates it. FirstRun shows disk state, stage, failure and Retry. README/website: journal commit=1 limits, not
+prevents, data loss; the base image is reset at boot, not "read-only". Tests: tools/tests/guest.sh (disk
+classification, serial lookup), the rest needs the baked image (see docs/REVIEW-REPORT-2026-09-10.md).

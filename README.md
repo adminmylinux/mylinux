@@ -111,8 +111,11 @@ switches between auto, always and never.
 
 Use **Shut Down…** (or **Restart…**) from the  menu at the top left, or type `shut` into the
 ⌘K sheet. That unmounts the apps disk cleanly. Closing the myLinux window or pressing Cmd+Q on the
-Mac side is a power cut for the virtual machine: the disk is journalled and flushed every second, so
-you lose at most about a second of writes, but a clean shutdown is the safe habit.
+Mac side is a power cut for the virtual machine. The disk is journalled and the journal is committed
+every second (`commit=1`), which limits the damage, but file data written shortly before the cut can
+still be lost: ext4 flushes data on its own schedule, and the journal does not cover it. A clean shutdown
+is the safe habit.
+
 
 ### Terminal
 

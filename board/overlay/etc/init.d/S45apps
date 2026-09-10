@@ -1,24 +1,51 @@
 #!/bin/sh
-# Mount the optional apps disk (virtio-blk, ext4) at /mnt/apps and make its /root the persistent home.
-# An unformatted disk (run.sh creates an empty file when none exists) is left for `apps-setup`.
-# A blank disk reads as zeros where an ext4 superblock would be (offset 1 KiB); busybox blkid is not reliable here.
-disk_is_blank() { [ "$(dd if="$1" bs=1024 skip=1 count=4 2>/dev/null | tr -d '\0' | wc -c)" -eq 0 ]; }
+# The apps disk (virtio-blk, ext4, label "apps"): found by its virtio serial (see /usr/lib/mylinux/disk.sh),
+# mounted at /mnt/apps, its /root bound over the RAM home. The chroot mounts and helper files are prepared
+# once here (apps-mounts); apps-run only checks them. Nothing is ever formatted here.
+# State for the shell's first-run dialog: /run/apps-disk (device), /run/apps-disk.state, /run/apps-disk.info.
+#   states: mounted | setup (mounted, setup incomplete) | blank | none | ambiguous | foreign | unreadable | mount-failed
+. /usr/lib/mylinux/disk.sh
+A=/mnt/apps
+state() { echo "$1" > /run/apps-disk.state; echo "$2" > /run/apps-disk.info; echo "apps disk: $2"; }
 case "$1" in
   start)
-    rm -f /run/apps-disk
-    for dev in /dev/vda /dev/vdb; do
-      [ -b $dev ] || continue
-      echo "$dev" > /run/apps-disk
-      if disk_is_blank $dev; then echo "apps disk: $dev is blank (first boot: run apps-setup)"; break; fi
-      mkdir -p /mnt/apps
-      # commit=1: flush the journal (and, with data=ordered, file data) every second instead of every 5,
-      # so quitting the QEMU window with Cmd+Q, which is a power cut, loses at most about a second of writes.
-      if mount -t ext4 -o noatime,commit=1 $dev /mnt/apps 2>/dev/null; then
-        echo "apps disk: $dev mounted at /mnt/apps"
-        mkdir -p /mnt/apps/root && mount --bind /mnt/apps/root /root && echo "home: /root -> apps disk"
-        apps-path &   # apps-disk commands on the PATH (background: ~1 s)
-        break
-      fi
-    done ;;
-  stop) umount /root 2>/dev/null; umount /mnt/apps 2>/dev/null ;;
+    rm -f /run/apps-disk /run/apps-disk.state /run/apps-disk.info
+    # the Mac share folder (bound into the chroot below); S99shell mounts it too, idempotently
+    mkdir -p /mnt/share; mountpoint -q /mnt/share || mount -t 9p -o trans=virtio,version=9p2000.L share /mnt/share 2>/dev/null
+    DEV=$(find_apps_disk); rc=$?
+    [ $rc -eq 1 ] && { state none "no apps disk attached (run.sh attaches out/apps.img with the serial mylinux-apps)"; exit 0; }
+    [ $rc -eq 2 ] && { state ambiguous "several disks carry the apps serial ($DEV); none of them mounted"; exit 0; }
+    echo "$DEV" > /run/apps-disk
+    case "$(disk_state "$DEV")" in
+      blank) state blank "$DEV is blank (first boot: apps-setup formats it)"; exit 0 ;;
+      unreadable) state unreadable "$DEV cannot be read; left untouched"; exit 0 ;;
+      foreign) state foreign "$DEV is not a myLinux apps disk (no ext4 label 'apps'); left untouched"; exit 0 ;;
+    esac
+    mkdir -p $A
+    # commit=1: the journal is committed every second instead of every five, so a power cut (closing the QEMU
+    # window) loses less. File data written shortly before can still be lost (delayed allocation); a clean
+    # shutdown is the habit.
+    if ! mount -t ext4 -o noatime,commit=1 "$DEV" $A; then state mount-failed "$DEV has the apps label but does not mount (try: e2fsck -f $DEV)"; exit 0; fi
+    if ! mkdir -p $A/root || ! mount --bind $A/root /root; then umount $A; state mount-failed "$DEV mounted but /root could not be bound"; exit 0; fi
+    echo "home: /root -> apps disk"
+    # Disks set up before the ready marker existed: complete by definition here (nothing installs at boot).
+    if [ ! -f $A/.mylinux/ready ] && [ -f $A/etc/debian_version ] && [ -x $A/usr/bin/chromium ]; then mkdir -p $A/.mylinux && echo legacy > $A/.mylinux/ready; fi
+    apps-mounts prepare || echo "apps disk: chroot preparation failed; apps-run will refuse to start (apps-mounts prepare to retry)"
+    if [ -f $A/.mylinux/ready ]; then state mounted "$DEV mounted at $A"; else state setup "$DEV mounted at $A; setup is incomplete (apps-setup continues it)"; fi
+    apps-path &   # apps-disk commands on the PATH (background: ~1 s)
+    ;;
+  stop)
+    mountpoint -q $A || exit 0
+    # Programs still running from the chroot (browsers, agents) hold its mounts: end them first, then
+    # unwind the nested mounts innermost first and report what stayed mounted.
+    for p in /proc/[0-9]*; do [ "$(readlink "$p/root" 2>/dev/null)" = $A ] && kill -TERM "${p##*/}" 2>/dev/null; done
+    left=""
+    for i in 1 2 3 4 5 6 7 8; do
+      left=""; for p in /proc/[0-9]*; do [ "$(readlink "$p/root" 2>/dev/null)" = $A ] && left="$left ${p##*/}"; done
+      [ -z "$left" ] && break; sleep 0.5
+    done
+    # shellcheck disable=SC2086
+    [ -n "$left" ] && { kill -KILL $left 2>/dev/null; sleep 0.3; }
+    apps-mounts unwind && echo "apps disk: unmounted" || echo "apps disk: some mounts did not unwind (see above)"
+    sync ;;
 esac

@@ -1,0 +1,68 @@
+#!/bin/sh
+# Chroot plumbing for the apps disk, done once per boot (S45apps, or apps-setup on the first boot):
+#   apps-mounts prepare   bind mounts + helper files, idempotent, under a lock
+#   apps-mounts check     every mount present, or a message and exit 1 (apps-run refuses to start otherwise)
+#   apps-mounts unwind    reverse order at shutdown; reports what would not unmount, exit = failures
+A=/mnt/apps; RT=/run/user/0; LOCK=/run/apps-mounts.lock
+# inner mounts, outermost first (unwind walks it backwards)
+INNER="dev proc sys tmp dev/pts dev/shm ${RT#/} mnt/share"
+
+helpers() {
+  # Default browser inside the chroot for xdg-open / $BROWSER (Claude Code login etc.). --test-type only
+  # silences Chromium's "unsupported flag --no-sandbox" bar; the sandbox is off because everything runs as
+  # root. --force-prefers-reduced-motion: pages with permanent animations (claude.ai) otherwise make Chromium
+  # commit 60 frames a second and the software compositor redraw the whole screen each time.
+  mkdir -p $A/usr/local/bin $A/etc/chromium.d || return 1
+  cat > $A/usr/local/bin/mylinux-browser.tmp <<'EOS' || return 1
+#!/bin/sh
+exec chromium --ozone-platform=wayland --no-sandbox --test-type --force-prefers-reduced-motion --disable-gpu --disable-dev-shm-usage --password-store=basic --no-first-run "$@"
+EOS
+  chmod +x $A/usr/local/bin/mylinux-browser.tmp && mv -f $A/usr/local/bin/mylinux-browser.tmp $A/usr/local/bin/mylinux-browser || return 1
+  # Debian's /usr/bin/chromium wrapper reads /etc/chromium.d/*: every launch path (xdg-open, .desktop files) gets the flags
+  cat > $A/etc/chromium.d/mylinux.tmp <<'EOS' || return 1
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform=wayland --no-sandbox --test-type --force-prefers-reduced-motion --disable-gpu --disable-dev-shm-usage --password-store=basic"
+EOS
+  mv -f $A/etc/chromium.d/mylinux.tmp $A/etc/chromium.d/mylinux
+}
+
+prepare() {
+  mountpoint -q $A || { echo "apps-mounts: $A is not mounted" >&2; return 1; }
+  mkdir -p $RT && chmod 700 $RT
+  for d in dev proc sys tmp; do mkdir -p $A/$d; mountpoint -q $A/$d || mount --bind /$d $A/$d || { echo "apps-mounts: bind /$d failed" >&2; return 1; }; done
+  mkdir -p $A/dev/pts $A/dev/shm
+  mountpoint -q $A/dev/pts || mount -t devpts devpts $A/dev/pts || { echo "apps-mounts: devpts failed" >&2; return 1; }
+  mountpoint -q $A/dev/shm || mount -t tmpfs tmpfs $A/dev/shm || { echo "apps-mounts: /dev/shm failed" >&2; return 1; }
+  mkdir -p $A$RT; mountpoint -q $A$RT || mount --bind $RT $A$RT || { echo "apps-mounts: bind $RT failed" >&2; return 1; }
+  # the Mac share folder, so apps (file dialogs) can read files dropped into share/ on the Mac
+  if mountpoint -q /mnt/share; then mkdir -p $A/mnt/share; mountpoint -q $A/mnt/share || mount --bind /mnt/share $A/mnt/share || { echo "apps-mounts: bind /mnt/share failed" >&2; return 1; }; fi
+  if [ -d $A/etc ]; then cp -f /etc/resolv.conf $A/etc/.resolv.conf.tmp 2>/dev/null && mv -f $A/etc/.resolv.conf.tmp $A/etc/resolv.conf; fi
+  helpers || { echo "apps-mounts: could not write the helper files on the apps disk" >&2; return 1; }
+}
+
+check() {
+  mountpoint -q $A || { echo "apps-run: no apps disk mounted at $A ($(cat /run/apps-disk.info 2>/dev/null || echo 'run.sh attaches out/apps.img'))" >&2; return 1; }
+  missing=""
+  for d in dev proc sys tmp dev/pts dev/shm ${RT#/}; do mountpoint -q $A/$d || missing="$missing $A/$d"; done
+  [ -x $A/usr/local/bin/mylinux-browser ] || missing="$missing helpers"
+  [ -z "$missing" ] || { echo "apps-run: the chroot is not prepared (missing:$missing); run: apps-mounts prepare" >&2; return 1; }
+}
+
+unwind() {
+  fails=0
+  # innermost first
+  rev=""; for d in $INNER; do rev="$d $rev"; done
+  for d in $rev; do
+    mountpoint -q $A/$d || continue
+    umount $A/$d 2>/dev/null || umount -l $A/$d 2>/dev/null || { echo "apps-mounts: $A/$d still mounted" >&2; fails=$((fails + 1)); }
+  done
+  if mountpoint -q /root; then umount /root 2>/dev/null || umount -l /root 2>/dev/null || { echo "apps-mounts: /root still bound" >&2; fails=$((fails + 1)); }; fi
+  if mountpoint -q $A; then umount $A 2>/dev/null || { echo "apps-mounts: $A busy, detaching lazily (data is journalled)" >&2; umount -l $A 2>/dev/null || fails=$((fails + 1)); }; fi
+  return $fails
+}
+
+case "$1" in
+  prepare) exec 9> $LOCK; flock 9; prepare ;;
+  check) check ;;
+  unwind) unwind ;;
+  *) echo "usage: apps-mounts prepare|check|unwind" >&2; exit 2 ;;
+esac

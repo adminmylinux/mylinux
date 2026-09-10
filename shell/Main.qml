@@ -32,11 +32,13 @@ WaylandCompositor {
     Connections { target: Theme; function onKeyboardLayoutChanged() { compositor.applyKeymap() } }
 
     // Autostart list lives in Settings (share/mylinux.ini): [session] autostart=cmd1,cmd2,...
-    // Entries that need the apps disk are skipped until it is set up (FirstRun runs this again afterwards).
+    // Entries that need the apps disk are skipped until apps-setup has written its ready marker (every required
+    // stage done, not merely a Chromium binary present); FirstRun runs this again when the marker appears.
     property bool autostarted: false
     function runAutostart() {
         if (autostarted) return
-        const ready = Launcher.fileExists("/mnt/apps/usr/bin/chromium")
+        const ready = Launcher.fileExists("/mnt/apps/.mylinux/ready")
+
         const needsDisk = ["chromium", "firefox", "chatgpt", "claude-web", "claude-code", "codex", "apps-"]
         const list = String(Settings.value("session/autostart", "/usr/bin/claude-web,/usr/bin/chatgpt")).split(",")
         let launched = 0

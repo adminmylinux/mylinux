@@ -1,46 +1,95 @@
 #!/bin/sh
-# First-boot setup of the apps disk, entirely inside the VM (no Debian host needed):
-#  1. format the blank disk (ext4)          2. fetch Debian's official minimal trixie arm64 rootfs
-#  3. install the desktop set (Chromium, fonts, GL, wl-clipboard, curl) + git   4. Claude Code + Codex
-# Usage: apps-setup            (idempotent: skips steps already done)
-set -e
-DEV=$(cat /run/apps-disk 2>/dev/null || echo /dev/vda)
-ROOTFS_URL="https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/dist-arm64v8/trixie/oci/blobs/rootfs.tar.gz"
-A=/mnt/apps
-# A blank disk reads as zeros where an ext4 superblock would be (offset 1 KiB); busybox blkid is not reliable here.
-disk_is_blank() { [ "$(dd if="$1" bs=1024 skip=1 count=4 2>/dev/null | tr -d '\0' | wc -c)" -eq 0 ]; }
+# Set up (or repair) the apps disk inside the VM, in stages with durable markers on the disk
+# (/mnt/apps/.mylinux/stage-<name>-done) under a lock, so an interrupted run continues where it stopped and
+# two windows cannot run it at once. Status for the shell's dialog: /run/apps-setup.status (state=, stage=, message=).
+#   identify -> format (blank disks only) -> rootfs (pinned Debian, sha256 from the manifest) -> desktop
+#   (Chromium, fonts, GL, wl-clipboard, curl) -> devtools (git, btop) -> READY -> agents (Claude Code, Codex:
+#   optional; a failure here is reported as "partial" and retried with apps-setup-ai)
+# Usage: apps-setup
+. /usr/lib/mylinux/disk.sh
+. /usr/lib/mylinux/fetch.sh
+A=/mnt/apps; M=$A/.mylinux; STATUS=/run/apps-setup.status; LOCK=/run/apps-setup.lock
+SETUP_VERSION=2
+STAGE=identify
+status() { { echo "state=$1"; echo "stage=$2"; echo "message=$3"; echo "time=$(date +%s)"; } > $STATUS.tmp && mv -f $STATUS.tmp $STATUS; }
 step() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
+fail() { status failed "$STAGE" "$*"; printf '\napps-setup: %s\n' "$*" >&2; exit 1; }
+done_stage() { mkdir -p $M && echo "$SETUP_VERSION $(date +%s)" > "$M/stage-$1-done"; }
+has_stage() { [ -f "$M/stage-$1-done" ]; }
 
-[ -b "$DEV" ] || { echo "No apps disk device ($DEV). Start the VM with run.sh (it creates out/apps.img)."; exit 1; }
-if disk_is_blank "$DEV"; then
-  step "Formatting $DEV (ext4, label apps)"
-  mke2fs -q -t ext4 -L apps "$DEV"
-fi
-mkdir -p $A; mountpoint -q $A || mount -t ext4 -o noatime,commit=1 "$DEV" $A
-if [ ! -f $A/etc/debian_version ]; then
-  step "Downloading Debian trixie (arm64) minimal rootfs"
-  curl -fL --progress-bar -o /tmp/rootfs.tar.gz "$ROOTFS_URL"
+exec 9> $LOCK
+flock -n 9 || { echo "apps-setup is already running in another window (lock $LOCK)."; exit 3; }
+trap 'rc=$?; if [ $rc -ne 0 ] && [ "$(sed -n s/^state=//p $STATUS 2>/dev/null)" = running ]; then status failed "$STAGE" "stopped during stage $STAGE (exit $rc); run apps-setup again to continue"; fi' EXIT
+status running identify "looking for the apps disk"
+
+DEV=$(cat /run/apps-disk 2>/dev/null)
+[ -n "$DEV" ] || DEV=$(find_apps_disk) || fail "no apps disk found (run.sh attaches out/apps.img with the virtio serial mylinux-apps); nothing formatted"
+[ -b "$DEV" ] || fail "$DEV is not a block device"
+case "$(disk_state "$DEV")" in
+  apps) echo "$DEV: existing apps disk" ;;
+  blank)
+    STAGE=format; status running format "formatting $DEV"
+    step "Formatting $DEV (ext4, label apps)"
+    mke2fs -q -t ext4 -L apps "$DEV" || fail "mke2fs on $DEV failed"
+    [ "$(disk_state "$DEV")" = apps ] || fail "$DEV does not read back as an apps disk after formatting" ;;
+  unreadable) fail "$DEV cannot be read; not formatted. Check the disk file on the Mac (out/apps.img)." ;;
+  *) fail "$DEV holds data that is not a myLinux apps disk (no ext4 label 'apps'); not formatted. To start over on purpose, remove out/apps.img on the Mac; run.sh creates a blank one." ;;
+esac
+STAGE=mount; status running mount "mounting $DEV"
+mkdir -p $A
+mountpoint -q $A || mount -t ext4 -o noatime,commit=1 "$DEV" $A || fail "$DEV has the apps label but does not mount (try: e2fsck -f $DEV)"
+mkdir -p $A/root; mountpoint -q /root || mount --bind $A/root /root || fail "could not bind /root to the apps disk"
+echo "$DEV" > /run/apps-disk; echo setup > /run/apps-disk.state; echo "$DEV mounted at $A; setup running" > /run/apps-disk.info
+mkdir -p $M
+/etc/init.d/S47tailscale migrate 2>/dev/null || true    # a Tailscale login made before the disk existed moves onto it
+
+STAGE=rootfs
+if ! has_stage rootfs; then
+  status running rootfs "downloading Debian"
+  step "Downloading Debian trixie (arm64) minimal rootfs: $DEBIAN_ROOTFS_NOTE"
+  fetch_verified "$DEBIAN_ROOTFS_URL" "$DEBIAN_ROOTFS_SHA256" /tmp/rootfs.tar.gz || fail "the Debian rootfs download failed or did not match its checksum (network? see above)"
+  status running rootfs "unpacking Debian"
   step "Unpacking"
-  gunzip -c /tmp/rootfs.tar.gz | tar -x -C $A && rm -f /tmp/rootfs.tar.gz
+  gunzip -c /tmp/rootfs.tar.gz | tar -x -C $A || { rm -f /tmp/rootfs.tar.gz; fail "unpacking the rootfs failed (disk full?)"; }
+  rm -f /tmp/rootfs.tar.gz
+  [ -f $A/etc/debian_version ] || fail "the unpacked rootfs has no /etc/debian_version"
   echo "nameserver 1.1.1.1" > $A/etc/resolv.conf
+  done_stage rootfs
 fi
-mkdir -p $A/root; mountpoint -q /root || mount --bind $A/root /root
-if ! apps-run test -x /usr/bin/chromium; then
+apps-mounts prepare || fail "preparing the chroot mounts failed"
+
+apt_install() { apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "$@" && apps-run apt-get clean; }
+STAGE=desktop
+if ! has_stage desktop; then
+  status running desktop "installing Chromium and the desktop packages"
   step "Installing desktop packages (Chromium, fonts, GL, clipboard) - a few minutes"
-  apps-run apt-get update -q
-  apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-    ca-certificates fonts-dejavu-core fonts-liberation libgl1 libegl1 libgles2 mesa-libgallium dbus xdg-utils \
-    wl-clipboard curl chromium chromium-sandbox
-  apps-run apt-get clean
+  apt_install ca-certificates fonts-dejavu-core fonts-liberation libgl1 libegl1 libgles2 mesa-libgallium dbus xdg-utils \
+    wl-clipboard curl chromium chromium-sandbox || fail "installing the desktop packages failed (network? disk full?)"
+  apps-run test -x /usr/bin/chromium || fail "Chromium is not executable after the install"
+  done_stage desktop
 fi
-# Developer basics (also added to disks set up before they were default: apps-setup is idempotent)
-if ! apps-run test -x /usr/bin/git || ! apps-run test -x /usr/bin/btop; then
+STAGE=devtools
+if ! has_stage devtools; then
+  status running devtools "installing git and btop"
   step "Installing git (with ssh client and less) and btop"
-  apps-run apt-get update -q
-  apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends git openssh-client less btop
-  apps-run apt-get clean
+  apt_install git openssh-client less btop || fail "installing git/btop failed"
+  done_stage devtools
 fi
-step "Installing Claude Code and Codex"
-apps-setup-ai all || echo "(agent install failed - retry later with: apps-setup-ai)"
+# Everything an app needs is in place: the shell may autostart browsers from here on.
+echo "$SETUP_VERSION" > $M/ready.tmp && mv -f $M/ready.tmp $M/ready
+echo mounted > /run/apps-disk.state; echo "$DEV mounted at $A" > /run/apps-disk.info
 apps-path
+
+STAGE=agents
+if ! has_stage agents; then
+  status running agents "installing Claude Code and Codex"
+  step "Installing Claude Code and Codex"
+  if apps-setup-ai all; then done_stage agents
+  else
+    status partial agents "Claude Code / Codex did not install (network?); everything else is ready. Retry: Setup > Install agents (apps-setup-ai)"
+    printf '\n\033[1;33mThe coding agents did not install; the disk is otherwise ready. Retry later with: apps-setup-ai\033[0m\n'
+    exit 0
+  fi
+fi
+status done agents "ready"
 step "Done. The apps disk is ready: Chromium, Firefox (on first click), git, btop, Claude Code, Codex."

@@ -1,16 +1,31 @@
 #!/bin/sh
-# Tailscale node daemon. State lives in the home directory (apps disk) so the login survives reboots.
-# Networking is userspace WireGuard over the kernel TUN device; no netfilter in this kernel.
+# Tailscale node daemon. State lives in the home directory on the apps disk so the login survives reboots.
+# Before the apps disk exists (first boot) /root is RAM: the state then goes to /run/tailscale-state, explicitly
+# volatile, and apps-setup calls `migrate` once /root is the apps disk. Networking is userspace WireGuard over
+# the kernel TUN device; no netfilter in this kernel.
 STATE=/root/.config/tailscale
+RAM=/run/tailscale-state
+state_dir() { if mountpoint -q /root; then echo "$STATE"; else echo "$RAM"; fi }   # /root is a mountpoint only when it is the apps disk
 case "$1" in
   start)
     [ -x /usr/sbin/tailscaled ] || exit 0
-    mkdir -p "$STATE" /run/tailscale /dev/net
+    D=$(state_dir)
+    mkdir -p "$D" /run/tailscale /dev/net
     [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
-    printf 'Starting tailscaled: '
-    setsid /usr/sbin/tailscaled --state="$STATE/tailscaled.state" --socket=/run/tailscale/tailscaled.sock \
-        --statedir="$STATE" --tun=tailscale0 --port=41641 < /dev/null > /var/log/tailscaled.log 2>&1 &
+    printf 'Starting tailscaled (state in %s): ' "$D"
+    setsid /usr/sbin/tailscaled --state="$D/tailscaled.state" --socket=/run/tailscale/tailscaled.sock \
+        --statedir="$D" --tun=tailscale0 --port=41641 < /dev/null > /var/log/tailscaled.log 2>&1 &
     echo OK ;;
   stop) killall tailscaled 2>/dev/null ;;
   restart) $0 stop; sleep 1; $0 start ;;
+  migrate)
+    # /root just became the apps disk: carry a login made before that over, then restart on the persistent path
+    mountpoint -q /root || exit 0
+    if [ -d "$RAM" ] && [ -n "$(ls -A "$RAM" 2>/dev/null)" ] && [ ! -f "$STATE/tailscaled.state" ]; then
+      $0 stop; sleep 1
+      mkdir -p "$STATE" && cp -a "$RAM/." "$STATE/" && rm -rf "$RAM" && echo "tailscale: state moved to the apps disk"
+      $0 start
+    elif pgrep -f "tailscaled --state=$RAM" > /dev/null; then
+      $0 restart
+    fi ;;
 esac
