@@ -82,6 +82,9 @@ Item {
             { label: "Display settings", hint: "Brightness · Text size · Scale", glyph: "🖥", run: () => desktop.openDisplayPanel() } ]
             .concat(Theme.layouts.map(l => ({ label: "Keyboard: " + l.label, hint: l.badge + (l.id === Theme.keyboardLayout ? "  ✓" : ""), glyph: "⌨", run: () => Theme.setKeyboardLayout(l.id) })))
             .concat([
+            { label: "Clipboard sharing: on", hint: "Mac clipboard text appears here on its own" + (Theme.clipboardSharing ? "  ✓" : ""), glyph: "⇪", run: () => Theme.setClipboardSharing(true) },
+            { label: "Clipboard sharing: off", hint: "nothing copied in; ⌘⌃C still sends text to the Mac" + (Theme.clipboardSharing ? "" : "  ✓"), glyph: "⇪", run: () => Theme.setClipboardSharing(false) },
+
             { label: "Set up / repair the apps disk", hint: "apps-setup", glyph: "⤓", run: () => desktop.launch("/usr/bin/apps-setup-window") },
             { label: "Install / update Claude Code and Codex", hint: "apps-setup-ai", glyph: "✳", run: () => inTerminal("Installing agents", "apps-setup-ai") },
             { label: "Tailscale: connect", hint: "join your tailnet as \"mylinux\" (opens the login page)", glyph: "⬡", run: () => desktop.launch("/usr/bin/tailscale-login") },
@@ -126,7 +129,9 @@ Item {
         } else if (mode === "theme") {
             const ql = q.toLowerCase()
             list = ThemeStore.themes.filter(t => q === "" || t.name.toLowerCase().indexOf(ql) >= 0)
+
                 .map(t => ({ label: t.name + (t.id === Theme.themeId ? "  ✓" : ""), hint: (t.light ? "Light" : "Dark") + " · " + t.backgrounds.length + " background" + (t.backgrounds.length === 1 ? "" : "s"), swatch: [t.colors.background, t.colors.color1, t.colors.color2, t.colors.color3, t.colors.color4, t.colors.color5, t.colors.accent], run: () => Theme.setTheme(t.id) }))
+            if (ThemeStore.converting) list.unshift({ label: "Converting downloaded backgrounds…", hint: "in the background; the list refreshes when done", glyph: "⟳", run: () => {} })
             // extras stay reachable while typing ("down", "omarchy", "install" ... match their labels)
             list = list.concat([
                 { label: "Download Omarchy backgrounds for all themes", hint: "≈ one repository download; adds the real photos to every theme", glyph: "⤓",

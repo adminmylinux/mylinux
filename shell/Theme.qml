@@ -59,7 +59,8 @@ QtObject {
     readonly property int outputScale: 1
 
     // write the terminal palette for the persisted theme at start-up (foot reads it per launch)
-    Component.onCompleted: ThemeStore.applyTerminal(themeId, terminalFontPt)
+    Component.onCompleted: { ThemeStore.applyTerminal(themeId, terminalFontPt); applyClipboardSharing() }
+
     function setScale(v) { scale = v; Settings.set("display/scale", v) }
     // Our macOS-style title bars: "auto" = only for apps that do not decorate themselves, "always", "never"
     property string titleBars: String(Settings.value("wm/titlebars", "auto"))
@@ -68,6 +69,10 @@ QtObject {
     // Dock: hidden until the pointer touches the bottom edge (default), or always visible
     property bool dockAutoHide: String(Settings.value("look/dockAutoHide", "true")) === "true"
     function setDockAutoHide(v) { dockAutoHide = v; Settings.set("look/dockAutoHide", v ? "true" : "false") }
+    // Mac -> guest clipboard mirroring (clipboard-bridge stops while /run/clipboard.off exists); ⌘⌃C stays explicit
+    property bool clipboardSharing: String(Settings.value("input/clipboard", "true")) === "true"
+    function applyClipboardSharing() { if (clipboardSharing) Launcher.removeFile("/run/clipboard.off"); else Launcher.writeFile("/run/clipboard.off", "off\n") }
+    function setClipboardSharing(v) { clipboardSharing = v; Settings.set("input/clipboard", v ? "true" : "false"); applyClipboardSharing() }
     function setSolidPanels(v) { solidPanels = v; Settings.set("look/solidPanels", v ? "true" : "false") }
     function setTitleBars(v) { titleBars = v; Settings.set("wm/titlebars", v) }
     function setTextScale(v) { textScale = v; Settings.set("display/textScale", v) }

@@ -1,8 +1,9 @@
 import QtQuick
 import MyShell
 
-// Settings popover (menu bar gear): API keys and tokens. Saved in the home directory and exported
-// to every terminal and app as environment variables (OPENROUTER_API_KEY, ...).
+// Settings popover (menu bar gear): API keys and tokens. Saved in the home directory and exported as
+// environment variables to terminals, Claude Code, Codex and developer tools (apps-run's allowlist);
+// browsers and other GUI apps never see them. A failed save is shown here and leaves the old values.
 Item {
     id: panel
     property Item backdrop
@@ -34,7 +35,8 @@ Item {
             Rectangle { id: showBtn; width: showT.width + Theme.px(16); height: Theme.px(24); radius: Theme.px(6); color: "#3a3a44"
                 Text { id: showT; anchors.centerIn: parent; text: panel.reveal ? "Hide" : "Show"; color: "white"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont }
                 MouseArea { anchors.fill: parent; onClicked: panel.reveal = !panel.reveal } } }
-        Label { text: "API KEYS · EXPORTED AS ENVIRONMENT VARIABLES" }
+        Label { text: "API KEYS · FOR TERMINALS, CLAUDE CODE, CODEX AND DEV TOOLS (NOT BROWSERS)" }
+        Text { visible: Secrets.lastError.length > 0; width: parent.width; wrapMode: Text.WordWrap; text: "Not saved: " + Secrets.lastError; color: "#ff6b6b"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
         Repeater {
             model: panel.fields
             Column { width: col.width; spacing: 3
@@ -52,6 +54,7 @@ Item {
                         Component.onCompleted: if (index === 0) panel.firstField = fld
                         Text { anchors.fill: parent; visible: !fld.text.length && !fld.activeFocus; text: modelData.hint; color: "#6e6e78"; font: fld.font; verticalAlignment: Text.AlignVCenter } } } }
         }
-        Label { text: "SAVED IN ~/.config/mylinux/secrets.env · NEW TERMINALS AND APPS SEE CHANGES"; color: "#6e6e78"; width: parent.width; elide: Text.ElideRight }
+        Label { text: "SAVED IN ~/.config/mylinux/secrets.env (0600) · NEW TERMINALS AND AGENTS SEE CHANGES"; color: "#6e6e78"; width: parent.width; elide: Text.ElideRight }
+
     }
 }

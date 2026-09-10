@@ -1,7 +1,13 @@
 #!/bin/sh
-# Put the guest's text selection into the Mac clipboard (⌘⌃C): written to the share, run.sh pbcopies it.
-. /etc/profile.d/qt.sh
-D=/mnt/share/clipboard; mkdir -p "$D"
-T=$(apps-run wl-paste -n -t text/plain 2>/dev/null) || exit 0
-[ -n "$T" ] || exit 0
-printf '%s' "$T" > "$D/guest.txt.tmp" && mv -f "$D/guest.txt.tmp" "$D/guest.txt"
+# Put the guest's text selection into the Mac clipboard (⌘⌃C): written byte-for-byte to share/clipboard/guest.txt,
+# then share/clipboard/guest.seq is bumped; run.sh pbcopies it. Empty selections and anything above 1 MB are
+# not sent (a message is logged).
+[ -f /etc/profile.d/qt.sh ] && . /etc/profile.d/qt.sh
+D="${CLIP_DIR:-/mnt/share/clipboard}"; mkdir -p "$D"; MAX=1048576
+apps-run wl-paste -n -t text/plain > "$D/guest.txt.tmp" 2>/dev/null || { rm -f "$D/guest.txt.tmp"; exit 0; }
+size=$(wc -c < "$D/guest.txt.tmp" | tr -d ' ')
+if [ "$size" -eq 0 ]; then rm -f "$D/guest.txt.tmp"; exit 0; fi
+if [ "$size" -gt $MAX ]; then rm -f "$D/guest.txt.tmp"; echo "clipboard-send: selection is larger than 1 MB, not sent" >&2; exit 1; fi
+mv -f "$D/guest.txt.tmp" "$D/guest.txt"
+n=$(cat "$D/guest.seq" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac
+echo $((n + 1)) > "$D/guest.seq.tmp" && mv -f "$D/guest.seq.tmp" "$D/guest.seq"

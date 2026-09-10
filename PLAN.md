@@ -691,3 +691,12 @@ the nested mounts innermost first. Tailscale keeps its state in /run until /root
 migrates it. FirstRun shows disk state, stage, failure and Retry. README/website: journal commit=1 limits, not
 prevents, data loss; the base image is reset at boot, not "read-only". Tests: tools/tests/guest.sh (disk
 classification, serial lookup), the rest needs the baked image (see docs/REVIEW-REPORT-2026-09-10.md).
+
+Review section 8 (2026-09-10): secrets.env is data (KEY=value; names ^[A-Z][A-Z0-9_]{2,63}$, one-line values),
+written with QSaveFile at 0600, a failed or invalid save keeps the old values and shows in the Settings panel
+(Secrets.lastError / saveFailed). apps-run exports the keys only to an allowlist (claude, codex, shells, node,
+python, git, gh, apt ...; APPS_SECRETS=all|none overrides) through an unlinked fd, never `. file`; browsers and
+Remmina get none; the interactive-shell profile parses the same way. Clipboard: byte-exact files plus sequence
+counters (mac.seq/guest.seq) on both sides, cmp-based change detection on the Mac (tools/clipboard-host.sh),
+empty text not mirrored, 1 MB bound, state kept across bridge restarts, files removed by run.sh's cleanup;
+"Clipboard sharing: on/off" in Setup (input/clipboard, /run/clipboard.off). Tests in tools/tests/guest.sh.

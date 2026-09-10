@@ -1,16 +1,29 @@
 #!/bin/sh
-# Mac -> guest text clipboard over the share folder: run.sh mirrors the Mac clipboard into
-# share/clipboard/mac.txt; this applies it as the guest selection with wl-copy (wl-clipboard from the apps
-# disk; its helper surface is kept invisible by the compositor). Guest -> Mac is on request: clipboard-send
-# (⌘⌃C). Started by S99shell.
-. /etc/profile.d/qt.sh
-D=/mnt/share/clipboard; MAC=$D/mac.txt
-until [ -S "$XDG_RUNTIME_DIR/wayland-0" ] && [ -x /mnt/apps/usr/bin/wl-copy ] && mountpoint -q /mnt/share; do sleep 2; done
+# Mac -> guest text clipboard over the share folder. run.sh writes the Mac clipboard byte-for-byte into
+# share/clipboard/mac.txt and then bumps share/clipboard/mac.seq (a counter, atomic rename); this applies every
+# new sequence number with wl-copy (wl-clipboard from the apps disk; its helper surface stays invisible in the
+# compositor). Content is passed as a file, never through shell variables or substitution. An empty file is
+# not applied (the Mac clipboard held no text; the guest keeps what it had). Files above 1 MB are skipped.
+# Guest -> Mac is on request only: clipboard-send (⌘⌃C). Off while /run/clipboard.off exists (the
+# "Clipboard sharing" setting). Started by S99shell. CLIPBOARD_ONESHOT=1 (tests): one pass, then exit.
+[ -f /etc/profile.d/qt.sh ] && . /etc/profile.d/qt.sh
+D="${CLIP_DIR:-/mnt/share/clipboard}"; OFF="${CLIP_OFF:-/run/clipboard.off}"; STATE="${CLIP_STATE:-/run/clipboard-bridge.seq}"
+MAC=$D/mac.txt; SEQ=$D/mac.seq; MAX=1048576
+if [ "${CLIPBOARD_ONESHOT:-}" != 1 ]; then
+  until [ -S "$XDG_RUNTIME_DIR/wayland-0" ] && [ -x /mnt/apps/usr/bin/wl-copy ] && mountpoint -q /mnt/share; do sleep 2; done
+fi
 mkdir -p "$D"
-LAST_M=""; LAST_TEXT=""
-while sleep 0.5; do
-  [ -f "$MAC" ] || continue
-  M=$(stat -c %Y "$MAC" 2>/dev/null); [ "$M" != "$LAST_M" ] || continue
-  LAST_M=$M; T=$(cat "$MAC")
-  if [ -n "$T" ] && [ "$T" != "$LAST_TEXT" ]; then LAST_TEXT=$T; printf '%s' "$T" | apps-run wl-copy 2>/dev/null; fi
+LAST=$(cat "$STATE" 2>/dev/null)     # applied sequence, kept across bridge restarts (RAM)
+while :; do
+  if [ ! -e "$OFF" ] && [ -f "$SEQ" ]; then
+    S=$(cat "$SEQ" 2>/dev/null)
+    if [ -n "$S" ] && [ "$S" != "$LAST" ]; then
+      LAST=$S; printf '%s\n' "$S" > "$STATE"
+
+      size=$(wc -c < "$MAC" 2>/dev/null | tr -d ' ')
+      if [ -n "$size" ] && [ "$size" -gt 0 ] && [ "$size" -le $MAX ]; then apps-run wl-copy < "$MAC" 2>/dev/null; fi
+    fi
+  fi
+  [ "${CLIPBOARD_ONESHOT:-}" = 1 ] && exit 0
+  sleep 0.5
 done

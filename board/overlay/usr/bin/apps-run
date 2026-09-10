@@ -1,36 +1,38 @@
 #!/bin/sh
 # Run a program from the Debian "apps disk" (chroot at /mnt/apps) as a Wayland client of the shell.
 # Usage: apps-run chromium [args]      apps-run apt install firefox       apps-run bash
+# The chroot mounts and helper files are prepared once per boot (S45apps -> apps-mounts); this only checks them.
 A=/mnt/apps
-if ! mountpoint -q $A; then echo "apps-run: no apps disk mounted at $A (run.sh attaches out/apps.img)" >&2; exit 1; fi
-for d in dev proc sys tmp; do mountpoint -q $A/$d || mount --bind /$d $A/$d; done
-mountpoint -q $A/dev/pts || mount -t devpts devpts $A/dev/pts 2>/dev/null
-mkdir -p $A/dev/shm; mountpoint -q $A/dev/shm || mount -t tmpfs tmpfs $A/dev/shm
-mkdir -p "$A$XDG_RUNTIME_DIR"; mountpoint -q "$A$XDG_RUNTIME_DIR" || mount --bind "$XDG_RUNTIME_DIR" "$A$XDG_RUNTIME_DIR"
-# the Mac share folder, so apps (file dialogs) can read files dropped into share/ on the Mac
-if mountpoint -q /mnt/share; then mkdir -p $A/mnt/share; mountpoint -q $A/mnt/share || mount --bind /mnt/share $A/mnt/share; fi
-cp -f /etc/resolv.conf $A/etc/resolv.conf 2>/dev/null
-hosts-sync
-# helper scripts inside the chroot: default browser for xdg-open / $BROWSER (Claude Code login etc.).
-# Rewritten on every run so flag changes reach disks set up earlier. (--test-type only silences
-# Chromium's "unsupported flag --no-sandbox" bar; the sandbox is off because we run as root.
-# --force-prefers-reduced-motion: pages with permanent animations, claude.ai for one, otherwise make
-# Chromium commit 60 frames a second and the software compositor redraw the whole screen each time.)
-mkdir -p $A/usr/local/bin
-cat > $A/usr/local/bin/mylinux-browser <<'EOS'
-#!/bin/sh
-exec chromium --ozone-platform=wayland --no-sandbox --test-type --force-prefers-reduced-motion --disable-gpu --disable-dev-shm-usage --password-store=basic --no-first-run "$@"
-EOS
-chmod +x $A/usr/local/bin/mylinux-browser
-# Debian's /usr/bin/chromium wrapper reads /etc/chromium.d/*: make every launch path (xdg-open, .desktop files) use
-# the flags this compositor needs.
-mkdir -p $A/etc/chromium.d
-cat > $A/etc/chromium.d/mylinux <<'EOS'
-export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --ozone-platform=wayland --no-sandbox --test-type --force-prefers-reduced-motion --disable-gpu --disable-dev-shm-usage --password-store=basic"
-EOS
+# APPS_RUN_DRYRUN=1 (tests): print the secret policy and the lines that would be exported, run nothing.
+[ "${APPS_RUN_DRYRUN:-}" = 1 ] || apps-mounts check || exit 1
 # Keep the caller's working directory when the chroot has it too (/root and /tmp are the same directories).
 CWD=/root; case "$PWD" in /root|/root/*|/tmp|/tmp/*) CWD="$PWD";; esac
+# Saved API keys (Settings panel, ~/.config/mylinux/secrets.env) reach only the programs that need them:
+# coding agents, shells and developer tools. Browsers, Remmina and other GUI apps get none. The file is data
+# (KEY=value lines), never sourced; APPS_SECRETS=all|none overrides the choice for one launch.
+policy="${APPS_SECRETS:-}"
+if [ -z "$policy" ]; then
+  case "${1##*/}" in
+    claude|codex|sh|bash|dash|zsh|fish|node|npm|npx|bun|deno|python|python3|pip|pip3|git|gh|aider|opencode|env|apt|apt-get) policy=all ;;
+    *) policy=none ;;
+  esac
+fi
+SECRETS_FILE="${SECRETS_FILE:-/root/.config/mylinux/secrets.env}"; LIB="${MYLINUX_LIB:-/usr/lib/mylinux}"
+if [ "${APPS_RUN_DRYRUN:-}" = 1 ]; then
+  echo "policy=$policy"
+  if [ "$policy" = all ] && [ -f "$SECRETS_FILE" ]; then . "$LIB/secrets.sh"; secrets_filter < "$SECRETS_FILE"; fi
+  exit 0
+fi
+SECRETS=0
+if [ "$policy" = all ] && [ -f "$SECRETS_FILE" ]; then
+  . "$LIB/secrets.sh"
+  # validated lines go through an unlinked 0600 file on fd 3; the program's stdin stays untouched
+  tmp=$(mktemp /run/apps-secrets.XXXXXX) && chmod 600 "$tmp" && secrets_filter < "$SECRETS_FILE" > "$tmp" \
+    && exec 3< "$tmp" && SECRETS=1
+  rm -f "$tmp"
+fi
 exec chroot $A /usr/bin/env -i HOME=/root USER=root TERM="${TERM:-foot}" PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     LANG=C.UTF-8 WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" XDG_SESSION_TYPE=wayland \
-    GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland MOZ_ENABLE_WAYLAND=1 BROWSER=/usr/local/bin/mylinux-browser \
-    sh -c '[ -f /root/.config/mylinux/secrets.env ] && { set -a; . /root/.config/mylinux/secrets.env; set +a; }; cd "$1" 2>/dev/null || cd /root; shift; exec "$@"' sh "$CWD" "$@"
+    GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland MOZ_ENABLE_WAYLAND=1 BROWSER=/usr/local/bin/mylinux-browser MYLINUX_SECRETS=$SECRETS \
+    sh -c 'if [ "$MYLINUX_SECRETS" = 1 ]; then while IFS= read -r l <&3; do [ -n "$l" ] && export "$l"; done; exec 3<&-; fi; unset MYLINUX_SECRETS
+           cd "$1" 2>/dev/null || cd /root; shift; exec "$@"' sh "$CWD" "$@"

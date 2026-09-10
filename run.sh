@@ -94,23 +94,17 @@ tools/make-app-bundle.sh >/dev/null || die "could not prepare out/myLinux.app"
 # guest.txt (from clipboard-bridge in the guest) into the Mac clipboard. CLIPBOARD=0 turns that off.
 # Everything is scoped to this instance: its own share directory and its window title ($NAME).
 printf '%s\n' "$NAME" > "$SHARE_DIR/instance"
-rm -f "$SHARE_DIR/host-cmd"; mkdir -p "$SHARE_DIR/clipboard"; rm -f "$SHARE_DIR/clipboard"/*.txt
+rm -f "$SHARE_DIR/host-cmd"; mkdir -p "$SHARE_DIR/clipboard"; rm -f "$SHARE_DIR/clipboard"/*.txt "$SHARE_DIR/clipboard"/*.seq "$SHARE_DIR/clipboard"/*.last
 CLIPBOARD="${CLIPBOARD:-1}"
-( export LC_ALL=en_US.UTF-8; LAST_MAC=""; LAST_GUEST_M=""; G="$SHARE_DIR/clipboard/guest.txt"; M="$SHARE_DIR/clipboard/mac.txt"
-  while sleep 0.5; do
+( while sleep 0.5; do
     if [ -f "$SHARE_DIR/host-cmd" ]; then
       cmd=$(head -1 "$SHARE_DIR/host-cmd"); rm -f "$SHARE_DIR/host-cmd"
       case "$cmd" in fit|center|fullscreen|native) tools/host-window.sh "$cmd" "$NAME" >/dev/null 2>&1 & ;; esac
     fi
-    [ "$CLIPBOARD" = 1 ] || continue
-    if [ -f "$G" ]; then
-      GM=$(stat -f %m "$G" 2>/dev/null || true)
-      if [ "$GM" != "$LAST_GUEST_M" ]; then LAST_GUEST_M=$GM; T=$(cat "$G"); if [ -n "$T" ] && [ "$T" != "$LAST_MAC" ]; then printf '%s' "$T" | pbcopy; LAST_MAC=$T; fi; fi
-    fi
-    T=$(pbpaste 2>/dev/null || true)
-    if [ -n "$T" ] && [ "$T" != "$LAST_MAC" ]; then LAST_MAC=$T; printf '%s' "$T" > "$M.tmp" && mv -f "$M.tmp" "$M"; fi
   done ) &
 AGENT=$!
+CLIP=""
+if [ "$CLIPBOARD" = 1 ]; then tools/clipboard-host.sh "$SHARE_DIR/clipboard" & CLIP=$!; fi
 # Window placer: QEMU centres its window on whichever display macOS chose (and again when the guest
 # sets its mode), so once the window has the guest's width, move it onto the display RES was computed
 # for and keep it there until the position has held for a few checks. The window is found by its title:
@@ -146,7 +140,8 @@ AS
     case "$R" in held) HELD=$((HELD + 1)); [ $HELD -ge 4 ] && break ;; *) HELD=0 ;; esac
   done ) &
 PLACER=$!
-cleanup() { kill "$AGENT" "$PLACER" 2>/dev/null; rm -f "$SHARE_DIR/host-cmd" "$SHARE_DIR/instance" "$SHARE_DIR/clipboard"/*.txt; }
+cleanup() { kill "$AGENT" "$PLACER" $CLIP 2>/dev/null; rm -f "$SHARE_DIR/host-cmd" "$SHARE_DIR/instance" "$SHARE_DIR/clipboard"/*.txt "$SHARE_DIR/clipboard"/*.seq "$SHARE_DIR/clipboard"/*.last; }
+
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT TERM
 
