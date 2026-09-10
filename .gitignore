@@ -5,3 +5,4 @@ share/*
 !share/.keep
 *.log
 .DS_Store
+board/overlay/etc/mylinux-release

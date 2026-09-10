@@ -4,6 +4,8 @@
 #include <QDebug>
 #include <QFile>
 #include <QRegularExpression>
+#include <QWaylandSeat>
+#include <QWaylandSurface>
 
 Launcher::Launcher(QObject *parent) : QObject(parent) {}
 
@@ -58,3 +60,18 @@ bool Launcher::hostCommand(const QString &cmd)
 }
 
 bool Launcher::fileExists(const QString &path) const { return QFile::exists(path); }
+bool Launcher::writeFile(const QString &path, const QString &text) const
+{
+    QFile f(path + ".tmp");
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    f.write(text.toUtf8()); f.close();
+    QFile::remove(path);
+    return QFile::rename(path + ".tmp", path);
+}
+bool Launcher::removeFile(const QString &path) const { return QFile::remove(path); }
+bool Launcher::setSeatFocus(QObject *seat, QObject *surface) const
+{
+    auto *s = qobject_cast<QWaylandSeat *>(seat); if (!s) return false;
+    return s->setKeyboardFocus(surface ? qobject_cast<QWaylandSurface *>(surface) : nullptr);
+}
+QString Launcher::readFile(const QString &path) const { QFile f(path); return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString(); }

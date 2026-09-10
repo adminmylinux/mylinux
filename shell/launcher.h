@@ -15,7 +15,12 @@ public:
     Q_INVOKABLE QString socketName() const;
     Q_INVOKABLE void setTerminalFont(int pt);
     Q_INVOKABLE bool hostCommand(const QString &cmd);
-    Q_INVOKABLE bool fileExists(const QString &path) const;   // ask the host agent (run.sh) to do something
+    Q_INVOKABLE bool fileExists(const QString &path) const;
+    Q_INVOKABLE bool writeFile(const QString &path, const QString &text) const;   // atomic (tmp + rename)
+    Q_INVOKABLE bool removeFile(const QString &path) const;
+    Q_INVOKABLE QString readFile(const QString &path) const;
+    // Seat keyboard focus from C++: assigning null to the seat's keyboardFocus property in QML is a no-op.
+    Q_INVOKABLE bool setSeatFocus(QObject *seat, QObject *surface) const;
 signals:
     void launched(const QString &program, qint64 pid);
     void failed(const QString &program, const QString &error);

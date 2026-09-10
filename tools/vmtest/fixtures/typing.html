@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>typing-fixture:</title>
+<style>body{font:16px sans-serif;margin:24px}textarea{width:90%;height:200px;font:16px monospace}</style>
+<p>myLinux typing fixture. Every character typed into the box is mirrored into the window title,
+which the compositor's diagnostics can read.</p>
+<textarea id="t" autofocus></textarea>
+<script>
+const t = document.getElementById('t');
+const update = () => { document.title = 'typing-fixture:' + t.value.replace(/\n/g, '\\n'); };
+t.addEventListener('input', update); window.addEventListener('load', () => { t.focus(); update(); });
+</script>
