@@ -717,3 +717,11 @@ six days back everywhere; utilization units come from the field name (utilizatio
 anything else is "unknown"; the stats-cache all-time fallback is labelled all-time. Settings reports share vs
 /tmp and QSettings write errors in the Display panel. Test hooks: myshell --agent-scan DIR [date] and
 --claude-limits FILE, driven by vmtest agent_usage_fixtures on synthetic logs.
+
+Review section 11 (2026-09-10): tools/check.sh also runs tools/tests/guest.sh (90 checks on the guest script
+libraries with synthetic fixtures). tools/vmtest/vmtest.py has 14 scenarios (fullscreen, single activation,
+scale relayout, client fullscreen via Firefox F11, agent usage on synthetic logs through `myshell --agent-scan`,
+clipboard fidelity, shell restart added); tools/vmtest/disktest.py covers the apps-disk lifecycle (blank first
+run with an interrupted stage, foreign/extra disks, lock, shutdown unwind, reboot). Both suites pass on the
+baked image 872299994c1b. VM stops are clean poweroffs now: a killed QEMU is a power cut and left rewritten
+files empty on the test disk once. Report: docs/REVIEW-REPORT-2026-09-10-sections-6-10.md.
