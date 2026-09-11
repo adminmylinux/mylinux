@@ -6,11 +6,21 @@ import MyShell
 // handling, so clicks go through to the desktop. Toggled with Theme.desktopWidgets (Style menu).
 Item {
     id: dw
+    property int workspace: 1          // current workspace, shown as a big circled number in the top-right corner
     property date now: new Date()
     Timer { interval: 1000; running: dw.visible; repeat: true; onTriggered: dw.now = new Date() }
     readonly property color ink: "#f4f4f6"
     readonly property color inkDim: "#d0d0d6"
     component Shadowed: Text { color: dw.ink; font.family: Theme.uiFont; style: Text.Outline; styleColor: "#66000000" }
+
+    // ---- workspace number, top-right ----
+    Rectangle {
+        anchors.right: parent.right; anchors.rightMargin: Theme.px(40)
+        anchors.top: parent.top; anchors.topMargin: Theme.px(14)
+        width: Theme.px(96); height: width; radius: width / 2
+        color: "#22000000"; border.color: dw.ink; border.width: Theme.px(3)
+        Shadowed { anchors.centerIn: parent; anchors.verticalCenterOffset: Theme.px(2); text: dw.workspace; font.pixelSize: Theme.fpx(60); font.weight: Font.Light }
+    }
 
     // ---- date, right of centre ----
     Column {
@@ -27,7 +37,7 @@ Item {
     Column {
         id: weatherBlock
         anchors.right: parent.right; anchors.rightMargin: Theme.px(90)
-        anchors.top: parent.top; anchors.topMargin: Theme.px(120)
+        anchors.top: parent.top; anchors.topMargin: Theme.px(130)
         spacing: Theme.px(4)
         Row { spacing: Theme.px(18)
             // sun / moon / cloud / rain glyphs drawn from the WMO code; moon at night

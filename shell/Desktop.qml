@@ -307,7 +307,7 @@ Window {
             fillMode: Image.PreserveAspectCrop
             asynchronous: true; cache: false; smooth: true
         }
-        DesktopWidgets { anchors.fill: parent; anchors.topMargin: menuBar.height; visible: Theme.desktopWidgets }
+        DesktopWidgets { anchors.fill: parent; anchors.topMargin: menuBar.height; visible: Theme.desktopWidgets; workspace: root.workspace }
         Item {
             id: windowLayer
             anchors.fill: parent
