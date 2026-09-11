@@ -23,6 +23,7 @@ Item {
         input.forceActiveFocus()
         refresh()
     }
+    function refocus() { input.forceActiveFocus() }
     function showCategory(id) { show("menu"); stack = [id]; selected = 0; refresh() }
     function hide() {
         open = false; input.text = ""

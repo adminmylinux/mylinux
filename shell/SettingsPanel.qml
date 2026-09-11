@@ -22,6 +22,7 @@ Item {
         else if (desktop && desktop.focusedWindow) desktop.focusedWindow.raise()
     }
     property Item firstField
+    function refocus() { if (firstField) firstField.forceActiveFocus() }
 
     GlassPanel { anchors.fill: parent; backdrop: panel.backdrop; radius: Theme.px(14); tint: "#cc1b1b22"; borderColor: "#55ffffff"; saturation: 0.1; dim: 0.25 }
     component Label: Text { color: "#9a9aa2"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont; font.bold: true; font.letterSpacing: 1 }

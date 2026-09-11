@@ -191,7 +191,15 @@ Window {
         for (const w of list) if (!best || w.z > best.z) best = w
         return best
     }
+    // A panel with a text field open (menu, key sheet, settings) keeps the keys: a helper window that comes
+    // and goes (wl-clipboard) must not hand the seat focus back to an app underneath it.
+    readonly property bool panelHasKeys: spotlight.open || keyHelp.visible || menuBar.settingsOpen
     function focusTopmost() {
+        if (panelHasKeys) {
+            clearSeatFocus()
+            if (spotlight.open) spotlight.refocus(); else if (keyHelp.visible) keyHelp.refocus(); else settingsPanel.refocus()
+            return
+        }
         const t = topmost(visibleWindows())
         if (t) t.raise()
         else clearSeatFocus()
@@ -378,6 +386,7 @@ Window {
     }
     MouseArea { anchors.fill: parent; z: 14; visible: menuBar.tailscaleOpen; onPressed: menuBar.tailscaleOpen = false }
     SettingsPanel {
+        id: settingsPanel
         z: 15
         visible: menuBar.settingsOpen
         backdrop: backdrop; desktop: root

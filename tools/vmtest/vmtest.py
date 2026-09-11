@@ -266,6 +266,24 @@ def scenario_clipboard_fidelity(vm):
         raise Fail("clipboard content changed after an identical re-copy")
 
 
+def scenario_spotlight_keeps_focus(vm):
+    """Keys typed into the open menu stay there even when a clipboard helper window comes and goes."""
+    _open_terminal(vm, 2)
+    vm.qmp("combo", "meta_l-spc", "sleep", 0.8)
+    d = vm.wait_for(lambda d: d["seatFocusNull"], "seat focus released to the menu", 5)
+    leak = os.path.join(SHARE, "leak.txt")
+    if os.path.exists(leak): os.remove(leak)
+    mac_clipboard(b"vmtest focus %d" % int(time.time()))      # wl-copy helper maps, takes focus briefly, disappears
+    time.sleep(2.5)
+    vm.qmp("type", "echo leaked > /mnt/share/leak.txt\n", "sleep", 1.5)
+    d = vm.diag()
+    if os.path.exists(leak):
+        raise Fail("typing went to the terminal instead of the open menu")
+    if not d["seatFocusNull"]:
+        raise Fail("an app has keyboard focus while the menu is open: %s" % d.get("seatFocus"))
+    vm.qmp("key", "esc", "sleep", 0.5, "combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-1", "sleep", 0.5)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -438,7 +456,9 @@ SCENARIOS = [
     ("agent_usage_fixtures", scenario_agent_usage_fixtures),
     ("clipboard_fidelity", scenario_clipboard_fidelity),
     ("shell_restart", scenario_shell_restart),
+    ("spotlight_keeps_focus", scenario_spotlight_keeps_focus),
 ]
+
 
 
 

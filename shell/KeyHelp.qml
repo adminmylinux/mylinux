@@ -23,6 +23,7 @@ Item {
         return flat().filter(b => q === "" || (b.key + " " + b.desc + " " + b.group).toLowerCase().indexOf(q) >= 0)
     }
     function showSearch(seed) { tab = "search"; query = seed || ""; search.text = query; search.forceActiveFocus() }
+    function refocus() { if (tab === "search") search.forceActiveFocus(); else kh.forceActiveFocus() }
     function showSheet() { tab = "sheet"; query = ""; search.text = ""; kh.forceActiveFocus() }
     onVisibleChanged: { if (visible) { showSheet(); if (desktop) desktop.clearSeatFocus() } else if (desktop && desktop.focusedWindow) desktop.focusedWindow.raise() }
     Keys.onPressed: (ev) => {
