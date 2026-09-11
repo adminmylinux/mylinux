@@ -96,7 +96,8 @@ Item {
 
     Row {
         id: titles
-        anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter
+        // the whole bar's content sits a few px above the geometric middle (user preference)
+        anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -Theme.px(6)
         spacing: 0
         Repeater {
             model: bar.menus
@@ -121,7 +122,7 @@ Item {
     }
     // Workspaces (Omarchy-style): occupied ones and the current one, click to switch
     Row {
-        anchors.horizontalCenter: parent.horizontalCenter; anchors.verticalCenter: parent.verticalCenter; spacing: Theme.px(4)
+        anchors.horizontalCenter: parent.horizontalCenter; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -Theme.px(4); spacing: Theme.px(4)
         Repeater {
             model: bar.desktop ? bar.desktop.workspaces : 0
             Rectangle {
@@ -166,7 +167,7 @@ Item {
 
     Row {
         // the icons read centred a little above the geometric middle of the slim bar (user preference: 4 px up)
-        anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -Theme.px(4); spacing: Theme.px(16)
+        anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -Theme.px(6); spacing: Theme.px(16)
         // Activity (btop): three little bars, like an activity monitor
         Item {
             id: activityIcon
