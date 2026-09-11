@@ -40,7 +40,8 @@ WaylandCompositor {
         const ready = Launcher.fileExists("/mnt/apps/.mylinux/ready")
 
         const needsDisk = ["chromium", "firefox", "chatgpt", "claude-web", "claude-code", "codex", "apps-"]
-        const list = String(Settings.value("session/autostart", "/usr/bin/claude-web,/usr/bin/chatgpt")).split(",")
+        // Default: nothing autostarts and the launcher menu opens instead; [session] autostart=cmd1,cmd2 lists apps.
+        const list = String(Settings.value("session/autostart", "")).split(",")
         let launched = 0
         for (let cmd of list) {
             cmd = cmd.trim(); if (!cmd.length) continue
@@ -48,7 +49,9 @@ WaylandCompositor {
             Launcher.launch(cmd); launched++
         }
         if (!ready && launched === 0) Launcher.launch("/usr/bin/foot")
+        if (ready && launched === 0) startupMenu.start()
         if (ready) autostarted = true
     }
+    Timer { id: startupMenu; interval: 900; onTriggered: desktop.openSpotlight("menu") }   // after the first frame
     Component.onCompleted: { applyKeymap(); runAutostart() }
 }

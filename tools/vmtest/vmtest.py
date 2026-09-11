@@ -40,6 +40,9 @@ class VM:
         import re
         text = re.sub(r"(?m)^layout=.*$", "layout=us", text)
         if "layout=us" not in text: text += "\n[input]\nlayout=us\n"
+        # the scenarios expect the two web-app windows at boot (the product default is an empty autostart + the menu)
+        text = re.sub(r"(?m)^autostart=.*$", "autostart=/usr/bin/claude-web,/usr/bin/chatgpt", text)
+        if "autostart=" not in text: text += "\n[session]\nautostart=/usr/bin/claude-web,/usr/bin/chatgpt\n"
         open(ini, "w").write(text)
         for p in (QMP, SERIAL, os.path.join(SHARE, "diag.json"), os.path.join(SHARE, "diag-request")):
             if os.path.exists(p): os.remove(p)
@@ -326,6 +329,25 @@ def scenario_appearance(vm):
     chromium_reports("light")
 
 
+def scenario_startup_menu(vm):
+    """With an empty autostart list the shell opens the launcher menu at start instead of any window."""
+    ini = os.path.join(SHARE, "mylinux.ini"); saved = open(ini).read()
+    import re as _re
+    open(ini, "w").write(_re.sub(r"(?m)^autostart=.*$", "autostart=", saved))
+    try:
+        vm.serial("killall chromium 2>/dev/null; /etc/init.d/S99shell restart; echo", 2)
+        time.sleep(4)
+        d = vm.wait_for(lambda d: d["menuOpen"], "menu open after a start without autostart", 60)
+        if vm.windows(d, helper=False):
+            raise Fail("windows appeared although autostart is empty: %s" % [w["title"] for w in vm.windows(d, helper=False)])
+        vm.qmp("key", "esc", "sleep", 0.5)
+    finally:
+        open(ini, "w").write(saved)
+        vm.serial("/etc/init.d/S99shell restart; echo", 2)
+        time.sleep(4)
+        vm.wait_for(lambda d: len(vm.windows(d, helper=False)) >= 1, "autostart windows back", 60)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -501,6 +523,7 @@ SCENARIOS = [
     ("spotlight_keeps_focus", scenario_spotlight_keeps_focus),
     ("menu_shortcuts", scenario_menu_shortcuts),
     ("appearance", scenario_appearance),
+    ("startup_menu", scenario_startup_menu),
 ]
 
 

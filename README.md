@@ -82,7 +82,8 @@ only with `GRAB=full`, because Alt is the Mac Cmd key and macOS keeps Cmd+Tab ot
 
 ### Startup apps
 
-The desktop opens the Claude and ChatGPT app windows at start. Change the list in `share/mylinux.ini`:
+The desktop starts with the launcher menu open and no windows. To open apps at start instead, list them
+in `share/mylinux.ini`:
 
 ```ini
 [session]
