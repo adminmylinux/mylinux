@@ -159,7 +159,7 @@ Window {
     function resizeDir(dir) { if (focusedWindow) tiling.resize(focusedWindow, dir) }
     // Single source of truth for the key help (⌘ = the Super/Option key)
     readonly property var keybindings: [
-        { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ ⇧ F", "Files"], ["⌘ Space / ⌘ Esc", "Menu: type to find anything"], ["⌘ ⇧ Esc", "System menu"], ["⌘ K", "This list"]] },
+        { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ ⇧ F", "Files"], ["⌘ Space / ⌘ Esc / ⌘ D", "Menu: type to find anything"], ["⌘ ⇧ Esc", "System menu"], ["⌘ K", "This list"]] },
         { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / maximise"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
         { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["⌘ ⇧ ⌥ 1 … 9", "Move window there silently"], ["⌘ Tab / ⌘ ⇧ Tab", "Next / previous workspace"], ["⌘ ⌃ Tab", "Former workspace"], ["⌘ S", "Show / hide the scratchpad"], ["⌘ ⌥ S", "Move window to the scratchpad"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
@@ -277,7 +277,7 @@ Window {
     Shortcut { sequences: ["Meta+Ctrl+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.formerWorkspace() }
     Shortcut { sequences: ["Meta+S", "Meta+`"]; context: Qt.ApplicationShortcut; onActivated: root.toggleScratch() }
     Shortcut { sequences: ["Meta+Alt+S", "Meta+Shift+`", "Meta+Shift+~"]; context: Qt.ApplicationShortcut; onActivated: root.moveFocusedToScratch() }
-    Shortcut { sequences: ["Meta+Space", "Meta+Esc", "Meta+Escape", "Ctrl+Alt+Esc", "Ctrl+Alt+Escape", "Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }
+    Shortcut { sequences: ["Meta+Space", "Meta+Esc", "Meta+Escape", "Meta+Shift+Space", "Meta+D", "Ctrl+Alt+Esc", "Ctrl+Alt+Escape", "Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }   // ⌘⇧Space and ⌘D: fallbacks when macOS owns Option+Space / Option+Esc (Siri, Spoken Content)
     Shortcut { sequences: ["Meta+Shift+Esc", "Meta+Shift+Escape"]; context: Qt.ApplicationShortcut; onActivated: spotlight.showCategory("system") }
     Shortcut { sequences: ["Meta+Ctrl+Shift+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("theme") }
     Shortcut { sequences: ["Meta+Ctrl+Space"]; context: Qt.ApplicationShortcut; onActivated: Theme.nextBackground() }
