@@ -210,6 +210,9 @@ Item {
                         else if (ev.key === Qt.Key_Up) { spot.selected = Math.max(spot.selected - 1, 0); ev.accepted = true }
                         else if (ev.key === Qt.Key_Return || ev.key === Qt.Key_Enter) { spot.activate(spot.selected); ev.accepted = true }
                         else if (ev.key === Qt.Key_Tab) { spot.selected = (spot.selected + 1) % Math.max(1, spot.results.length); ev.accepted = true }
+                        // With nothing typed the arrows walk the menu: → opens the selected category, ← goes back a level
+                        else if (ev.key === Qt.Key_Right && !input.text.length && spot.results[spot.selected] && spot.results[spot.selected].category) { spot.activate(spot.selected); ev.accepted = true }
+                        else if (ev.key === Qt.Key_Left && !input.text.length && spot.mode === "menu" && spot.stack.length > 0) { spot.back(); ev.accepted = true }
                     }
                     Text { anchors.fill: parent; visible: !input.text.length; text: spot.mode === "theme" ? "Pick a theme…" : (spot.mode === "menu" && spot.stack.length === 0 ? "Go…" : "Search…"); color: "#8f8f96"; font: input.font; verticalAlignment: Text.AlignVCenter }
                 }

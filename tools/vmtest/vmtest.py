@@ -291,6 +291,13 @@ def scenario_menu_shortcuts(vm):
         vm.wait_for(lambda d: d["menuOpen"], "menu open after %s" % combo, 6)
         vm.qmp("key", "esc", "sleep", 0.6)
         vm.wait_for(lambda d: not d["menuOpen"], "menu closed after Esc", 6)
+    # arrows walk the categories: → opens the selected one, ← returns to the top level
+    vm.qmp("combo", "meta_l-spc", "sleep", 0.8, "key", "right", "sleep", 0.5)
+    vm.wait_for(lambda d: d["menuOpen"] and d["menuDepth"] == 1, "submenu opened with the right arrow", 6)
+    vm.qmp("key", "left", "sleep", 0.5)
+    vm.wait_for(lambda d: d["menuOpen"] and d["menuDepth"] == 0, "back at the top level with the left arrow", 6)
+    vm.qmp("key", "esc", "sleep", 0.6)
+    vm.wait_for(lambda d: not d["menuOpen"], "menu closed", 6)
     vm.qmp("combo", "meta_l-8", "sleep", 0.6)
     vm.wait_for(lambda d: d["workspace"] == 8 and not d["menuOpen"], "workspace 8", 6)
     vm.qmp("combo", "meta_l-1", "sleep", 0.6)
