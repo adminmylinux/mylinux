@@ -50,7 +50,9 @@ and installs the desktop apps plus Claude Code and Codex. It takes a few minutes
 about 1.3 GB. Everything you install or save afterwards persists on that disk.
 
 Useful environment variables for `run.sh`: `RES=1600x1000` guest resolution (default is your
-screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`.
+screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,
+`MOUSE=tablet|relative` (relative: a click captures the Mac pointer for the guest, hidden and confined,
+until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window).
 
 ## Keys
 

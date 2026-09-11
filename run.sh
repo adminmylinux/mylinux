@@ -3,7 +3,7 @@
 # Terminal = serial console (root shell). Window = the Qt app. Quit: Ctrl-A X in the terminal.
 # Scripted use: SERIAL=unix:out/serial.sock,server,nowait ./run.sh -qmp unix:out/qmp.sock,server,nowait
 # Environment: RES=WxH, MEM=6G, APPS_IMG=path, APPS_SIZE_GB=16, SHARE_DIR=path, NAME=window title,
-#              GRAB=opt|full|none, CLIPBOARD=0, DRYRUN=1 (print the QEMU command and exit).
+#              GRAB=opt|full|none, MOUSE=tablet|relative, CLIPBOARD=0, DRYRUN=1 (print the QEMU command and exit).
 # Works from any directory: paths are resolved against the repository, relative overrides against
 # the caller's directory. Paths may contain spaces and quotes.
 set -eu
@@ -65,6 +65,15 @@ case "${GRAB:-opt}" in
   *) die "GRAB must be opt, full or none" ;;
 esac
 
+# Pointer (default MOUSE=tablet): an absolute tablet, so the guest cursor sits exactly under the Mac pointer and
+# the mouse slides in and out of the window freely. MOUSE=relative is a plain mouse: a click in the window
+# captures the pointer (hidden and confined by QEMU, every movement goes to the guest) until Ctrl+Option+G.
+case "${MOUSE:-tablet}" in
+  tablet)   POINTER=virtio-tablet-pci ;;
+  relative) POINTER=virtio-mouse-pci ;;
+  *) die "MOUSE must be tablet or relative" ;;
+esac
+
 # ---- the QEMU command, built as a proper argument list (no word splitting of paths) ---------------
 QEMU=out/myLinux.app/Contents/MacOS/myLinux
 set -- \
@@ -72,7 +81,7 @@ set -- \
   -kernel out/Image -initrd out/rootfs.cpio.gz \
   -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60" \
   -device "virtio-gpu-pci,xres=$XRES,yres=$YRES" \
-  -device virtio-keyboard-pci -device virtio-tablet-pci \
+  -device virtio-keyboard-pci -device "$POINTER" \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
   -drive "file=$APPS_IMG,if=none,format=raw,id=apps" -device "virtio-blk-pci,drive=apps,serial=mylinux-apps" \
   -display "cocoa,show-cursor=on,zoom-to-fit=off,zoom-interpolation=on,left-command-key=on,$KEYS" \

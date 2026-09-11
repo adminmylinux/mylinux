@@ -95,6 +95,10 @@ out=$(cd "$W" && DRYRUN=1 APPS_SIZE_GB=huge sh run.sh 2>&1); rc=$?
 not_rc0 "malformed APPS_SIZE_GB is refused" $rc
 out=$(cd "$W" && DRYRUN=1 GRAB=weird sh run.sh 2>&1); rc=$?
 not_rc0 "unknown GRAB is refused" $rc
+out=$(cd "$W" && DRYRUN=1 sh run.sh 2>&1); has "default pointer is the absolute tablet" "$out" "virtio-tablet-pci"
+out=$(cd "$W" && DRYRUN=1 MOUSE=relative sh run.sh 2>&1); has "MOUSE=relative uses a relative mouse" "$out" "virtio-mouse-pci"
+out=$(cd "$W" && DRYRUN=1 MOUSE=touch sh run.sh 2>&1); rc=$?
+not_rc0 "unknown MOUSE is refused" $rc
 mv "$W/out/Image" "$W/out/Image.away"
 out=$(cd "$W" && DRYRUN=1 sh run.sh 2>&1); rc=$?
 not_rc0 "missing image fails before anything starts" $rc
