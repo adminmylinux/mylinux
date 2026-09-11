@@ -1,6 +1,7 @@
 #include "keygrab.h"
 #include <QCoreApplication>
 #include <QKeyEvent>
+#include <QDebug>
 
 KeyGrab::KeyGrab(QObject *parent) : QObject(parent) { qApp->installEventFilter(this); }
 
@@ -17,6 +18,13 @@ static Qt::KeyboardModifier modifierOf(int key)
 
 bool KeyGrab::eventFilter(QObject *, QEvent *event)
 {
+    // MYSHELL_KEYLOG=1 in the shell's environment: one log line per key press as the compositor receives it
+    // (ShortcutOverride comes first, before any Shortcut can consume the key)
+    static const bool keylog = qEnvironmentVariableIsSet("MYSHELL_KEYLOG");
+    if (keylog && event->type() == QEvent::ShortcutOverride) {
+        auto *k = static_cast<QKeyEvent *>(event);
+        qInfo("keylog: key 0x%x mods 0x%x scan %u text '%s'", k->key(), unsigned(k->modifiers()), unsigned(k->nativeScanCode()), qPrintable(k->text()));
+    }
     const bool press = event->type() == QEvent::KeyPress;
     if (!press && event->type() != QEvent::KeyRelease) return false;
     auto *ke = static_cast<QKeyEvent *>(event);
