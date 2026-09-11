@@ -78,6 +78,12 @@ Item {
             { label: "Title bars: never", hint: "bare windows, Omarchy-style", glyph: "▭", run: () => Theme.setTitleBars("never") },
             { label: "Panels: solid", hint: "opaque menus and sheets" + (Theme.solidPanels ? "  ✓" : ""), glyph: "▰", run: () => Theme.setSolidPanels(true) },
             { label: "Panels: glass", hint: "see-through, blurred" + (Theme.solidPanels ? "" : "  ✓"), glyph: "▱", run: () => Theme.setSolidPanels(false) },
+            { label: "Desktop widgets: on", hint: "date, calendar, time and weather on the wallpaper" + (Theme.desktopWidgets ? "  ✓" : ""), glyph: "▦", run: () => Theme.setDesktopWidgets(true) },
+            { label: "Desktop widgets: off", hint: "plain wallpaper" + (Theme.desktopWidgets ? "" : "  ✓"), glyph: "▦", run: () => Theme.setDesktopWidgets(false) },
+            { label: "Weather place: automatic", hint: "city from the network address" + (String(Settings.value("weather/place", "auto")) === "auto" ? "  ✓" : ""), glyph: "☁", run: () => Weather.setPlace("auto") },
+            { label: "Weather place…", hint: "type: weather <city>", glyph: "☁", run: () => { input.text = "weather " } },
+            { label: "Weather in °C", hint: "" + (String(Settings.value("weather/units", "celsius")) === "celsius" ? "✓" : ""), glyph: "°", run: () => Weather.setFahrenheit(false) },
+            { label: "Weather in °F", hint: "" + (String(Settings.value("weather/units", "celsius")) === "fahrenheit" ? "✓" : ""), glyph: "°", run: () => Weather.setFahrenheit(true) },
             { label: "Dock: auto-hide", hint: "appears when the pointer touches the bottom edge" + (Theme.dockAutoHide ? "  ✓" : ""), glyph: "▁", run: () => Theme.setDockAutoHide(true) },
             { label: "Dock: always visible", hint: "windows stop above it" + (Theme.dockAutoHide ? "" : "  ✓"), glyph: "▂", run: () => Theme.setDockAutoHide(false) } ]
         case "setup": return [
@@ -124,7 +130,10 @@ Item {
     function refresh() {
         const q = input.text.trim()
         let list = []
-        if (mode === "theme" && q.startsWith("install ")) {
+        if (mode === "menu" && q.toLowerCase().startsWith("weather ")) {
+            const city = q.slice(8).trim()
+            list = city.length ? [{ label: "Show the weather for " + city, hint: "Open-Meteo place lookup", glyph: "☁", run: () => Weather.setPlace(city) }] : []
+        } else if (mode === "theme" && q.startsWith("install ")) {
             const u = q.slice(8).trim()
             list = u.length ? [{ label: "Install theme from " + u, hint: "GitHub owner/repo, GitHub URL or git URL (Omarchy format)", glyph: "⤓",
                                  run: () => desktop.launchArgs("/usr/bin/foot", ["-T", "Installing theme", "sh", "-c", "theme-install '" + u.replace(/'/g, "") + "'; echo; echo 'Press Enter to close.'; read x"]) }] : []

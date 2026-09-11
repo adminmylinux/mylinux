@@ -74,6 +74,9 @@ QtObject {
     function applyClipboardSharing() { if (clipboardSharing) Launcher.removeFile("/run/clipboard.off"); else Launcher.writeFile("/run/clipboard.off", "off\n") }
     function setClipboardSharing(v) { clipboardSharing = v; Settings.set("input/clipboard", v ? "true" : "false"); applyClipboardSharing() }
     function setSolidPanels(v) { solidPanels = v; Settings.set("look/solidPanels", v ? "true" : "false") }
+    // Date, calendar, time and weather drawn on the wallpaper (DesktopWidgets.qml)
+    property bool desktopWidgets: String(Settings.value("look/widgets", "true")) === "true"
+    function setDesktopWidgets(v) { desktopWidgets = v; Settings.set("look/widgets", v ? "true" : "false") }
     function setTitleBars(v) { titleBars = v; Settings.set("wm/titlebars", v) }
     function setTextScale(v) { textScale = v; Settings.set("display/textScale", v) }
     function setBrightness(v) { brightness = v; Settings.set("display/brightness", v) }
