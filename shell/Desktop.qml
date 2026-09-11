@@ -246,8 +246,10 @@ Window {
 
     // ---- shortcuts, Omarchy's set (⌘ = Meta/Super, the Option key; Alt = the Mac Cmd key, which macOS keeps
     // unless GRAB=full). Super+digit combinations come from KeyGrab (C++), the rest are QML shortcuts.
+    // One spelling per key: "Esc" and "Escape" parse to the same sequence, and two identical sequences in one
+    // Shortcut make Qt report the press as ambiguous, so neither fires (Meta+Esc never opened the menu).
     Shortcut { sequences: ["Meta+W", "Meta+Q", "Ctrl+Alt+W"]; context: Qt.ApplicationShortcut; onActivated: root.closeFocused() }
-    Shortcut { sequences: ["Ctrl+Alt+Del", "Ctrl+Alt+Delete"]; context: Qt.ApplicationShortcut; onActivated: root.closeAll() }
+    Shortcut { sequences: ["Ctrl+Alt+Del"]; context: Qt.ApplicationShortcut; onActivated: root.closeAll() }
     Shortcut { sequences: ["Meta+M"]; context: Qt.ApplicationShortcut; onActivated: root.minimizeFocused() }
     Shortcut { sequences: ["Meta+Return", "Meta+Enter", "Meta+N"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/foot") }
     Shortcut { sequences: ["Meta+Shift+Return", "Meta+Shift+Enter", "Meta+Shift+B"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/firefox") }
@@ -277,8 +279,8 @@ Window {
     Shortcut { sequences: ["Meta+Ctrl+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.formerWorkspace() }
     Shortcut { sequences: ["Meta+S", "Meta+`"]; context: Qt.ApplicationShortcut; onActivated: root.toggleScratch() }
     Shortcut { sequences: ["Meta+Alt+S", "Meta+Shift+`", "Meta+Shift+~"]; context: Qt.ApplicationShortcut; onActivated: root.moveFocusedToScratch() }
-    Shortcut { sequences: ["Meta+Space", "Meta+Esc", "Meta+Escape", "Meta+Shift+Space", "Meta+D", "Ctrl+Alt+Esc", "Ctrl+Alt+Escape", "Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }   // ⌘⇧Space and ⌘D: fallbacks when macOS owns Option+Space / Option+Esc (Siri, Spoken Content)
-    Shortcut { sequences: ["Meta+Shift+Esc", "Meta+Shift+Escape"]; context: Qt.ApplicationShortcut; onActivated: spotlight.showCategory("system") }
+    Shortcut { sequences: ["Meta+Space", "Meta+Esc", "Meta+Shift+Space", "Meta+D", "Ctrl+Alt+Esc", "Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }   // ⌘⇧Space and ⌘D: fallbacks when macOS owns Option+Space / Option+Esc (Siri, Spoken Content)
+    Shortcut { sequences: ["Meta+Shift+Esc"]; context: Qt.ApplicationShortcut; onActivated: spotlight.showCategory("system") }
     Shortcut { sequences: ["Meta+Ctrl+Shift+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("theme") }
     Shortcut { sequences: ["Meta+Ctrl+Space"]; context: Qt.ApplicationShortcut; onActivated: Theme.nextBackground() }
     Shortcut { sequences: ["Meta+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(true) }
@@ -287,7 +289,10 @@ Window {
     Shortcut { sequences: ["Meta+Ctrl+C", "Ctrl+Alt+C"]; context: Qt.ApplicationShortcut; onActivated: root.sendClipboardToMac() }
     // Workspaces: ⌘1..9 switch, ⌘⇧1..9 move the focused window there and follow, ⌘⇧⌥1..9 move silently.
     // Shift turns the digit keys into layout-dependent symbols, so KeyGrab (C++) matches them by physical key code.
-    Connections { target: KeyGrab; function onDigit(n, shift, alt) { if (shift) root.moveFocusedToWorkspace(n, !alt); else root.switchWorkspaceTracked(n) } }
+    Connections { target: KeyGrab
+        function onDigit(n, shift, alt) { if (shift) root.moveFocusedToWorkspace(n, !alt); else root.switchWorkspaceTracked(n) }
+        function onMenu() { if (spotlight.open) spotlight.hide(); else spotlight.show("menu") }
+    }
 
     // ---- scene ----------------------------------------------------------------------------
     // Everything the glass panels blur: wallpaper + windows.
@@ -349,6 +354,7 @@ Window {
 
             seatFocus: seatFocusSurface ? (windows.filter(w => w.shellSurface && w.shellSurface.surface === seatFocusSurface).map(w => appIdOf(w) + "|" + w.title + (w.helper ? "|helper" : ""))[0] || "surface not a window") : null,
             tilingEnabled: tilingEnabled, focused: focusedWindow ? appIdOf(focusedWindow) + "|" + focusedWindow.title : null,
+            menuOpen: spotlight.open, keySheetOpen: keyHelp.visible,
             seatFocusNull: !seatFocus, windows: list, trees: trees, time: Date.now() }))
     }
 

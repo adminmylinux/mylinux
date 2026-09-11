@@ -284,6 +284,18 @@ def scenario_spotlight_keeps_focus(vm):
     vm.qmp("key", "esc", "sleep", 0.5, "combo", "meta_l-w", "sleep", 0.6, "combo", "meta_l-1", "sleep", 0.5)
 
 
+def scenario_menu_shortcuts(vm):
+    """Every binding of the menu opens it: ⌘Space, ⌘Esc, ⌘D; Esc closes it. ⌘8 still switches workspaces."""
+    for combo in ("meta_l-spc", "meta_l-esc", "meta_l-d"):
+        vm.qmp("combo", combo, "sleep", 0.8)
+        vm.wait_for(lambda d: d["menuOpen"], "menu open after %s" % combo, 6)
+        vm.qmp("key", "esc", "sleep", 0.6)
+        vm.wait_for(lambda d: not d["menuOpen"], "menu closed after Esc", 6)
+    vm.qmp("combo", "meta_l-8", "sleep", 0.6)
+    vm.wait_for(lambda d: d["workspace"] == 8 and not d["menuOpen"], "workspace 8", 6)
+    vm.qmp("combo", "meta_l-1", "sleep", 0.6)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -457,6 +469,7 @@ SCENARIOS = [
     ("clipboard_fidelity", scenario_clipboard_fidelity),
     ("shell_restart", scenario_shell_restart),
     ("spotlight_keeps_focus", scenario_spotlight_keeps_focus),
+    ("menu_shortcuts", scenario_menu_shortcuts),
 ]
 
 
