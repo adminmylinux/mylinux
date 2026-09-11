@@ -20,6 +20,8 @@ export QT_QUICK_DEFAULT_TEXT_RENDER_TYPE=native
 # busybox init starts services with HOME=/; the desktop and everything it launches must use the
 # real (persistent, apps-disk backed) home so downloads and settings survive a reboot.
 export HOME=/root
+# Command history of the base shell (BusyBox ash) kept on the apps disk across terminals and reboots
+export HISTFILE=/root/.ash_history HISTFILESIZE=2000 HISTSIZE=2000
 # API keys from the Settings panel (~/.config/mylinux/secrets.env) for every interactive shell
 export ENV=/etc/profile.d/secrets.sh
 # apps-disk commands (see apps-path) live in /usr/local/bin, which Buildroot's profile leaves off the PATH
