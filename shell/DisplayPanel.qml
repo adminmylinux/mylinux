@@ -47,7 +47,7 @@ Item {
                 Rectangle { x: Theme.px(9); y: Theme.px(33); width: Theme.px(18); height: 2; color: "#e6e6ea" } }
             Column { spacing: 2
                 Text { text: "Display"; color: "#f2f2f5"; font.pixelSize: Theme.fpx(18); font.family: Theme.uiFont; font.bold: true }
-                Label { text: "VIRTUAL1 · 1920×1200" } }
+                Label { text: "VIRTUAL1 · " + Screen.width + "×" + Screen.height } }
         }
         Rectangle { width: parent.width; height: 1; color: "#33ffffff" }
 
@@ -85,6 +85,21 @@ Item {
                     Text { anchors.centerIn: parent; text: modelData + "x"; color: "#e6e6ea"; font.pixelSize: Theme.fpx(12); font.family: Theme.monoFont }
                     MouseArea { anchors.fill: parent; onClicked: Theme.setScale(modelData) }
                 } } }
+        Rectangle { width: parent.width; height: 1; color: "#33ffffff" }
+
+        Item { width: parent.width; height: Theme.px(18)
+            Label { text: "APPEARANCE"; anchors.left: parent.left }
+            Value { text: "apps: " + (Theme.darkMode ? "dark" : "light"); anchors.right: parent.right } }
+        Row { spacing: Theme.px(8)
+            Repeater { model: [ { t: "Follow theme", v: "auto" }, { t: "Dark", v: "dark" }, { t: "Light", v: "light" } ]
+                Rectangle {
+                    width: (col.width - Theme.px(8) * 2) / 3; height: Theme.px(34); radius: Theme.px(6)
+                    property bool current: Theme.appearance === modelData.v
+                    color: current ? "#4d4d58" : "#2a2a30"; border.color: current ? "#9a9aa8" : "#3a3a42"
+                    Text { anchors.centerIn: parent; text: modelData.t; color: "#e6e6ea"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont }
+                    MouseArea { anchors.fill: parent; onClicked: Theme.setAppearance(modelData.v) }
+                } } }
+        Label { width: parent.width; wrapMode: Text.WordWrap; text: "APPS FOLLOW IT WHEN THEY START"; color: "#6e6e78" }
         Rectangle { width: parent.width; height: 1; color: "#33ffffff" }
         // where settings go: the share (persistent) or /tmp (this boot only, when the share is not mounted)
         Label { width: parent.width; wrapMode: Text.WordWrap
