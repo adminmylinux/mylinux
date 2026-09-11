@@ -314,6 +314,18 @@ def scenario_menu_shortcuts(vm):
     vm.qmp("combo", "meta_l-1", "sleep", 0.6)
 
 
+def scenario_appearance(vm):
+    """color-scheme-apply dark/light is what a freshly started Chromium reports as prefers-color-scheme."""
+    def chromium_reports(expect):
+        vm.serial("killall chromium 2>/dev/null; rm -rf /tmp/vmtest-chrome; cd /root; env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 setsid apps-run mylinux-browser --user-data-dir=/tmp/vmtest-chrome file:///mnt/share/vmtest/scheme.html > /dev/null 2>&1 < /dev/null &", 2)
+        vm.wait_for(lambda d: any(w["title"].startswith("scheme:" + expect) for w in d["windows"]), "Chromium reporting prefers-color-scheme: %s" % expect, 40)
+        vm.serial("killall chromium 2>/dev/null; echo", 2)
+    vm.serial("sh /mnt/share/vmtest/color-scheme-apply dark; echo", 2)
+    chromium_reports("dark")
+    vm.serial("sh /mnt/share/vmtest/color-scheme-apply light; echo", 2)
+    chromium_reports("light")
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -488,6 +500,7 @@ SCENARIOS = [
     ("shell_restart", scenario_shell_restart),
     ("spotlight_keeps_focus", scenario_spotlight_keeps_focus),
     ("menu_shortcuts", scenario_menu_shortcuts),
+    ("appearance", scenario_appearance),
 ]
 
 
@@ -501,8 +514,12 @@ def main(argv):
     todo = [(n, f) for n, f in SCENARIOS if not names or n in names]
     # fixtures into the share
     fx = os.path.join(SHARE, "vmtest"); os.makedirs(fx, exist_ok=True)
-    src = os.path.join(ROOT, "tools", "vmtest", "fixtures", "typing.html")
-    open(os.path.join(fx, "typing.html"), "w").write(open(src).read())
+    fdir = os.path.join(ROOT, "tools", "vmtest", "fixtures")
+    for name in os.listdir(fdir):
+        src = os.path.join(fdir, name)
+        if os.path.isfile(src): open(os.path.join(fx, name), "wb").write(open(src, "rb").read())
+    # guest scripts under test that the booted image may not carry yet
+    open(os.path.join(fx, "color-scheme-apply"), "wb").write(open(os.path.join(ROOT, "board", "overlay", "usr", "bin", "color-scheme-apply"), "rb").read())
     vm = VM()
     results = []
     try:

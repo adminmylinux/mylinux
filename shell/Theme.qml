@@ -59,7 +59,7 @@ QtObject {
     readonly property int outputScale: 1
 
     // write the terminal palette for the persisted theme at start-up (foot reads it per launch)
-    Component.onCompleted: { ThemeStore.applyTerminal(themeId, terminalFontPt); applyClipboardSharing() }
+    Component.onCompleted: { ThemeStore.applyTerminal(themeId, terminalFontPt); applyClipboardSharing(); Launcher.launch("/usr/bin/color-scheme-apply", [darkMode ? "dark" : "light"]) }
 
     function setScale(v) { scale = v; Settings.set("display/scale", v) }
     // Our macOS-style title bars: "auto" = only for apps that do not decorate themselves, "always", "never"
@@ -74,6 +74,12 @@ QtObject {
     function applyClipboardSharing() { if (clipboardSharing) Launcher.removeFile("/run/clipboard.off"); else Launcher.writeFile("/run/clipboard.off", "off\n") }
     function setClipboardSharing(v) { clipboardSharing = v; Settings.set("input/clipboard", v ? "true" : "false"); applyClipboardSharing() }
     function setSolidPanels(v) { solidPanels = v; Settings.set("look/solidPanels", v ? "true" : "false") }
+    // System appearance for the apps (GTK prefer-dark, Chromium dark mode, Firefox): "auto" follows the colour
+    // theme's light/dark flag, or a fixed "dark" / "light". Applied by color-scheme-apply on the apps disk.
+    property string appearance: { const v = String(Settings.value("look/appearance", "auto")); return ["auto", "dark", "light"].indexOf(v) >= 0 ? v : "auto" }
+    readonly property bool darkMode: appearance === "dark" || (appearance === "auto" && !isLight)
+    function setAppearance(v) { appearance = v; Settings.set("look/appearance", v) }
+    onDarkModeChanged: Launcher.launch("/usr/bin/color-scheme-apply", [darkMode ? "dark" : "light"])
     // Date, calendar, time and weather drawn on the wallpaper (DesktopWidgets.qml)
     property bool desktopWidgets: String(Settings.value("look/widgets", "true")) === "true"
     function setDesktopWidgets(v) { desktopWidgets = v; Settings.set("look/widgets", v ? "true" : "false") }

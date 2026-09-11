@@ -1,0 +1,23 @@
+#!/bin/sh
+# Apply the system appearance (dark or light) for the apps on the apps disk. Usage: color-scheme-apply dark|light
+# GTK 3/4 apps and Firefox read gtk-application-prefer-dark-theme from settings.ini; Chromium (and every web app
+# in it: prefers-color-scheme) follows the GTK setting and, for dark, the --force-dark-mode flag in /etc/chromium.d.
+# Apps started afterwards pick it up; running ones keep their look until restarted. Written by the shell when the
+# Appearance setting changes (Style menu) and at shell start. Idempotent; other keys in settings.ini are kept.
+MODE="$1"; case "$MODE" in dark|light) ;; *) echo "usage: color-scheme-apply dark|light" >&2; exit 2 ;; esac
+A="${APPS_ROOT:-/mnt/apps}"; HOME_DIR="${HOME_DIR:-/root}"
+prefer=0; [ "$MODE" = dark ] && prefer=1
+for v in gtk-3.0 gtk-4.0; do
+  d="$HOME_DIR/.config/$v"; f="$d/settings.ini"; mkdir -p "$d" || exit 1
+  if [ -f "$f" ]; then grep -v '^gtk-application-prefer-dark-theme' "$f" > "$f.tmp"; else printf '[Settings]\n' > "$f.tmp"; fi
+  grep -q '^\[Settings\]' "$f.tmp" || { { printf '[Settings]\n'; cat "$f.tmp"; } > "$f.tmp2" && mv -f "$f.tmp2" "$f.tmp"; }
+  # the key goes right after [Settings]
+  awk -v line="gtk-application-prefer-dark-theme=$prefer" '{ print } /^\[Settings\]/ && !done { print line; done=1 }' "$f.tmp" > "$f.tmp2" && mv -f "$f.tmp2" "$f" && rm -f "$f.tmp" || exit 1
+done
+if [ -d "$A/etc" ]; then
+  mkdir -p "$A/etc/chromium.d" || exit 1
+  if [ "$MODE" = dark ]; then printf 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --force-dark-mode"\n' > "$A/etc/chromium.d/mylinux-appearance.tmp"
+  else printf '# light appearance: no flag (Chromium follows the GTK setting)\n' > "$A/etc/chromium.d/mylinux-appearance.tmp"; fi
+  mv -f "$A/etc/chromium.d/mylinux-appearance.tmp" "$A/etc/chromium.d/mylinux-appearance" || exit 1
+fi
+mkdir -p "$HOME_DIR/.config/mylinux" && printf '%s\n' "$MODE" > "$HOME_DIR/.config/mylinux/appearance"

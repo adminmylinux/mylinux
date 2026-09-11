@@ -194,5 +194,20 @@ send_once; is "guest sequence 2" "$(cat "$G/guest.seq")" 2
 dd if=/dev/zero bs=1024 count=1100 2>/dev/null | tr '\0' 'y' > "$T/selection"; send_once > /dev/null 2>&1; is "selection above 1 MB not sent" "$(cat "$G/guest.seq")" 2
 [ ! -e "$G/guest.txt.tmp" ] && ok "no temporary file left" || ko "temporary file left"
 
+echo "color-scheme-apply"
+CS="$OV/usr/bin/color-scheme-apply"; H="$T/home"; AR="$T/apps"; mkdir -p "$H/.config/gtk-3.0" "$AR/etc"
+printf '[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=0\n' > "$H/.config/gtk-3.0/settings.ini"
+( HOME_DIR="$H" APPS_ROOT="$AR" sh "$CS" dark ); is_rc "dark applies" $? 0
+has "gtk-3.0 prefers dark" "$(cat "$H/.config/gtk-3.0/settings.ini")" "gtk-application-prefer-dark-theme=1"
+has "other gtk-3.0 keys kept" "$(cat "$H/.config/gtk-3.0/settings.ini")" "gtk-theme-name=Adwaita"
+is "the key appears once" "$(grep -c prefer-dark "$H/.config/gtk-3.0/settings.ini")" 1
+has "gtk-4.0 created with the key" "$(cat "$H/.config/gtk-4.0/settings.ini")" "gtk-application-prefer-dark-theme=1"
+has "Chromium gets the dark flag" "$(cat "$AR/etc/chromium.d/mylinux-appearance")" "force-dark-mode"
+is "mode recorded" "$(cat "$H/.config/mylinux/appearance")" dark
+( HOME_DIR="$H" APPS_ROOT="$AR" sh "$CS" light ); is_rc "light applies" $? 0
+has "gtk-3.0 back to light" "$(cat "$H/.config/gtk-3.0/settings.ini")" "gtk-application-prefer-dark-theme=0"
+hasnt "Chromium flag removed for light" "$(cat "$AR/etc/chromium.d/mylinux-appearance")" "force-dark-mode"
+( HOME_DIR="$H" APPS_ROOT="$AR" sh "$CS" blue ) 2>/dev/null; is_rc "bad mode refused" $? 2
+
 if [ $fails -eq 0 ]; then echo "guest: all passed"; else echo "guest: $fails failed"; fi
 exit $fails

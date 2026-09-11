@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>scheme:</title>
+<!-- myLinux appearance fixture: the resolved prefers-color-scheme goes into the window title -->
+<script>
+const set = () => { document.title = 'scheme:' + (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); };
+set(); matchMedia('(prefers-color-scheme: dark)').addEventListener('change', set);
+</script>
+<p>appearance fixture</p>
