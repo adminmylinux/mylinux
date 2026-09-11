@@ -298,6 +298,17 @@ def scenario_menu_shortcuts(vm):
     vm.wait_for(lambda d: d["menuOpen"] and d["menuDepth"] == 0, "back at the top level with the left arrow", 6)
     vm.qmp("key", "esc", "sleep", 0.6)
     vm.wait_for(lambda d: not d["menuOpen"], "menu closed", 6)
+    # global shortcuts keep working while the menu is open and never land in the search field
+    vm.qmp("combo", "meta_l-spc", "sleep", 0.8)
+    d0 = vm.wait_for(lambda d: d["menuOpen"], "menu open", 6)
+    vm.qmp("combo", "ctrl-meta_l-spc", "sleep", 0.8)
+    d = vm.wait_for(lambda d: d["background"] != d0["background"], "next background from inside the menu", 6)
+    if d["menuQuery"] != "" or not d["menuOpen"]:
+        raise Fail("shortcut typed into the menu or closed it: %r" % d["menuQuery"])
+    vm.qmp("combo", "meta_l-k", "sleep", 0.8)
+    vm.wait_for(lambda d: d["keySheetOpen"] and not d["menuOpen"], "key sheet replaces the menu", 6)
+    vm.qmp("key", "esc", "sleep", 0.6)
+    vm.wait_for(lambda d: not d["keySheetOpen"], "key sheet closed", 6)
     vm.qmp("combo", "meta_l-8", "sleep", 0.6)
     vm.wait_for(lambda d: d["workspace"] == 8 and not d["menuOpen"], "workspace 8", 6)
     vm.qmp("combo", "meta_l-1", "sleep", 0.6)

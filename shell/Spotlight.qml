@@ -11,6 +11,7 @@ Item {
     property bool open: false
     property string mode: "search"      // "search" | "menu"
     property var stack: []              // menu breadcrumb (list of category ids)
+    readonly property string query: input.text
     property int selected: 0
     anchors.fill: parent
     visible: open

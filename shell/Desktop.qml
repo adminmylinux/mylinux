@@ -254,7 +254,7 @@ Window {
     Shortcut { sequences: ["Meta+Return", "Meta+Enter", "Meta+N"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/foot") }
     Shortcut { sequences: ["Meta+Shift+Return", "Meta+Shift+Enter", "Meta+Shift+B"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/firefox") }
     Shortcut { sequences: ["Meta+Shift+F"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/files") }
-    Shortcut { sequences: ["Meta+K"]; context: Qt.ApplicationShortcut; onActivated: keyHelp.visible = !keyHelp.visible }
+    Shortcut { sequences: ["Meta+K"]; context: Qt.ApplicationShortcut; onActivated: { if (spotlight.open) spotlight.hide(); keyHelp.visible = !keyHelp.visible } }   // one panel at a time
     Shortcut { sequences: ["Meta+F", "Meta+Ctrl+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.toggleFullscreen() }
     Shortcut { sequences: ["Meta+Alt+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.zoom() }
     Shortcut { sequences: ["Meta+T"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.setFloating(root.focusedWindow, root.focusedWindow.tiled) }
@@ -354,7 +354,7 @@ Window {
 
             seatFocus: seatFocusSurface ? (windows.filter(w => w.shellSurface && w.shellSurface.surface === seatFocusSurface).map(w => appIdOf(w) + "|" + w.title + (w.helper ? "|helper" : ""))[0] || "surface not a window") : null,
             tilingEnabled: tilingEnabled, focused: focusedWindow ? appIdOf(focusedWindow) + "|" + focusedWindow.title : null,
-            menuOpen: spotlight.open, menuDepth: spotlight.stack.length, keySheetOpen: keyHelp.visible,
+            menuOpen: spotlight.open, menuDepth: spotlight.stack.length, menuQuery: spotlight.query, keySheetOpen: keyHelp.visible, background: Theme.backgroundIndex,
             seatFocusNull: !seatFocus, windows: list, trees: trees, time: Date.now() }))
     }
 
