@@ -654,7 +654,7 @@ among mapped visible windows. Not done here: a real-Postgres run of the route te
 Known gaps: 2x scale is upscaled (blurry) until fractional-scale support; no Compose file for dead keys, foot warns about
 primary-selection / xdg-activation / fractional-scale protocols (harmless), no app icons yet, single wallpaper
 gradient, no menus behind the menu bar items, no Mission Control / Spotlight / Control Center yet.
-Dev loop for the shell: `tools/app-build.sh shell` then `/etc/init.d/S99shell restart` in the VM (~30 s round trip,
+Dev loop for the shell: `tools/app-build.sh shell` then `restartshell` in the VM (~30 s round trip,
 no image rebuild). Note: OrbStack's shared filesystem caches attributes for ~1 s; the build script waits 2 s before
 ninja so fresh edits are seen.
 

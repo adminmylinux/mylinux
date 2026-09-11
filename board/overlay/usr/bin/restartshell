@@ -1,0 +1,4 @@
+#!/bin/sh
+# Restart the desktop shell (compositor) from any terminal; picks up a new /mnt/share/myshell.
+# The terminal you type this in closes with the old shell; the desktop comes back in a few seconds.
+exec /etc/init.d/S99shell restart
