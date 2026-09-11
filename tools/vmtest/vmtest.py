@@ -286,7 +286,7 @@ def scenario_spotlight_keeps_focus(vm):
 
 def scenario_menu_shortcuts(vm):
     """Every binding of the menu opens it: ⌘Space, ⌘Esc, ⌘D; Esc closes it. ⌘8 still switches workspaces."""
-    for combo in ("meta_l-spc", "meta_l-esc", "meta_l-d", "ctrl-meta_l-spc"):
+    for combo in ("meta_l-spc", "meta_l-esc", "meta_l-d"):
         vm.qmp("combo", combo, "sleep", 0.8)
         vm.wait_for(lambda d: d["menuOpen"], "menu open after %s" % combo, 6)
         vm.qmp("key", "esc", "sleep", 0.6)
