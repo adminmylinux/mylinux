@@ -1,0 +1,7 @@
+{
+  "id": "tailscale",
+  "type": "command",
+  "exec": "n=$(tailscale status 2>/dev/null | grep -c ' active\\| idle'); if tailscale status >/dev/null 2>&1; then printf '{\"text\":\"⬡ %s\",\"tooltip\":\"Tailscale: %s peers\"}' \"$n\" \"$n\"; else printf '{\"text\":\"⬡ off\",\"color\":\"#9a9aa2\",\"tooltip\":\"Tailscale not connected\"}'; fi",
+  "interval": 15,
+  "on-click": "tailscale-status"
+}

@@ -110,6 +110,21 @@ Apps that draw their own header bar (Firefox, Chromium, Remmina and other GTK ap
 title bar; the terminal and other plain windows get the macOS-style one. Window › "Title bars"
 switches between auto, always and never.
 
+### Bar modules
+
+Your own items in the menu bar, in the shape of Omarchy's bar modules: a descriptor per module in
+`~/.config/mylinux/bar/modules/` (on the apps disk), watched for changes so edits show at once.
+
+```json
+{ "id": "vpn", "type": "command", "exec": "~/bin/vpn-status", "interval": 5, "tooltip": "VPN", "on-click": "vpn-toggle" }
+```
+
+The command runs on the apps disk; its first line of output is the text, a second line the tooltip, or it
+can print a JSON object `{"text", "tooltip", "color"}`. A `"type": "qml"` module loads `<id>.qml` from the
+same folder: full QML with the shell's singletons (`Theme`, `AgentUsage`, `Weather`, `Tailscale`, `Launcher`).
+Style › "Bar modules: install the examples" copies three examples there (load average, Tailscale, agents).
+Modules are your code running inside the shell; nothing sandboxes them.
+
 ### Quitting
 
 Use **Shut Down…** (or **Restart…**) from the  menu at the top left, or type `shut` into the

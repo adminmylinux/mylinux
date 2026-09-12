@@ -1,0 +1,8 @@
+{
+  "id": "load",
+  "type": "command",
+  "label": "load",
+  "exec": "cut -d' ' -f1-3 /proc/loadavg; echo \"1, 5 and 15 minute load averages\"",
+  "interval": 10,
+  "on-click": "activity"
+}

@@ -168,6 +168,29 @@ Item {
     Row {
         // the icons read centred a little above the geometric middle of the slim bar (user preference: 4 px up)
         anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -Theme.px(2); spacing: Theme.px(16)
+        // User bar modules (~/.config/mylinux/bar/modules, Omarchy-shaped descriptors): command output as text, or a QML item
+        Repeater {
+            model: BarModules.modules
+            Item {
+                id: modItem
+                readonly property var mod: modelData
+                width: Math.max(Theme.px(10), modLoader.active ? modLoader.width : modText.implicitWidth + Theme.px(8)); height: bar.height
+                Rectangle { anchors.fill: parent; anchors.topMargin: 3; anchors.bottomMargin: 3; radius: Theme.px(6); color: modMa.containsMouse ? "#33ffffff" : "transparent" }
+                Text { id: modText; visible: !modLoader.active; anchors.centerIn: parent; anchors.verticalCenterOffset: Theme.px(2)
+                       text: modItem.mod.error && modItem.mod.error.length ? "⚠ " + modItem.mod.id : ((modItem.mod.label ? modItem.mod.label + " " : "") + (modItem.mod.text || "…"))
+                       color: modItem.mod.error && modItem.mod.error.length ? "#f0c674" : (modItem.mod.color && modItem.mod.color.length ? modItem.mod.color : Theme.text)
+                       font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
+                Loader { id: modLoader; active: modItem.mod.type === "qml" && !(modItem.mod.error && modItem.mod.error.length); anchors.verticalCenter: parent.verticalCenter
+                         source: active ? modItem.mod.qml + "?r=" + BarModules.revision : ""
+                         onStatusChanged: if (status === Loader.Error) console.warn("bar module", modItem.mod.id, "failed to load") }
+                MouseArea { id: modMa; anchors.fill: parent; hoverEnabled: true; enabled: !modLoader.active; onClicked: BarModules.click(modItem.mod.id) }
+                // tooltip: the descriptor's text, or the command's second line / JSON tooltip, or its error
+                Rectangle { visible: modMa.containsMouse && tipText.text.length > 0; anchors.top: parent.bottom; anchors.topMargin: Theme.px(6); anchors.right: parent.right
+                            width: tipText.implicitWidth + Theme.px(16); height: tipText.implicitHeight + Theme.px(10); radius: Theme.px(6); color: "#e0202126"; border.color: "#44ffffff"; z: 50
+                            Text { id: tipText; anchors.centerIn: parent; color: "#e6e6ea"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont
+                                   text: modItem.mod.error && modItem.mod.error.length ? modItem.mod.id + ": " + modItem.mod.error + (modItem.mod.tooltip ? "\n" + modItem.mod.tooltip : "") : (modItem.mod.tooltip || "") } }
+            }
+        }
         // Activity (btop): three little bars, like an activity monitor
         Item {
             id: activityIcon

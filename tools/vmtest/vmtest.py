@@ -348,6 +348,22 @@ def scenario_startup_menu(vm):
         vm.wait_for(lambda d: len(vm.windows(d, helper=False)) >= 1, "autostart windows back", 60)
 
 
+def scenario_bar_modules(vm):
+    """A command module dropped into ~/.config/mylinux/bar/modules shows its output in the bar, reloads on edit, goes on removal."""
+    d = "/root/.config/mylinux/bar/modules"; stamp = "bm%d" % int(time.time())
+    def mods(dd): return {m["id"]: m for m in dd.get("barModules", [])}
+    vm.serial("mkdir -p %s; printf '{\"id\":\"vmtest\",\"type\":\"command\",\"exec\":\"echo %s; echo tip\",\"interval\":5}' > %s/vmtest.json; echo" % (d, stamp, d), 2)
+    dd = vm.wait_for(lambda dd: mods(dd).get("vmtest", {}).get("text") == stamp, "module text in the bar", 20)
+    if mods(dd)["vmtest"].get("tooltip") != "tip":
+        raise Fail("second output line should be the tooltip: %s" % mods(dd)["vmtest"])
+    vm.serial("printf '{\"id\":\"vmtest\",\"type\":\"command\",\"exec\":\"echo %s-edited\",\"interval\":5}' > %s/vmtest.json; echo" % (stamp, d), 2)
+    vm.wait_for(lambda dd: mods(dd).get("vmtest", {}).get("text") == stamp + "-edited", "edited module reloaded", 20)
+    vm.serial("printf '{\"id\":\"broken\",\"type\":\"command\",\"exec\":\"exit 3\"}' > %s/broken.json; echo" % d, 2)
+    vm.wait_for(lambda dd: "exit 3" in mods(dd).get("broken", {}).get("error", ""), "failing module reports its exit code", 20)
+    vm.serial("rm -f %s/vmtest.json %s/broken.json; echo" % (d, d), 2)
+    vm.wait_for(lambda dd: "vmtest" not in mods(dd) and "broken" not in mods(dd), "removed modules gone", 20)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -524,6 +540,7 @@ SCENARIOS = [
     ("menu_shortcuts", scenario_menu_shortcuts),
     ("appearance", scenario_appearance),
     ("startup_menu", scenario_startup_menu),
+    ("bar_modules", scenario_bar_modules),
 ]
 
 

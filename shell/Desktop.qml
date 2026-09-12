@@ -356,6 +356,7 @@ Window {
             seatFocus: seatFocusSurface ? (windows.filter(w => w.shellSurface && w.shellSurface.surface === seatFocusSurface).map(w => appIdOf(w) + "|" + w.title + (w.helper ? "|helper" : ""))[0] || "surface not a window") : null,
             tilingEnabled: tilingEnabled, focused: focusedWindow ? appIdOf(focusedWindow) + "|" + focusedWindow.title : null,
             menuOpen: spotlight.open, menuDepth: spotlight.stack.length, menuQuery: spotlight.query, keySheetOpen: keyHelp.visible, background: Theme.backgroundIndex,
+            barModules: BarModules.modules.map(m => ({ id: m.id, type: m.type, text: m.text, error: m.error, tooltip: m.tooltip })),
             seatFocusNull: !seatFocus, windows: list, trees: trees, time: Date.now() }))
     }
 
