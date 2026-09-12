@@ -180,7 +180,8 @@ Item {
                        text: modItem.mod.error && modItem.mod.error.length ? "⚠ " + modItem.mod.id : ((modItem.mod.label ? modItem.mod.label + " " : "") + (modItem.mod.text || "…"))
                        color: modItem.mod.error && modItem.mod.error.length ? "#f0c674" : (modItem.mod.color && modItem.mod.color.length ? modItem.mod.color : Theme.text)
                        font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
-                Loader { id: modLoader; active: modItem.mod.type === "qml" && !(modItem.mod.error && modItem.mod.error.length); anchors.verticalCenter: parent.verticalCenter
+                // a QML module reads its descriptor as parent.mod (mod.options holds the whole JSON object)
+                Loader { id: modLoader; readonly property var mod: modItem.mod; active: modItem.mod.type === "qml" && !(modItem.mod.error && modItem.mod.error.length); anchors.verticalCenter: parent.verticalCenter
                          source: active ? modItem.mod.qml + "?r=" + BarModules.revision : ""
                          onStatusChanged: if (status === Loader.Error) console.warn("bar module", modItem.mod.id, "failed to load") }
                 MouseArea { id: modMa; anchors.fill: parent; hoverEnabled: true; enabled: !modLoader.active; onClicked: BarModules.click(modItem.mod.id) }

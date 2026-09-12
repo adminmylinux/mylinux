@@ -81,7 +81,7 @@ Item {
             { label: "Appearance: follow theme", hint: "apps go dark or light with the colour theme (now " + (Theme.darkMode ? "dark" : "light") + ")" + (Theme.appearance === "auto" ? "  ✓" : ""), glyph: "◑", run: () => Theme.setAppearance("auto") },
             { label: "Appearance: dark", hint: "system dark mode for browsers, web apps and GTK apps; restart an app to apply" + (Theme.appearance === "dark" ? "  ✓" : ""), glyph: "●", run: () => Theme.setAppearance("dark") },
             { label: "Appearance: light", hint: "system light mode; restart an app to apply" + (Theme.appearance === "light" ? "  ✓" : ""), glyph: "○", run: () => Theme.setAppearance("light") },
-            { label: "Bar modules: install the examples", hint: "load, agents, tailscale into ~/.config/mylinux/bar/modules (edit them, they reload live)", glyph: "▤", run: () => BarModules.installExamples() },
+            { label: "Bar modules: install the examples", hint: "load, agents, tailscale, proxmox into ~/.config/mylinux/bar/modules (edit them, they reload live)", glyph: "▤", run: () => BarModules.installExamples() },
             { label: "Bar modules: open the folder", hint: "~/.config/mylinux/bar/modules in a terminal", glyph: "▤", run: () => desktop.launchArgs("/usr/bin/foot", ["-D", BarModules.userDir]) },
             { label: "Desktop widgets: on", hint: "date, calendar, time and weather on the wallpaper" + (Theme.desktopWidgets ? "  ✓" : ""), glyph: "▦", run: () => Theme.setDesktopWidgets(true) },
             { label: "Desktop widgets: off", hint: "plain wallpaper" + (Theme.desktopWidgets ? "" : "  ✓"), glyph: "▦", run: () => Theme.setDesktopWidgets(false) },

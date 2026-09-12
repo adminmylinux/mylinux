@@ -34,6 +34,7 @@ public:
     Q_INVOKABLE void run(const QString &id);                     // refresh one command module now
     Q_INVOKABLE void click(const QString &id);                   // its on-click command
     Q_INVOKABLE bool installExamples();                          // copy the shipped examples into the user dir
+    Q_INVOKABLE void report(const QString &id, const QString &text, const QString &tooltip);   // QML modules publish their state (diagnostics, tests)
     static QVariantMap parseOutput(const QByteArray &out);       // text / tooltip / color from a command's stdout
     static QVariantMap parseDescriptor(const QJsonObject &o, const QString &dir);
 signals:

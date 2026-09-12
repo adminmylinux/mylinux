@@ -364,6 +364,36 @@ def scenario_bar_modules(vm):
     vm.wait_for(lambda dd: "vmtest" not in mods(dd) and "broken" not in mods(dd), "removed modules gone", 20)
 
 
+def scenario_proxmox_module(vm):
+    """The Proxmox QML module against a fake API served from the Mac (10.0.2.2 inside QEMU's user network)."""
+    import http.server, threading, json as _json
+    fake = {"data": [
+        {"type": "node", "node": "pve", "status": "online", "cpu": 0.25, "maxcpu": 16, "mem": 32 * 2**30, "maxmem": 64 * 2**30},
+        {"type": "qemu", "name": "UbuntuServer24", "status": "running"}, {"type": "qemu", "name": "ubuntu-desktop", "status": "stopped"},
+        {"type": "lxc", "name": "docker", "status": "running"}, {"type": "lxc", "name": "immich", "status": "running"}, {"type": "storage", "status": "available"}]}
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            ok = self.path.startswith("/api2/json/cluster/resources") and self.headers.get("Authorization") == "PVEAPIToken=vmtest@pam!t=0000"
+            body = _json.dumps(fake).encode() if ok else b'{"data":null}'
+            self.send_response(200 if ok else 401); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        def log_message(self, *a): pass
+    srv = http.server.ThreadingHTTPServer(("0.0.0.0", 0), H); port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    d = "/root/.config/mylinux/bar/modules"
+    try:
+        # the module file from the repository, the descriptor pointing at the fake, a fake token in the secrets store
+        open(os.path.join(SHARE, "vmtest", "proxmox.qml"), "wb").write(open(os.path.join(ROOT, "board", "overlay", "usr", "share", "mylinux", "bar", "examples", "proxmox.qml"), "rb").read())
+        vm.serial("mkdir -p %s /root/.config/mylinux; cp /mnt/share/vmtest/proxmox.qml %s/; printf '{\"id\":\"proxmox\",\"type\":\"qml\",\"url\":\"http://10.0.2.2:%d\",\"interval\":5}' > %s/proxmox.json; grep -q PROXMOX_API_TOKEN /root/.config/mylinux/secrets.env 2>/dev/null || echo 'PROXMOX_API_TOKEN=vmtest@pam!t=0000' >> /root/.config/mylinux/secrets.env; echo" % (d, d, port, d), 2)
+        vm.serial("restartshell; echo", 2)     # the shell reads secrets.env at start
+        time.sleep(4)
+        dd = vm.wait_for(lambda dd: any(m["id"] == "proxmox" and not m["error"] for m in dd.get("barModules", [])), "proxmox module loaded", 60)
+        # the rendered text is inside the QML item: read it through the fixture the module leaves in its tooltip via diag? no: screenshot-free check via the module's own state file
+        vm.wait_for(lambda dd: any(m["id"] == "proxmox" and (m.get("text") or "").startswith("▣ 1/2 VM · 2/2 CT · 25% · 50%") for m in dd.get("barModules", [])), "proxmox text computed from the fake API", 30)
+    finally:
+        srv.shutdown()
+        vm.serial("rm -f %s/proxmox.json %s/proxmox.qml; sed -i '/^PROXMOX_API_TOKEN=vmtest/d' /root/.config/mylinux/secrets.env; echo" % (d, d), 2)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -541,6 +571,7 @@ SCENARIOS = [
     ("appearance", scenario_appearance),
     ("startup_menu", scenario_startup_menu),
     ("bar_modules", scenario_bar_modules),
+    ("proxmox_module", scenario_proxmox_module),
 ]
 
 

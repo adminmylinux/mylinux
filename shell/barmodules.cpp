@@ -56,6 +56,7 @@ QVariantMap BarModules::parseDescriptor(const QJsonObject &o, const QString &dir
     d["enabled"] = !o.contains("enabled") || o["enabled"].toBool(true);
     d["dir"] = dir;
     d["qml"] = d["type"] == "qml" ? QUrl::fromLocalFile(dir + "/" + id + ".qml").toString() : QString();
+    d["options"] = o.toVariantMap();                          // the whole descriptor, for a module's own settings (host, url, ...)
     d["text"] = QString(); d["color"] = QString(); d["error"] = QString();
     if (d["type"] == "qml" && !QFile::exists(dir + "/" + id + ".qml")) d["error"] = id + ".qml missing";
     if (d["type"] == "command" && d["exec"].toString().isEmpty()) d["error"] = "no exec";
@@ -179,6 +180,12 @@ void BarModules::startCommand(const QString &id)
 }
 
 void BarModules::run(const QString &id) { startCommand(id); }
+
+void BarModules::report(const QString &id, const QString &text, const QString &tooltip)
+{
+    if (!m_mods.contains(id)) return;
+    m_mods[id].desc["text"] = text; m_mods[id].desc["tooltipOut"] = tooltip; publish();
+}
 
 void BarModules::click(const QString &id)
 {

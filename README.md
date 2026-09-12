@@ -122,7 +122,10 @@ Your own items in the menu bar, in the shape of Omarchy's bar modules: a descrip
 The command runs on the apps disk; its first line of output is the text, a second line the tooltip, or it
 can print a JSON object `{"text", "tooltip", "color"}`. A `"type": "qml"` module loads `<id>.qml` from the
 same folder: full QML with the shell's singletons (`Theme`, `AgentUsage`, `Weather`, `Tailscale`, `Launcher`).
-Style › "Bar modules: install the examples" copies three examples there (load average, Tailscale, agents).
+Style › "Bar modules: install the examples" copies four examples there: load average, Tailscale, agents, and
+a Proxmox status widget (running VMs and containers, node CPU and memory; needs a read-only API token saved
+as `PROXMOX_API_TOKEN` in the Settings panel, see the comment at the top of `proxmox.qml`). QML modules can
+call `Http.get(url, headers, {insecure: true}, callback)` for homelab APIs with self-signed certificates.
 Modules are your code running inside the shell; nothing sandboxes them.
 
 ### Quitting
