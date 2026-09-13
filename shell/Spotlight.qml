@@ -221,6 +221,7 @@ Item {
                     onTextChanged: { spot.selected = 0; spot.refresh() }
                     Keys.onPressed: (ev) => {
                         if (ev.key === Qt.Key_Escape) { spot.back(); ev.accepted = true }
+                        else if (ev.key === Qt.Key_V && (ev.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) { input.insert(input.cursorPosition, Launcher.hostClipboardText().replace(/\s+$/, "")); ev.accepted = true }   // paste the Mac clipboard
                         else if (ev.key === Qt.Key_Down) { spot.selected = Math.min(spot.selected + 1, spot.results.length - 1); ev.accepted = true }
                         else if (ev.key === Qt.Key_Up) { spot.selected = Math.max(spot.selected - 1, 0); ev.accepted = true }
                         else if (ev.key === Qt.Key_Return || ev.key === Qt.Key_Enter) { spot.activate(spot.selected); ev.accepted = true }

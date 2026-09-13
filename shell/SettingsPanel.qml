@@ -52,7 +52,11 @@ Item {
                         echoMode: panel.reveal ? TextInput.Normal : TextInput.Password
                         text: Secrets.get(modelData.key)
                         onEditingFinished: Secrets.set(modelData.key, text.trim())
-                        Keys.onPressed: (ev) => { if (ev.key === Qt.Key_Escape) { panel.visible = false; ev.accepted = true } else if (ev.key === Qt.Key_Return || ev.key === Qt.Key_Enter) { Secrets.set(modelData.key, text.trim()); ev.accepted = true } }
+                        Keys.onPressed: (ev) => {
+                            if (ev.key === Qt.Key_Escape) { panel.visible = false; ev.accepted = true }
+                            else if (ev.key === Qt.Key_Return || ev.key === Qt.Key_Enter) { Secrets.set(modelData.key, text.trim()); ev.accepted = true }
+                            else if (ev.key === Qt.Key_V && (ev.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) { fld.insert(fld.cursorPosition, Launcher.hostClipboardText().trim()); ev.accepted = true }   // paste the Mac clipboard
+                        }
                         Component.onCompleted: if (index === 0) panel.firstField = fld
                         Text { anchors.fill: parent; visible: !fld.text.length && !fld.activeFocus; text: modelData.hint; color: "#6e6e78"; font: fld.font; verticalAlignment: Text.AlignVCenter } } } }
         }

@@ -69,6 +69,7 @@ Item {
                     onTextChanged: kh.query = text
                     Keys.onPressed: (ev) => {
                         if (ev.key === Qt.Key_Escape) { if (text.length) text = ""; else kh.visible = false; ev.accepted = true }
+                        else if (ev.key === Qt.Key_V && (ev.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) { search.insert(search.cursorPosition, Launcher.hostClipboardText().trim()); ev.accepted = true }
                         else if (ev.key === Qt.Key_Tab) { kh.showSheet(); ev.accepted = true } }
                     Text { anchors.fill: parent; visible: !search.text.length; text: "Search keybindings…"; color: "#8f8f96"; font: search.font; verticalAlignment: Text.AlignVCenter } } }
             ListView {

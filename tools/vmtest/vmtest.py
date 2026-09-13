@@ -394,6 +394,16 @@ def scenario_proxmox_module(vm):
         vm.serial("rm -f %s/proxmox.json %s/proxmox.qml; sed -i '/^PROXMOX_API_TOKEN=vmtest/d' /root/.config/mylinux/secrets.env; echo" % (d, d), 2)
 
 
+def scenario_shell_paste(vm):
+    """Ctrl+V in the shell's own text fields pastes the Mac clipboard (the menu's search field here)."""
+    stamp = "paste-%d" % int(time.time())
+    mac_clipboard((stamp + "\n").encode())
+    time.sleep(1)
+    vm.qmp("combo", "meta_l-spc", "sleep", 0.8, "combo", "ctrl-v", "sleep", 0.6)
+    vm.wait_for(lambda d: d["menuOpen"] and d["menuQuery"] == stamp, "clipboard text in the search field", 8)
+    vm.qmp("key", "esc", "sleep", 0.3, "key", "esc", "sleep", 0.5)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -572,6 +582,7 @@ SCENARIOS = [
     ("startup_menu", scenario_startup_menu),
     ("bar_modules", scenario_bar_modules),
     ("proxmox_module", scenario_proxmox_module),
+    ("shell_paste", scenario_shell_paste),
 ]
 
 

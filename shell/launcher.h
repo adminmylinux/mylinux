@@ -19,6 +19,9 @@ public:
     Q_INVOKABLE bool writeFile(const QString &path, const QString &text) const;   // atomic (tmp + rename)
     Q_INVOKABLE bool removeFile(const QString &path) const;
     Q_INVOKABLE QString readFile(const QString &path) const;
+    // The Mac clipboard as mirrored by run.sh (share/clipboard/mac.txt): the shell's own text fields paste from it
+    // with Ctrl+V / ⌘V, since the compositor has no system clipboard of its own on eglfs.
+    Q_INVOKABLE QString hostClipboardText() const;
     // Seat keyboard focus from C++: assigning null to the seat's keyboardFocus property in QML is a no-op.
     Q_INVOKABLE bool setSeatFocus(QObject *seat, QObject *surface) const;
 signals:

@@ -80,3 +80,9 @@ bool Launcher::setSeatFocus(QObject *seat, QObject *surface) const
     return s->setKeyboardFocus(surface ? qobject_cast<QWaylandSurface *>(surface) : nullptr);
 }
 QString Launcher::readFile(const QString &path) const { QFile f(path); return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString(); }
+QString Launcher::hostClipboardText() const
+{
+    QFile f(QStringLiteral("/mnt/share/clipboard/mac.txt"));
+    if (!f.open(QIODevice::ReadOnly) || f.size() > 1048576) return QString();
+    return QString::fromUtf8(f.readAll());
+}
