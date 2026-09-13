@@ -56,6 +56,8 @@ if(VNC_FOUND)
     target_include_directories(vncview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vncview)   # the generated type registration includes <vncsurface.h> etc.
     qt_add_qml_module(vncview URI VncView VERSION 1.0 QML_FILES vncview/Main.qml)
     target_link_libraries(vncview PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick PkgConfig::VNC)
+    # Buildroot builds in the source tree, where "vncview" is also the source directory: put the binary under bin/
+    set_target_properties(vncview PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     install(TARGETS vncview RUNTIME DESTINATION bin)
 else()
     message(STATUS "libvncclient not found: vncview is not built")

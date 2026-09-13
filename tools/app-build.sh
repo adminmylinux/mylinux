@@ -25,7 +25,7 @@ orb run -m debian sh -c "
   if ! ninja > ninja.log 2>&1; then grep -v '^\[' ninja.log | tail -25; echo 'BUILD FAILED'; exit 1; fi
   tail -2 ninja.log
   cp -f $BIN '$HERE/share/$BIN'
-  [ -x vncview ] && cp -f vncview '$HERE/share/vncview' && echo 'vncview -> share/vncview (the vnc wrapper in the VM prefers it)'
+  [ -x bin/vncview ] && cp -f bin/vncview '$HERE/share/vncview' && echo 'vncview -> share/vncview (the vnc wrapper in the VM prefers it)'
 "
 ls -la share/$BIN
 echo "In the VM: /etc/init.d/S99shell restart   (or reboot)"
