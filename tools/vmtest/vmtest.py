@@ -455,6 +455,61 @@ def scenario_vnc_viewer(vm):
     vm.wait_for(lambda d: not any(w["appId"] == "vncview" for w in d["windows"]), "viewer closed", 10)
 
 
+def _tls_cert(name, cn):
+    d = os.path.join(SHARE, "vmtest", "vnc-tls"); os.makedirs(d, exist_ok=True)
+    cert, key = os.path.join(d, name + "-cert.pem"), os.path.join(d, name + "-key.pem")
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30", "-subj", "/CN=" + cn,
+                    "-keyout", key, "-out", cert], check=True, capture_output=True)
+    fp = subprocess.run(["openssl", "x509", "-noout", "-fingerprint", "-sha256", "-in", cert], check=True, capture_output=True, text=True).stdout
+    return fp.strip().split("=", 1)[1].upper()
+
+
+def scenario_vnc_tls_trust(vm):
+    """VeNCrypt X509 (what wayvnc with TLS offers) against a local Xvnc with a self-signed certificate, reached by IP
+    while the certificate names a host: unknown certificate -> "untrusted" with its fingerprint; pinned -> connects
+    (verification against the pin and the certificate's own name); server certificate replaced -> untrusted, changed."""
+    ensure_vnc_server(vm)
+    fp_a = _tls_cert("a", "vmtest-vnc-a"); fp_b = _tls_cert("b", "vmtest-vnc-b")
+    log = os.path.join(SHARE, "vmtest", "vncview-tls.log")
+    pins = "/root/.config/mylinux/vnc/certs"
+
+    def server(which):
+        vm.serial("killall Xvnc 2>/dev/null; sleep 1; mkdir -p /tmp/vnc-tls && cp /mnt/share/vmtest/vnc-tls/%s-*.pem /tmp/vnc-tls/; cd /root; "
+                  "setsid apps-run Xvnc :6 -SecurityTypes X509None -X509Cert /tmp/vnc-tls/%s-cert.pem -X509Key /tmp/vnc-tls/%s-key.pem "
+                  "-geometry 640x480 -rfbport 5906 -desktop vmtest-tls > /var/log/xvnc-tls.log 2>&1 < /dev/null & sleep 3; echo" % (which, which, which), 5)
+
+    def viewer():
+        if os.path.exists(log): os.remove(log)
+        vm.serial("killall vncview 2>/dev/null; sleep 1; cd /root; HOME=/root setsid /usr/bin/vnc 127.0.0.1:5906 > /mnt/share/vmtest/vncview-tls.log 2>&1 < /dev/null & echo", 2)
+
+    def wait_state(want, timeout=30):
+        deadline = time.time() + timeout
+        text = ""
+        while time.time() < deadline:
+            text = open(log, errors="replace").read() if os.path.exists(log) else ""
+            states = [l.split("state ", 1)[1] for l in text.splitlines() if "vncview: state " in l]
+            if states and states[-1].startswith(want): return text
+            if states and states[-1].startswith(("error", "connected", "untrusted")) and not states[-1].startswith(want):
+                raise Fail("viewer state %r, wanted %r; log tail: %s" % (states[-1], want, text[-600:]))
+            time.sleep(0.5)
+        raise Fail("timeout waiting for viewer state %r; log tail: %s" % (want, text[-600:]))
+
+    vm.serial("rm -rf %s; echo" % pins, 2)
+    server("a"); viewer()
+    text = wait_state("untrusted")
+    if fp_a not in text or "name vmtest-vnc-a" not in text:
+        raise Fail("untrusted state without the server's fingerprint/name; log tail: %s" % text[-600:])
+    # pin it the way "Trust and connect" does (the file under the pin directory), then connect again
+    vm.serial("mkdir -p %s && cp /mnt/share/vmtest/vnc-tls/a-cert.pem %s/127.0.0.1_5906.pem; echo" % (pins, pins), 2)
+    viewer(); wait_state("connected")
+    # the server's certificate changes: refuse and say so
+    server("b"); viewer()
+    text = wait_state("untrusted")
+    if fp_b not in text or "(changed)" not in text:
+        raise Fail("replaced certificate not reported as changed; log tail: %s" % text[-600:])
+    vm.serial("killall vncview Xvnc 2>/dev/null; rm -rf %s; echo" % pins, 2)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -635,6 +690,7 @@ SCENARIOS = [
     ("proxmox_module", scenario_proxmox_module),
     ("shell_paste", scenario_shell_paste),
     ("vnc_viewer", scenario_vnc_viewer),
+    ("vnc_tls_trust", scenario_vnc_tls_trust),
 ]
 
 
@@ -654,6 +710,10 @@ def main(argv):
         if os.path.isfile(src): open(os.path.join(fx, name), "wb").write(open(src, "rb").read())
     # guest scripts under test that the booted image may not carry yet
     open(os.path.join(fx, "color-scheme-apply"), "wb").write(open(os.path.join(ROOT, "board", "overlay", "usr", "bin", "color-scheme-apply"), "rb").read())
+    # a viewer built by tools/app-build.sh shell (the vnc wrapper prefers /mnt/share/vncview over the image's copy)
+    built = os.path.join(ROOT, "share", "vncview")
+    if os.path.exists(built):
+        open(os.path.join(SHARE, "vncview"), "wb").write(open(built, "rb").read()); os.chmod(os.path.join(SHARE, "vncview"), 0o755)
     vm = VM()
     results = []
     try:

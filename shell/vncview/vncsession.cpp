@@ -1,6 +1,8 @@
 #include "vncsession.h"
+#include "vnccert.h"
 #include <rfb/rfbclient.h>
 #include <QDebug>
+#include <QFile>
 #include <QMetaObject>
 #include <QElapsedTimer>
 #include <cstring>
@@ -63,6 +65,22 @@ public:
     static char *getPassword(rfbClient *c) { return strdup(self(c)->session->m_password.toUtf8().constData()); }
     static rfbCredential *getCredential(rfbClient *c, int type) {
         VncThread *t = self(c);
+        if (type == rfbCredentialTypeX509) {
+            // VeNCrypt X509: verify against the pinned certificate only. Nothing pinned: stop here and let the
+            // user trust the server's certificate (run() fetches it once the handshake has failed).
+            const QString path = VncCert::pinPath(t->host, t->port);
+            const VncCert::Probe pinned = VncCert::describe(VncCert::pinned(t->host, t->port));
+            if (!pinned.ok) { t->needTrust = true; return nullptr; }
+            auto *cred = (rfbCredential *)calloc(1, sizeof(rfbCredential));
+            cred->x509Credential.x509CACertFile = strdup(QFile::encodeName(path).constData());
+            cred->x509Credential.x509CrlVerifyMode = rfbX509CrlVerifyNone;
+            // libvncclient checks the certificate against serverHost (already connected, so only verification reads
+            // it from here on). Self-signed server certificates name the machine, not the IP it was reached by; the
+            // pin already fixes the exact certificate, so check the name the certificate carries.
+            if (!pinned.name.isEmpty()) { free(c->serverHost); c->serverHost = strdup(pinned.name.toUtf8().constData()); }
+            t->pinUsed = true; t->pinnedFingerprint = pinned.fingerprint;
+            return cred;
+        }
         if (type != rfbCredentialTypeUser) return nullptr;
         auto *cred = (rfbCredential *)calloc(1, sizeof(rfbCredential));
         cred->userCredential.username = strdup(t->session->m_username.toUtf8().constData());
@@ -74,9 +92,41 @@ public:
         const QString s = QString::fromLatin1(text, len);
         QMetaObject::invokeMethod(t->session, [s2 = t->session, s] { s2->m_serverText = s; emit s2->changed(); }, Qt::QueuedConnection);
     }
-    static void logIt(const char *fmt, ...) { va_list a; va_start(a, fmt); char b[512]; vsnprintf(b, sizeof b, fmt, a); va_end(a); qInfo("vnc: %s", QByteArray(b).trimmed().constData()); }
+    // libvncclient's log has no client argument; one client per thread, so the last line is kept per thread
+    static inline thread_local QString lastLog;
+    static void logIt(const char *fmt, ...) {
+        va_list a; va_start(a, fmt); char b[512]; vsnprintf(b, sizeof b, fmt, a); va_end(a);
+        const QByteArray line = QByteArray(b).trimmed();
+        qInfo("vnc: %s", line.constData());
+        if (!line.isEmpty()) lastLog = QString::fromLocal8Bit(line);
+    }
+    // after a failed start: an unknown or changed certificate becomes a trust question, anything else an error
+    void failed() {
+        const QString reason = lastLog.isEmpty() ? QStringLiteral("could not connect") : lastLog;
+        if (needTrust || pinUsed) {
+            const VncCert::Probe p = VncCert::fetch(host, port);
+            if (p.ok && (needTrust || p.fingerprint != pinnedFingerprint)) {
+                const bool changed = !needTrust;
+                QMetaObject::invokeMethod(session, [s = session, p, changed] {
+                    s->m_certPem = p.pem; s->m_certFingerprint = p.fingerprint; s->m_certName = p.name; s->m_certChanged = changed;
+                    s->setState("untrusted");
+                }, Qt::QueuedConnection);
+                return;
+            }
+            if (!p.ok && needTrust) {
+                QMetaObject::invokeMethod(session, [s = session, e = p.error] { s->setState("error", "cannot read the server certificate: " + e); }, Qt::QueuedConnection);
+                return;
+            }
+        }
+        QMetaObject::invokeMethod(session, [s = session, reason] { s->setState("error", reason); }, Qt::QueuedConnection);
+    }
+
+    QString host; int port = 5900;
+    bool needTrust = false, pinUsed = false;
+    QString pinnedFingerprint;
 
     void run() override {
+        host = session->m_host; port = session->m_port; lastLog.clear();
         client = rfbGetClient(8, 3, 4);
         rfbClientSetClientData(client, (void *)"vt", this);
         client->MallocFrameBuffer = mallocFb;
@@ -100,7 +150,7 @@ public:
         SetClientAuthSchemes(client, schemes, -1);
         if (!rfbInitClient(client, nullptr, nullptr)) {         // frees the client on failure
             client = nullptr;
-            QMetaObject::invokeMethod(session, [s = session] { s->setState("error", "could not connect (see the shell log for the reason)"); }, Qt::QueuedConnection);
+            failed();
             return;
         }
         QMetaObject::invokeMethod(session, [s = session] { s->setState("connected"); }, Qt::QueuedConnection);
@@ -132,7 +182,10 @@ void VncSession::setQuality(const QString &q) { if (q == m_quality) return; m_qu
 
 void VncSession::setState(const QString &s, const QString &err)
 {
-    m_state = s; m_error = err; emit changed();
+    m_state = s; m_error = err;
+    qInfo("vncview: state %s%s%s", qPrintable(s), err.isEmpty() ? "" : ": ", qPrintable(err));
+    if (s == "untrusted") qInfo("vncview: certificate %s name %s%s", qPrintable(m_certFingerprint), qPrintable(m_certName), m_certChanged ? " (changed)" : "");
+    emit changed();
 }
 
 void VncSession::open(const QString &host, int port, const QString &username, const QString &password)
@@ -143,6 +196,14 @@ void VncSession::open(const QString &host, int port, const QString &username, co
     auto *t = new VncThread(this);
     m_thread = t;
     t->start();
+}
+
+void VncSession::trustCertificate()
+{
+    if (m_state != "untrusted" || m_certPem.isEmpty()) return;
+    if (!VncCert::pin(m_host, m_port, m_certPem)) { setState("error", "cannot write " + VncCert::pinPath(m_host, m_port)); return; }
+    m_certPem.clear();
+    open(m_host, m_port, m_username, m_password);
 }
 
 void VncSession::close()

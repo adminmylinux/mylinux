@@ -732,5 +732,12 @@ VeNCrypt/VncAuth/none; saved machines in ~/.config/mylinux/vnc/machines.json, pa
 Compositor: input grab for app id "vncview" when fullscreen or after ⌘⌃G (all Shortcuts and KeyGrab stand down,
 Ctrl+Alt+G releases). `vnc` wrapper prefers /mnt/share/vncview (tools/app-build.sh copies it). Buildroot:
 libvncserver + jpeg. vmtest vnc_viewer: Xvnc + xterm on the test disk, typing through the viewer, F11 grab, release.
-Not tested against wayvnc's VeNCrypt X509Plain yet (needs a real Omarchy box); libvncclient does not verify
-the server certificate.
+VeNCrypt X509 (2026-09-13, what Omarchy's wayvnc offers: types 19/129/5, VeNCrypt subtype 262 X509Plain with a
+self-signed certificate): libvncclient asks GetCredential for rfbCredentialTypeX509 and verifies the server against that
+CA file and serverHost, so the viewer failed with "Reading credential failed". Now trust on first use: without a pin
+the viewer fetches the certificate over its own VeNCrypt handshake (QSslSocket, VncCert::fetch) and shows name +
+SHA-256 with "Trust and connect"; the PEM is pinned in ~/.config/mylinux/vnc/certs/<host>_<port>.pem and passed as the
+CA file, with serverHost set to the certificate's own name (reached by IP, the certificate names the machine). A
+different certificate later is reported as changed. Errors show libvncclient's last log line. Needs the SDK's Qt with
+ssl (tools/sdk-update.sh after the 2026-09-09 Qt rebuild). vmtest vnc_tls_trust: Xvnc X509None with generated
+certificates. Checked by hand against omarchy-msi (TLS up by IP, then login).

@@ -69,8 +69,27 @@ Window {
                              onVisibleChanged: if (visible) forceActiveFocus()
                              Component.onCompleted: forceActiveFocus()
                              Keys.onPressed: (ev) => { if (ev.key === Qt.Key_F11) { win.toggleFullscreen(); ev.accepted = true } } }
+                // unknown or changed TLS certificate: show the fingerprint, trust pins it (~/.config/mylinux/vnc/certs)
+                Rectangle { anchors.centerIn: parent; visible: modelData.session.state === "untrusted"; width: Math.min(parent.width - 40, 620); height: trustCol.implicitHeight + 36; radius: 10; color: "#ee1e1e22"
+                    border.color: modelData.session.certChanged ? "#ff5f57" : "#44ffffff"
+                    Column { id: trustCol; anchors.centerIn: parent; width: parent.width - 36; spacing: 10
+                        Text { width: parent.width; wrapMode: Text.WordWrap; color: modelData.session.certChanged ? "#ff8a84" : "white"; font.pixelSize: 15; font.bold: true; font.family: win.font
+                               text: modelData.session.certChanged ? "The certificate of " + modelData.host + " has changed" : "First connection to " + modelData.host + ": trust its certificate?" }
+                        Text { width: parent.width; wrapMode: Text.WordWrap; color: "#c8c8ce"; font.pixelSize: 12; font.family: win.font
+                               text: (modelData.session.certChanged ? "It no longer matches the certificate you trusted. That happens when wayvnc's certificate is regenerated, or when something else answers on this address. "
+                                                                    : "The server uses a self-signed certificate. ")
+                                     + "Compare the fingerprint with the server's, for example:  openssl x509 -noout -fingerprint -sha256 -in ~/.config/wayvnc/tls_cert.pem" }
+                        Text { width: parent.width; wrapMode: Text.WrapAnywhere; color: "#e6e6ea"; font.pixelSize: 12; font.family: "monospace"
+                               text: "Name: " + (modelData.session.certName || "(none)") + "\nSHA-256: " + modelData.session.certFingerprint }
+                        Row { spacing: 8
+                            Rectangle { width: 150; height: 32; radius: 8; color: modelData.session.certChanged ? "#c4433c" : win.accent
+                                Text { anchors.centerIn: parent; text: modelData.session.certChanged ? "Replace and connect" : "Trust and connect"; color: "white"; font.pixelSize: 13; font.bold: true; font.family: win.font }
+                                MouseArea { anchors.fill: parent; onClicked: modelData.session.trustCertificate() } }
+                            Rectangle { width: 90; height: 32; radius: 8; color: "#2a2a30"; border.color: "#3a3a42"
+                                Text { anchors.centerIn: parent; text: "Close"; color: "#e6e6ea"; font.pixelSize: 13; font.family: win.font }
+                                MouseArea { anchors.fill: parent; onClicked: win.closeTab(index) } } } } }
                 // status overlay while not connected
-                Rectangle { anchors.centerIn: parent; visible: modelData.session.state !== "connected"; width: st.implicitWidth + 40; height: st.implicitHeight + 24; radius: 10; color: "#cc1e1e22"; border.color: "#44ffffff"
+                Rectangle { anchors.centerIn: parent; visible: modelData.session.state !== "connected" && modelData.session.state !== "untrusted"; width: Math.min(st.implicitWidth, parent.width - 80) + 40; height: st.implicitHeight + 24; radius: 10; color: "#cc1e1e22"; border.color: "#44ffffff"
                     Text { id: st; anchors.centerIn: parent; color: "#e6e6ea"; font.pixelSize: 14; font.family: win.font; horizontalAlignment: Text.AlignHCenter
                            text: modelData.session.state === "connecting" ? "Connecting to " + modelData.host + ":" + modelData.port + "…"
                                : modelData.session.state === "error" ? "Failed: " + modelData.session.error + "\n(click to retry)"

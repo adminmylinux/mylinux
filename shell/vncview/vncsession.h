@@ -20,8 +20,12 @@ class VncSession : public QObject
     QML_ELEMENT
     Q_PROPERTY(QString host READ host NOTIFY changed)
     Q_PROPERTY(int port READ port NOTIFY changed)
-    Q_PROPERTY(QString state READ state NOTIFY changed)        // idle | connecting | connected | closed | error
+    Q_PROPERTY(QString state READ state NOTIFY changed)        // idle | connecting | connected | closed | error | untrusted
     Q_PROPERTY(QString error READ error NOTIFY changed)
+    // state "untrusted": the server's TLS certificate is not pinned yet (or differs from the pinned one)
+    Q_PROPERTY(QString certFingerprint READ certFingerprint NOTIFY changed)
+    Q_PROPERTY(QString certName READ certName NOTIFY changed)
+    Q_PROPERTY(bool certChanged READ certChanged NOTIFY changed)
     Q_PROPERTY(int fbWidth READ fbWidth NOTIFY changed)
     Q_PROPERTY(int fbHeight READ fbHeight NOTIFY changed)
     Q_PROPERTY(QString quality READ quality WRITE setQuality NOTIFY changed)   // fast | balanced | best
@@ -34,6 +38,9 @@ public:
     int port() const { return m_port; }
     QString state() const { return m_state; }
     QString error() const { return m_error; }
+    QString certFingerprint() const { return m_certFingerprint; }
+    QString certName() const { return m_certName; }
+    bool certChanged() const { return m_certChanged; }
     int fbWidth() const { return m_front.width(); }
     int fbHeight() const { return m_front.height(); }
     QString quality() const { return m_quality; }
@@ -42,6 +49,7 @@ public:
     qint64 updates() const { return m_updates; }
     Q_INVOKABLE void open(const QString &host, int port, const QString &username, const QString &password);
     Q_INVOKABLE void close();
+    Q_INVOKABLE void trustCertificate();                         // pin the offered certificate and connect again
     Q_INVOKABLE void sendKey(quint32 keysym, bool down);
     Q_INVOKABLE void sendPointer(int x, int y, int buttonMask);
     Q_INVOKABLE void sendText(const QString &text);            // to the server's clipboard
@@ -56,6 +64,9 @@ private:
     friend class VncThread;
     void setState(const QString &s, const QString &err = QString());
     QString m_host, m_username, m_password, m_state = "idle", m_error, m_quality = "balanced", m_serverText;
+    QByteArray m_certPem;
+    QString m_certFingerprint, m_certName;
+    bool m_certChanged = false;
     int m_port = 5900;
     QImage m_front;
     mutable QMutex m_lock;
