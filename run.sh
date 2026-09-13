@@ -3,7 +3,10 @@
 # Terminal = serial console (root shell). Window = the Qt app. Quit: Ctrl-A X in the terminal.
 # Scripted use: SERIAL=unix:out/serial.sock,server,nowait ./run.sh -qmp unix:out/qmp.sock,server,nowait
 # Environment: RES=WxH, MEM=6G, APPS_IMG=path, APPS_SIZE_GB=16, SHARE_DIR=path, NAME=window title,
-#              GRAB=opt|full|none, MOUSE=tablet|relative, CLIPBOARD=0, DRYRUN=1 (print the QEMU command and exit).
+#              GRAB=opt|full|none, MOUSE=tablet|relative, CLIPBOARD=0, DRYRUN=1 (print the QEMU command and exit),
+#              PLACER=0 (do not move the window onto the current display; no Automation permission needed),
+#              MYLINUX_OUT=dir holding Image, rootfs.cpio.gz, the default apps.img and the myLinux.app wrapper
+#              (default: out/ of the repository; the Mac launcher app points it at its Application Support folder).
 # Works from any directory: paths are resolved against the repository, relative overrides against
 # the caller's directory. Paths may contain spaces and quotes.
 set -eu
@@ -12,6 +15,8 @@ CALLER="$PWD"
 cd "$REPO"
 abs() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$CALLER" "$1" ;; esac; }
 die() { echo "run.sh: $*" >&2; exit 1; }
+OUT="${MYLINUX_OUT:+$(abs "$MYLINUX_OUT")}"; OUT="${OUT:-$REPO/out}"
+export MYLINUX_OUT="$OUT"
 
 # ---- guest resolution: the display under the mouse pointer, in points, minus window margins --------
 # QEMU creates its (non-resizable) window at the guest size in device pixels and centres it; the app
@@ -42,8 +47,8 @@ esac
 [ "$XRES" -ge 640 ] && [ "$XRES" -le 8192 ] && [ "$YRES" -ge 480 ] && [ "$YRES" -le 8192 ] || die "RES out of range: $RES"
 
 # ---- disks and share ------------------------------------------------------------------------------
-[ -s out/Image ] && [ -s out/rootfs.cpio.gz ] || die "out/Image and out/rootfs.cpio.gz are missing: run tools/get-image.sh or ./build.sh"
-APPS_IMG=$(abs "${APPS_IMG:-out/apps.img}")
+[ -s "$OUT/Image" ] && [ -s "$OUT/rootfs.cpio.gz" ] || die "$OUT/Image and $OUT/rootfs.cpio.gz are missing: run tools/get-image.sh or ./build.sh"
+APPS_IMG=$(abs "${APPS_IMG:-$OUT/apps.img}")
 APPS_SIZE_GB="${APPS_SIZE_GB:-16}"
 case "$APPS_SIZE_GB" in ''|*[!0-9]*) die "APPS_SIZE_GB must be a whole number of GB" ;; esac
 [ "$APPS_SIZE_GB" -ge 4 ] && [ "$APPS_SIZE_GB" -le 2000 ] || die "APPS_SIZE_GB out of range: $APPS_SIZE_GB"
@@ -75,10 +80,10 @@ case "${MOUSE:-tablet}" in
 esac
 
 # ---- the QEMU command, built as a proper argument list (no word splitting of paths) ---------------
-QEMU=out/myLinux.app/Contents/MacOS/myLinux
+QEMU="$OUT/myLinux.app/Contents/MacOS/myLinux"
 set -- \
   -name "$NAME" -M virt -accel hvf -cpu host -smp 4 -m "$MEM" \
-  -kernel out/Image -initrd out/rootfs.cpio.gz \
+  -kernel "$OUT/Image" -initrd "$OUT/rootfs.cpio.gz" \
   -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60" \
   -device "virtio-gpu-pci,xres=$XRES,yres=$YRES" \
   -device virtio-keyboard-pci -device "$POINTER" \
@@ -93,8 +98,8 @@ if [ "${DRYRUN:-0}" = 1 ]; then
   for a in "$@"; do printf '%s\n' "$a"; done
   exit 0
 fi
-# Launch through out/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title.
-tools/make-app-bundle.sh >/dev/null || die "could not prepare out/myLinux.app"
+# Launch through $OUT/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title.
+tools/make-app-bundle.sh >/dev/null || die "could not prepare $OUT/myLinux.app"
 [ -x "$QEMU" ] || die "$QEMU is missing"
 
 # ---- host agent: window commands from the guest + text clipboard bridge -----------------------------
@@ -118,7 +123,9 @@ if [ "$CLIPBOARD" = 1 ]; then tools/clipboard-host.sh "$SHARE_DIR/clipboard" & C
 # sets its mode), so once the window has the guest's width, move it onto the display RES was computed
 # for and keep it there until the position has held for a few checks. The window is found by its title:
 # System Events mixes up two processes of the same app bundle, so a pid is not a safe handle.
-( [ -n "$SW" ] || exit 0
+# PLACER=0 skips it: driving System Events makes macOS ask the calling app for Automation permission,
+# which the Mac launcher app does not ask for unless the user turns it on.
+( [ -n "$SW" ] && [ "${PLACER:-1}" = 1 ] || exit 0
   HELD=0
   for i in $(seq 1 120); do
     sleep 0.5
@@ -153,5 +160,8 @@ cleanup() { kill "$AGENT" "$PLACER" $CLIP 2>/dev/null; rm -f "$SHARE_DIR/host-cm
 
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT TERM
+# A caller that goes away (the Mac launcher app quitting, a closed terminal) must not leave the helper loops
+# behind: without this, SIGPIPE on the next log write kills the shell before the EXIT trap can run.
+trap 'cleanup; exit 141' PIPE HUP
 
 "$QEMU" "$@"

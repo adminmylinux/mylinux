@@ -1,9 +1,9 @@
 #!/bin/sh
-# Create out/myLinux.app: a thin macOS bundle around Homebrew's QEMU so the Mac shows "myLinux"
+# Create out/myLinux.app (or $MYLINUX_OUT/myLinux.app): a thin macOS bundle around Homebrew's QEMU so the Mac shows "myLinux"
 # as the app name, Dock icon and window title. run.sh calls this.
 set -eu
 cd "$(dirname "$0")/.."
-APP=out/myLinux.app
+APP="${MYLINUX_OUT:-out}/myLinux.app"
 QEMU=$(command -v qemu-system-aarch64) || { echo "qemu-system-aarch64 not found (brew install qemu)" >&2; exit 1; }
 QEMU=$(readlink -f "$QEMU" 2>/dev/null || echo "$QEMU")
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -42,9 +42,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>NSHighResolutionCapable</key><false/>
 </dict></plist>
 PLIST
-# icon: rounded gradient square with a window glyph, rendered by tools/gen-icon.py, converted with sips
+# icon: rounded gradient square with a window glyph, rendered by tools/gen-icon.py, converted with sips; a prebuilt
+# tools/myLinux.icns (shipped inside the Mac launcher app, where python3 may be missing) is used as is. No icon is
+# not an error.
 [ -f "$APP/Contents/Resources/myLinux.icns" ] || {
-  python3 tools/gen-icon.py "$APP/Contents/Resources/myLinux.png"
-  sips -s format icns "$APP/Contents/Resources/myLinux.png" --out "$APP/Contents/Resources/myLinux.icns" >/dev/null
+  if [ -f tools/myLinux.icns ]; then cp -f tools/myLinux.icns "$APP/Contents/Resources/myLinux.icns"
+  elif python3 tools/gen-icon.py "$APP/Contents/Resources/myLinux.png" 2>/dev/null; then
+    sips -s format icns "$APP/Contents/Resources/myLinux.png" --out "$APP/Contents/Resources/myLinux.icns" >/dev/null || true
+  else echo "warning: no icon (python3 unavailable)" >&2; fi
 }
 echo "$APP ready"

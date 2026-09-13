@@ -1,0 +1,157 @@
+import Foundation
+
+/// One saved way to start myLinux: keyboard and mouse handling, machine size, and which apps disk and share
+/// folder it uses (separate disks are separate myLinux installs). Maps onto run.sh's environment.
+struct Profile: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var name = "myLinux"
+    var grab = "opt"            // GRAB: opt | full | none
+    var mouse = "tablet"        // MOUSE: tablet | relative
+    var clipboard = true        // CLIPBOARD
+    var memoryGB = 6            // MEM
+    var resolution = ""         // RES: "" fits the screen the pointer is on, else WxH
+    var appsSizeGB = 16         // APPS_SIZE_GB, used when the disk is created
+    var appsDisk = ""           // APPS_IMG
+    var shareDir = ""           // SHARE_DIR
+
+    init(name: String, appsDisk: String, shareDir: String) {
+        self.name = name; self.appsDisk = appsDisk; self.shareDir = shareDir
+    }
+
+    // tolerant decoding: fields added later get their defaults instead of dropping the whole file
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "myLinux"
+        grab = try c.decodeIfPresent(String.self, forKey: .grab) ?? "opt"
+        mouse = try c.decodeIfPresent(String.self, forKey: .mouse) ?? "tablet"
+        clipboard = try c.decodeIfPresent(Bool.self, forKey: .clipboard) ?? true
+        memoryGB = try c.decodeIfPresent(Int.self, forKey: .memoryGB) ?? 6
+        resolution = try c.decodeIfPresent(String.self, forKey: .resolution) ?? ""
+        appsSizeGB = try c.decodeIfPresent(Int.self, forKey: .appsSizeGB) ?? 16
+        appsDisk = try c.decodeIfPresent(String.self, forKey: .appsDisk) ?? ""
+        shareDir = try c.decodeIfPresent(String.self, forKey: .shareDir) ?? ""
+    }
+
+    /// The QEMU window title and run.sh instance name. The first profile keeps the plain name.
+    var windowName: String { name == "myLinux" ? "myLinux" : "myLinux (\(name))" }
+
+    /// Problems that would make run.sh refuse to start, in words for the form.
+    var problems: [String] {
+        var p: [String] = []
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { p.append("The profile needs a name.") }
+        if !resolution.isEmpty {
+            let parts = resolution.lowercased().split(separator: "x")
+            let ok = parts.count == 2 && parts.allSatisfy { Int($0).map { (480...8192).contains($0) } ?? false }
+                && (Int(parts[0]) ?? 0) >= 640
+            if !ok { p.append("Resolution must look like 1920x1200 (640–8192 wide, 480–8192 high).") }
+        }
+        if appsDisk.isEmpty { p.append("Choose where the apps disk lives.") }
+        if shareDir.isEmpty { p.append("Choose a share folder.") }
+        if !(4...2000).contains(appsSizeGB) { p.append("Apps disk size must be 4–2000 GB.") }
+        return p
+    }
+
+    /// run.sh's environment for this profile.
+    func environment(outDir: URL, serialSocket: String) -> [String: String] {
+        var env: [String: String] = [
+            "MYLINUX_OUT": outDir.path,
+            "APPS_IMG": appsDisk,
+            "APPS_SIZE_GB": String(appsSizeGB),
+            "SHARE_DIR": shareDir,
+            "NAME": windowName,
+            "GRAB": grab,
+            "MOUSE": mouse,
+            "CLIPBOARD": clipboard ? "1" : "0",
+            "MEM": "\(memoryGB)G",
+            "SERIAL": "unix:\(serialSocket),server,nowait",
+        ]
+        if !resolution.isEmpty { env["RES"] = resolution.lowercased() }
+        return env
+    }
+}
+
+final class ProfileStore: ObservableObject {
+    static let shared = ProfileStore()
+
+    @Published var profiles: [Profile] = [] { didSet { if loaded { save() } } }
+    @Published var lastError: String?
+    private var loaded = false
+    private let file: URL
+
+    init(file: URL = Paths.profilesFile, settings: AppSettings = .shared) {
+        self.file = file
+        if let data = try? Data(contentsOf: file), let list = try? JSONDecoder().decode([Profile].self, from: data), !list.isEmpty {
+            profiles = list
+        } else {
+            profiles = [ProfileStore.firstProfile(settings: settings)]
+        }
+        loaded = true
+        save()
+    }
+
+    /// In developer mode the first profile is the checkout's own disk and share (what ./run.sh uses), so an
+    /// existing install carries over; otherwise a fresh machine folder.
+    static func firstProfile(settings: AppSettings) -> Profile {
+        if settings.developerMode {
+            let repo = URL(fileURLWithPath: settings.repoPath, isDirectory: true)
+            return Profile(name: "myLinux", appsDisk: repo.appendingPathComponent("out/apps.img").path,
+                           shareDir: repo.appendingPathComponent("share", isDirectory: true).path)
+        }
+        return newProfile(named: "myLinux")
+    }
+
+    static func newProfile(named name: String) -> Profile {
+        let dir = Paths.machines.appendingPathComponent(Paths.slug(name), isDirectory: true)
+        return Profile(name: name, appsDisk: dir.appendingPathComponent("apps.img").path,
+                       shareDir: dir.appendingPathComponent("share", isDirectory: true).path)
+    }
+
+    func uniqueName(_ base: String) -> String {
+        let names = Set(profiles.map(\.name))
+        if !names.contains(base) { return base }
+        var i = 2
+        while names.contains("\(base) \(i)") { i += 1 }
+        return "\(base) \(i)"
+    }
+
+    /// A new machine: its own disk and share, the other settings copied from `template` when given.
+    @discardableResult
+    func add(copying template: Profile? = nil) -> Profile {
+        let name = uniqueName(template.map { "\($0.name) copy" } ?? "Machine")
+        var p = ProfileStore.newProfile(named: name)
+        if let t = template {
+            p.grab = t.grab; p.mouse = t.mouse; p.clipboard = t.clipboard
+            p.memoryGB = t.memoryGB; p.resolution = t.resolution; p.appsSizeGB = t.appsSizeGB
+        }
+        // a slug already used by another profile's folder gets a suffix
+        var folder = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
+        var n = 2
+        while profiles.contains(where: { $0.appsDisk == p.appsDisk || $0.shareDir == p.shareDir }) {
+            folder = Paths.machines.appendingPathComponent("\(Paths.slug(name))-\(n)", isDirectory: true); n += 1
+            p.appsDisk = folder.appendingPathComponent("apps.img").path
+            p.shareDir = folder.appendingPathComponent("share", isDirectory: true).path
+        }
+        profiles.append(p)
+        return p
+    }
+
+    func update(_ p: Profile) {
+        guard let i = profiles.firstIndex(where: { $0.id == p.id }), profiles[i] != p else { return }
+        profiles[i] = p
+    }
+
+    /// Removes the profile only; its disk and share stay on disk.
+    func remove(_ id: UUID) { profiles.removeAll { $0.id == id } }
+
+    private func save() {
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try enc.encode(profiles).write(to: file, options: .atomic)
+            lastError = nil
+        } catch {
+            lastError = "Could not save profiles: \(error.localizedDescription)"
+        }
+    }
+}

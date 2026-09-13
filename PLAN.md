@@ -741,3 +741,17 @@ CA file, with serverHost set to the certificate's own name (reached by IP, the c
 different certificate later is reported as changed. Errors show libvncclient's last log line. Needs the SDK's Qt with
 ssl (tools/sdk-update.sh after the 2026-09-09 Qt rebuild). vmtest vnc_tls_trust: Xvnc X509None with generated
 certificates. Checked by hand against omarchy-msi (TLS up by IP, then login).
+
+Mac launcher app (2026-09-13): mac/ is a SwiftUI app (SwiftPM, macOS 15) that starts machines through run.sh instead
+of a terminal. Profiles in ~/Library/Application Support/myLinux/profiles.json hold GRAB/MOUSE/CLIPBOARD, MEM, RES,
+APPS_SIZE_GB and the apps disk + share folder; run.sh gained MYLINUX_OUT (data directory for Image, rootfs, apps.img
+and the QEMU wrapper; get-image.sh and make-app-bundle.sh follow it) and PLACER=0 (the window placer drives System
+Events, so the app does not ask for Automation permission unless Settings turns it on). Stop types poweroff into the
+guest's serial console (unix socket per machine in /tmp, also the Console tab: a live root shell); Force Quit pkills
+the QEMU holding that disk. run.sh output goes straight into the app's log file, never a pipe: a quitting launcher
+would otherwise kill run.sh with SIGPIPE before its EXIT trap and orphan the helper loops (run.sh now also traps
+PIPE/HUP). Machines outlive the launcher and a machine started from a terminal is detected through pgrep on the disk
+path. Standalone the app downloads releases into Application Support; Settings > Developer points it at a checkout.
+mac/build-app.sh bundles run.sh + tools into Contents/Resources/runtime and names the app "myLinux Launcher" (the
+QEMU wrapper is already "myLinux"). Tests: mac/Tests (11, in tools/check.sh) plus MYLINUX_OUT/PLACER cases in
+tools/tests/scripts.sh.

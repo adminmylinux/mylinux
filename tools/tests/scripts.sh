@@ -77,6 +77,12 @@ file_is "checksum mismatch leaves the rootfs" "$W/out/rootfs.cpio.gz" "v9 rootfs
 not_rc0 "failed download fails" $rc
 file_is "failed download leaves the kernel" "$W/out/Image" "v9 kernel"
 [ -z "$(ls -d "$W/out/.staging-"* 2>/dev/null)" ] && ok "no staging directory left behind" || ko "staging directory left behind"
+printf 'v9 rootfs' > "$T/release/rootfs.cpio.gz"
+G="$T/data dir"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$G" sh tools/get-image.sh >/dev/null 2>&1); rc=$?
+is_rc "MYLINUX_OUT: download into another directory" $rc 0
+file_is "MYLINUX_OUT: kernel lands there" "$G/Image" "v9 kernel"
+file_is "MYLINUX_OUT: revision recorded there" "$G/IMAGE-REVISION" "v9"
 
 echo "run.sh (DRYRUN)"
 out=$(cd / && DRYRUN=1 SHARE_DIR="$T/my share" APPS_IMG="$T/app's disk.img" NAME="test vm" sh "$W/run.sh" -qmp none 2>&1); rc=$?
@@ -106,6 +112,16 @@ has "missing image is named" "$out" "missing"
 mv "$W/out/Image.away" "$W/out/Image"
 out=$(cd "$W" && DRYRUN=1 NAME='myLinux (test)' sh run.sh 2>&1)
 has "instance name reaches QEMU" "$out" "myLinux (test)"
+out=$(cd "$W" && DRYRUN=1 PLACER=0 sh run.sh 2>&1); rc=$?
+is_rc "PLACER=0 accepted" $rc 0
+D="$T/Application Support/myLinux"; mkdir -p "$D"; printf 'k' > "$D/Image"; printf 'r' > "$D/rootfs.cpio.gz"
+out=$(cd / && DRYRUN=1 MYLINUX_OUT="$D" SHARE_DIR="$T/s" sh "$W/run.sh" 2>&1); rc=$?
+is_rc "MYLINUX_OUT: images from another data directory" $rc 0
+has "MYLINUX_OUT: kernel from the data directory" "$out" "$D/Image"
+has "MYLINUX_OUT: default apps disk in the data directory" "$out" "file=$D/apps.img,if=none"
+rm -f "$D/Image"
+out=$(cd / && DRYRUN=1 MYLINUX_OUT="$D" SHARE_DIR="$T/s" sh "$W/run.sh" 2>&1); rc=$?
+not_rc0 "MYLINUX_OUT: missing image in the data directory fails" $rc
 
 echo "tools/make-app-bundle.sh"
 # fake qemu, failing brand-qemu (python3), no-op codesign/sips: the bundle must still get an (unbranded) binary
@@ -120,6 +136,9 @@ mkdir -p "$W/tools"; : > "$W/tools/brand-qemu.py"; : > "$W/tools/gen-icon.py"
 (cd "$W" && PATH="$W/bin:$PATH" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
 is_rc "bundle prepared even when branding fails" $rc 0
 [ -x "$W/out/myLinux.app/Contents/MacOS/myLinux" ] && ok "unbranded QEMU copy in place" || ko "no binary in the bundle"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/bundle dir" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
+is_rc "MYLINUX_OUT: bundle in another directory" $rc 0
+[ -x "$T/bundle dir/myLinux.app/Contents/MacOS/myLinux" ] && ok "MYLINUX_OUT: QEMU copy in the data directory" || ko "MYLINUX_OUT: no binary in the data directory bundle"
 
 echo "tools/host-window.sh"
 out=$(sh "$REPO/tools/host-window.sh" bogus 2>&1); rc=$?

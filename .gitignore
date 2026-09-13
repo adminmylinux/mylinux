@@ -7,3 +7,5 @@ share/*
 .DS_Store
 board/overlay/etc/mylinux-release
 __pycache__/
+# Swift package build output of the Mac launcher app
+mac/.build/

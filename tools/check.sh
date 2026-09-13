@@ -39,6 +39,11 @@ sh tools/tests/scripts.sh || fail=$((fail + 1))
 step "tests: guest script libraries (disk, secrets, downloads, themes, clipboard)"
 sh tools/tests/guest.sh || fail=$((fail + 1))
 
+step "mac launcher: swift tests"
+if command -v swift >/dev/null 2>&1; then
+  (cd mac && swift test 2>&1 | grep -E "error:|Executed [0-9]+ tests" | tail -3) || fail=$((fail + 1))
+else echo "swift not installed: skipped (verification gap)"; fi
+
 
 printf '\n== %s\n' "$([ $fail -eq 0 ] && echo 'all checks passed' || echo "$fail group(s) failed")"
 exit $fail

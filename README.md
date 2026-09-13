@@ -52,7 +52,30 @@ about 1.3 GB. Everything you install or save afterwards persists on that disk.
 Useful environment variables for `run.sh`: `RES=1600x1000` guest resolution (default is your
 screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,
 `MOUSE=tablet|relative` (relative: a click captures the Mac pointer for the guest, hidden and confined,
-until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window).
+until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `PLACER=0` (leave the
+window where macOS puts it), `MYLINUX_OUT=dir` (kernel, rootfs, apps disk and the QEMU wrapper elsewhere
+than `out/`).
+
+## The Mac app
+
+Instead of the command line, `mac/build-app.sh` builds **myLinux Launcher.app**: saved machines with a
+Start button, the guest's serial console, and the settings above as a form.
+
+```sh
+mac/build-app.sh --install    # builds out/mac/ and copies it to /Applications (needs Xcode's Swift)
+```
+
+Each machine has its own apps disk and share folder, so "Work" and "Try things out" are separate myLinux
+installs, plus its own keyboard and pointer handling, memory, screen size and clipboard setting. **Shut
+Down** powers the guest off through the serial console (the guest has no power button); **Force Quit** is
+the power cut. Machines keep running when the launcher quits, and a machine started from a terminal shows
+up as "running outside the app".
+
+Without this checkout the app works on its own: it downloads the release image into
+`~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`. It
+still needs Homebrew's QEMU (`brew install qemu`). Point Settings › Developer at a checkout to start from
+that checkout's `run.sh`, `out/` and `share/` instead, which is what you want while working on myLinux
+itself. The bundle is signed ad hoc, so on another Mac Gatekeeper needs right-click › Open once.
 
 ## Keys
 
@@ -231,6 +254,7 @@ shell/                      the Qt Wayland compositor (C++ + QML)
 app/                        small Qt demo app (clock)
 patches/                    Qt Wayland compositor patch (wl_seat v5, data device v3)
 tools/                      build, SDK, apps-disk, automation helpers
+mac/                        the Mac launcher app (SwiftUI; mac/build-app.sh bundles it)
 run.sh / build.sh           run on the Mac / build inside Debian
 ```
 
