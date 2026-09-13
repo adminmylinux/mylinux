@@ -312,6 +312,11 @@ def scenario_menu_shortcuts(vm):
     vm.wait_for(lambda d: d["keySheetOpen"] and not d["menuOpen"], "key sheet replaces the menu", 6)
     vm.qmp("key", "esc", "sleep", 0.6)
     vm.wait_for(lambda d: not d["keySheetOpen"], "key sheet closed", 6)
+    # a category found by typing opens on Enter, once, with the search cleared
+    vm.qmp("combo", "meta_l-spc", "sleep", 0.8, "type", "styl", "sleep", 0.5, "key", "ret", "sleep", 0.6)
+    vm.wait_for(lambda d: d["menuOpen"] and d["menuDepth"] == 1 and d["menuQuery"] == "", "Style category opened from a search", 6)
+    vm.qmp("key", "esc", "sleep", 0.4, "key", "esc", "sleep", 0.6)
+    vm.wait_for(lambda d: not d["menuOpen"], "menu closed", 6)
     vm.qmp("combo", "meta_l-8", "sleep", 0.6)
     vm.wait_for(lambda d: d["workspace"] == 8 and not d["menuOpen"], "workspace 8", 6)
     vm.qmp("combo", "meta_l-1", "sleep", 0.6)

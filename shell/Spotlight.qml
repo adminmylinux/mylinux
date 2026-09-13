@@ -183,7 +183,7 @@ Item {
     }
     function activate(i) {
         const e = results[i]; if (!e) return
-        if (e.category) { stack = stack.concat([e.category]); selected = 0; refresh(); return }
+        if (e.category) { stack = stack.concat([e.category]); selected = 0; input.text = ""; refresh(); return }   // entering a category ends the search (the typed text would filter it again and re-list the category)
         hide()
         if (e.run) e.run()
     }
