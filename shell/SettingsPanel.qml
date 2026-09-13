@@ -14,7 +14,8 @@ Item {
         { key: "ANTHROPIC_API_KEY",  label: "Anthropic API key",  hint: "console.anthropic.com" },
         { key: "OPENAI_API_KEY",     label: "OpenAI API key",     hint: "platform.openai.com" },
         { key: "TAILSCALE_API_KEY",  label: "Tailscale API key",  hint: "login.tailscale.com/admin/settings/keys" },
-        { key: "GITHUB_TOKEN",       label: "GitHub token",       hint: "github.com/settings/tokens" }
+        { key: "GITHUB_TOKEN",       label: "GitHub token",       hint: "github.com/settings/tokens" },
+        { key: "PROXMOX_API_TOKEN",  label: "Proxmox API token",  hint: "root@pam!mylinux=<uuid> (bar module, PVEAuditor role)" }
     ]
     property bool reveal: false
     onVisibleChanged: {
