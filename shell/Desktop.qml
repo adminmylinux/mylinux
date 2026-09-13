@@ -160,7 +160,7 @@ Window {
     // Single source of truth for the key help (⌘ = the Super/Option key)
     readonly property var keybindings: [
         { group: "Apps", keys: [["⌘ Enter", "Terminal"], ["⌘ ⇧ Enter", "Browser (Firefox)"], ["⌘ ⇧ F", "Files"], ["⌘ Space / ⌘ Esc / ⌘ D", "Menu: type to find anything"], ["⌘ ⇧ Esc", "System menu"], ["⌘ K", "This list"]] },
-        { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / maximise"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
+        { group: "Windows", keys: [["⌘ W / ⌘ Q", "Close window"], ["⌘ M", "Minimise"], ["⌘ F / ⌘ ⌥ F", "Full screen / maximise"], ["⌘ T", "Float / tile window"], ["⌘ J", "Toggle split direction"], ["⌘ ⇧ T", "Tiling on/off"], ["⌘ + drag", "Move window (⌘ + right drag: resize)"], ["⌘ ⌃ G / ⌃ ⌥ G", "VNC viewer: grab / release all keys"], ["⌥ Tab", "Cycle windows (GRAB=full)"], ["⌃ ⌥ ⌫", "Close all windows"]] },
         { group: "Tiling", keys: [["⌘ ← → ↑ ↓", "Focus window in direction"], ["⌘ ⇧ ← → ↑ ↓", "Swap with neighbour"], ["⌘ ⌃ ← → ↑ ↓", "Resize split"]] },
         { group: "Workspaces", keys: [["⌘ 1 … ⌘ 9", "Switch workspace"], ["⌘ ⇧ 1 … 9", "Move window there, follow it"], ["⌘ ⇧ ⌥ 1 … 9", "Move window there silently"], ["⌘ Tab / ⌘ ⇧ Tab", "Next / previous workspace"], ["⌘ ⌃ Tab", "Former workspace"], ["⌘ S", "Show / hide the scratchpad"], ["⌘ ⌥ S", "Move window to the scratchpad"], ["Menu bar numbers", "Occupied ones, click to switch"]] },
         { group: "Look", keys: [["⌘ ⌃ ⇧ Space", "Theme picker"], ["⌘ ⌃ Space", "Next background"], ["⌘ / and ⌘ ⌥ /", "Scale up / down"], ["Print", "Screenshot to your home"], ["⌘ ⌃ C", "Send clipboard to Mac"], ["Menu bar icons", "Activity · Tailscale · Agents · Keyboard · Display · Settings"]] }
@@ -244,49 +244,62 @@ Window {
     }
     function minimizeFocused() { if (focusedWindow) focusedWindow.minimize() }
 
+    // ---- input grab: a VNC viewer (app id "vncview") that is fullscreen, or whose grab was toggled with ⌘⌃G, gets
+    // every key and the pointer; the shell's shortcuts and the dock edge stand down until Ctrl+Alt+G (or the window
+    // loses focus / leaves fullscreen).
+    property var grabWindow: null
+    readonly property bool inputGrabbed: !!focusedWindow && appIdOf(focusedWindow) === "vncview" && (focusedWindow.fullscreen || grabWindow === focusedWindow)
+    onInputGrabbedChanged: KeyGrab.grabbed = inputGrabbed
+    function toggleGrab() {
+        if (!focusedWindow || appIdOf(focusedWindow) !== "vncview") return
+        if (inputGrabbed) { grabWindow = null; if (focusedWindow.fullscreen) focusedWindow.setFullscreen(false) }
+        else grabWindow = focusedWindow
+    }
+    Shortcut { sequences: ["Ctrl+Alt+G"]; context: Qt.ApplicationShortcut; onActivated: root.toggleGrab() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+G"]; context: Qt.ApplicationShortcut; onActivated: root.toggleGrab() }
     // ---- shortcuts, Omarchy's set (⌘ = Meta/Super, the Option key; Alt = the Mac Cmd key, which macOS keeps
     // unless GRAB=full). Super+digit combinations come from KeyGrab (C++), the rest are QML shortcuts.
     // One spelling per key: "Esc" and "Escape" parse to the same sequence, and two identical sequences in one
     // Shortcut make Qt report the press as ambiguous, so neither fires (Meta+Esc never opened the menu).
-    Shortcut { sequences: ["Meta+W", "Meta+Q", "Ctrl+Alt+W"]; context: Qt.ApplicationShortcut; onActivated: root.closeFocused() }
-    Shortcut { sequences: ["Ctrl+Alt+Del"]; context: Qt.ApplicationShortcut; onActivated: root.closeAll() }
-    Shortcut { sequences: ["Meta+M"]; context: Qt.ApplicationShortcut; onActivated: root.minimizeFocused() }
-    Shortcut { sequences: ["Meta+Return", "Meta+Enter", "Meta+N"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/foot") }
-    Shortcut { sequences: ["Meta+Shift+Return", "Meta+Shift+Enter", "Meta+Shift+B"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/firefox") }
-    Shortcut { sequences: ["Meta+Shift+F"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/files") }
-    Shortcut { sequences: ["Meta+K"]; context: Qt.ApplicationShortcut; onActivated: { if (spotlight.open) spotlight.hide(); keyHelp.visible = !keyHelp.visible } }   // one panel at a time
-    Shortcut { sequences: ["Meta+F", "Meta+Ctrl+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.toggleFullscreen() }
-    Shortcut { sequences: ["Meta+Alt+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.zoom() }
-    Shortcut { sequences: ["Meta+T"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.setFloating(root.focusedWindow, root.focusedWindow.tiled) }
-    Shortcut { sequences: ["Meta+J"]; context: Qt.ApplicationShortcut; onActivated: root.toggleSplit() }
-    Shortcut { sequences: ["Meta+Shift+T"]; context: Qt.ApplicationShortcut; onActivated: root.toggleTiling() }
-    Shortcut { sequences: ["Alt+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.cycleWindows() }
-    Shortcut { sequences: ["Alt+Shift+Tab", "Alt+Shift+Backtab"]; context: Qt.ApplicationShortcut; onActivated: root.cycleWindows() }
-    Shortcut { sequences: ["Meta+Left"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("left") }
-    Shortcut { sequences: ["Meta+Right"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("right") }
-    Shortcut { sequences: ["Meta+Up"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("up") }
-    Shortcut { sequences: ["Meta+Down"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("down") }
-    Shortcut { sequences: ["Meta+Shift+Left"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("left") }
-    Shortcut { sequences: ["Meta+Shift+Right"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("right") }
-    Shortcut { sequences: ["Meta+Shift+Up"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("up") }
-    Shortcut { sequences: ["Meta+Shift+Down"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("down") }
-    Shortcut { sequences: ["Meta+Ctrl+Left"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("left") }
-    Shortcut { sequences: ["Meta+Ctrl+Right"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("right") }
-    Shortcut { sequences: ["Meta+Ctrl+Up"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("up") }
-    Shortcut { sequences: ["Meta+Ctrl+Down"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("down") }
-    Shortcut { sequences: ["Meta+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.nextWorkspace() }
-    Shortcut { sequences: ["Meta+Shift+Tab", "Meta+Shift+Backtab"]; context: Qt.ApplicationShortcut; onActivated: root.prevWorkspace() }
-    Shortcut { sequences: ["Meta+Ctrl+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.formerWorkspace() }
-    Shortcut { sequences: ["Meta+S", "Meta+`"]; context: Qt.ApplicationShortcut; onActivated: root.toggleScratch() }
-    Shortcut { sequences: ["Meta+Alt+S", "Meta+Shift+`", "Meta+Shift+~"]; context: Qt.ApplicationShortcut; onActivated: root.moveFocusedToScratch() }
-    Shortcut { sequences: ["Meta+Space", "Meta+Esc", "Meta+Shift+Space", "Meta+D", "Ctrl+Alt+Esc", "Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }   // ⌘⇧Space and ⌘D: fallbacks when macOS owns Option+Space / Option+Esc (Siri, Spoken Content)
-    Shortcut { sequences: ["Meta+Shift+Esc"]; context: Qt.ApplicationShortcut; onActivated: spotlight.showCategory("system") }
-    Shortcut { sequences: ["Meta+Ctrl+Shift+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("theme") }
-    Shortcut { sequences: ["Meta+Ctrl+Space"]; context: Qt.ApplicationShortcut; onActivated: Theme.nextBackground() }
-    Shortcut { sequences: ["Meta+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(true) }
-    Shortcut { sequences: ["Meta+Alt+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(false) }
-    Shortcut { sequences: ["Print", "SysReq"]; context: Qt.ApplicationShortcut; onActivated: root.screenshot() }
-    Shortcut { sequences: ["Meta+Ctrl+C", "Ctrl+Alt+C"]; context: Qt.ApplicationShortcut; onActivated: root.sendClipboardToMac() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+W", "Meta+Q", "Ctrl+Alt+W"]; context: Qt.ApplicationShortcut; onActivated: root.closeFocused() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Ctrl+Alt+Del"]; context: Qt.ApplicationShortcut; onActivated: root.closeAll() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+M"]; context: Qt.ApplicationShortcut; onActivated: root.minimizeFocused() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Return", "Meta+Enter", "Meta+N"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/foot") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+Return", "Meta+Shift+Enter", "Meta+Shift+B"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/firefox") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+F"]; context: Qt.ApplicationShortcut; onActivated: Launcher.launch("/usr/bin/files") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+K"]; context: Qt.ApplicationShortcut; onActivated: { if (spotlight.open) spotlight.hide(); keyHelp.visible = !keyHelp.visible } }   // one panel at a time
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+F", "Meta+Ctrl+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.toggleFullscreen() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Alt+F"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.focusedWindow.zoom() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+T"]; context: Qt.ApplicationShortcut; onActivated: if (root.focusedWindow) root.setFloating(root.focusedWindow, root.focusedWindow.tiled) }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+J"]; context: Qt.ApplicationShortcut; onActivated: root.toggleSplit() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+T"]; context: Qt.ApplicationShortcut; onActivated: root.toggleTiling() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Alt+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.cycleWindows() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Alt+Shift+Tab", "Alt+Shift+Backtab"]; context: Qt.ApplicationShortcut; onActivated: root.cycleWindows() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Left"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("left") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Right"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("right") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Up"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("up") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Down"]; context: Qt.ApplicationShortcut; onActivated: root.focusDir("down") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+Left"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("left") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+Right"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("right") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+Up"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("up") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+Down"]; context: Qt.ApplicationShortcut; onActivated: root.swapDir("down") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+Left"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("left") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+Right"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("right") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+Up"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("up") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+Down"]; context: Qt.ApplicationShortcut; onActivated: root.resizeDir("down") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.nextWorkspace() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+Tab", "Meta+Shift+Backtab"]; context: Qt.ApplicationShortcut; onActivated: root.prevWorkspace() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+Tab"]; context: Qt.ApplicationShortcut; onActivated: root.formerWorkspace() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+S", "Meta+`"]; context: Qt.ApplicationShortcut; onActivated: root.toggleScratch() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Alt+S", "Meta+Shift+`", "Meta+Shift+~"]; context: Qt.ApplicationShortcut; onActivated: root.moveFocusedToScratch() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Space", "Meta+Esc", "Meta+Shift+Space", "Meta+D", "Ctrl+Alt+Esc", "Meta+Alt+Space", "Ctrl+Alt+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("menu") }   // ⌘⇧Space and ⌘D: fallbacks when macOS owns Option+Space / Option+Esc (Siri, Spoken Content)
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Shift+Esc"]; context: Qt.ApplicationShortcut; onActivated: spotlight.showCategory("system") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+Shift+Space"]; context: Qt.ApplicationShortcut; onActivated: spotlight.open ? spotlight.hide() : spotlight.show("theme") }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+Space"]; context: Qt.ApplicationShortcut; onActivated: Theme.nextBackground() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(true) }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Alt+/"]; context: Qt.ApplicationShortcut; onActivated: root.scaleStep(false) }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Print", "SysReq"]; context: Qt.ApplicationShortcut; onActivated: root.screenshot() }
+    Shortcut { enabled: !root.inputGrabbed; sequences: ["Meta+Ctrl+C", "Ctrl+Alt+C"]; context: Qt.ApplicationShortcut; onActivated: root.sendClipboardToMac() }
     // Workspaces: ⌘1..9 switch, ⌘⇧1..9 move the focused window there and follow, ⌘⇧⌥1..9 move silently.
     // Shift turns the digit keys into layout-dependent symbols, so KeyGrab (C++) matches them by physical key code.
     Connections { target: KeyGrab
@@ -355,12 +368,12 @@ Window {
 
             seatFocus: seatFocusSurface ? (windows.filter(w => w.shellSurface && w.shellSurface.surface === seatFocusSurface).map(w => appIdOf(w) + "|" + w.title + (w.helper ? "|helper" : ""))[0] || "surface not a window") : null,
             tilingEnabled: tilingEnabled, focused: focusedWindow ? appIdOf(focusedWindow) + "|" + focusedWindow.title : null,
-            menuOpen: spotlight.open, menuDepth: spotlight.stack.length, menuQuery: spotlight.query, keySheetOpen: keyHelp.visible, background: Theme.backgroundIndex,
+            inputGrabbed: inputGrabbed, menuOpen: spotlight.open, menuDepth: spotlight.stack.length, menuQuery: spotlight.query, keySheetOpen: keyHelp.visible, background: Theme.backgroundIndex,
             barModules: BarModules.modules.map(m => ({ id: m.id, type: m.type, text: m.text, error: m.error, tooltip: m.tooltip })),
             seatFocusNull: !seatFocus, windows: list, trees: trees, time: Date.now() }))
     }
 
-    MouseArea { id: dockEdge; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: Theme.px(16); z: 7   // reveal zone (hover only, clicks pass through)
+    MouseArea { id: dockEdge; enabled: !root.inputGrabbed; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: Theme.px(16); z: 7   // reveal zone (hover only, clicks pass through)
                hoverEnabled: true; acceptedButtons: Qt.NoButton; onEntered: root.dockRevealed = true; onExited: dockHideTimer.restart() }
     Dock { id: dock; z: 8; desktop: root; backdrop: backdrop; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter }
     MenuBar { id: menuBar; z: 10; desktop: root; backdrop: backdrop; width: parent.width

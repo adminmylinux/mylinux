@@ -105,6 +105,7 @@ Item {
         case "install": return [
             { label: "Install a package…", hint: "type: install <name>", glyph: "⤓", run: () => { input.text = "install " } },
             { label: "Firefox", hint: "firefox-esr", glyph: "⤓", run: () => desktop.launch("/usr/bin/firefox") },
+            { label: "VNC viewer", hint: "vnc: tabs, fullscreen with all keys (⌘⌃G grabs, ⌃⌥G releases); type: vnc host[:port]", glyph: "▣", run: () => desktop.launch("/usr/bin/vnc") },
             { label: "Remote Desktop", hint: "Remmina: VNC, RDP, SSH in tabs", glyph: "⤓", run: () => desktop.launch("/usr/bin/remmina") },
             { label: "Claude Code", hint: "claude", glyph: "⤓", run: () => desktop.launch("/usr/bin/claude-code") },
             { label: "LibreOffice", hint: "apt: libreoffice", glyph: "⤓", run: () => installPkg("libreoffice") },
@@ -135,7 +136,10 @@ Item {
     function refresh() {
         const q = input.text.trim()
         let list = []
-        if (mode === "menu" && q.toLowerCase().startsWith("weather ")) {
+        if (mode === "menu" && q.toLowerCase().startsWith("vnc ")) {
+            const target = q.slice(4).trim().replace(/[^A-Za-z0-9.:_-]/g, "")
+            list = target.length ? [{ label: "Connect to " + target, hint: "VNC viewer (vnc " + target + ")", glyph: "▣", run: () => desktop.launchArgs("/usr/bin/vnc", [target]) }] : []
+        } else if (mode === "menu" && q.toLowerCase().startsWith("weather ")) {
             const city = q.slice(8).trim()
             list = city.length ? [{ label: "Show the weather for " + city, hint: "Open-Meteo place lookup", glyph: "☁", run: () => Weather.setPlace(city) }] : []
         } else if (mode === "theme" && q.startsWith("install ")) {

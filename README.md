@@ -110,6 +110,15 @@ Apps that draw their own header bar (Firefox, Chromium, Remmina and other GTK ap
 title bar; the terminal and other plain windows get the macOS-style one. Window › "Title bars"
 switches between auto, always and never.
 
+### VNC viewer
+
+`vnc` in the dock and the Apps menu (or `vnc host[:port]` in a terminal, `vnc host` typed into the
+launcher) opens myLinux's own viewer: tabs for several machines, saved profiles with passwords in the
+secrets store, Tight/ZRLE encodings with a fast/balanced/best quality choice, VeNCrypt TLS with username and
+password as wayvnc on Omarchy uses it. F11 makes a connection fullscreen; the compositor then hands every
+key and the pointer to the remote, Super shortcuts included, until Ctrl+Alt+G. ⌘⌃G grabs the keys in a
+window too. The shell's clipboard reaches the remote through the RFB cut-text message.
+
 ### Bar modules
 
 Your own items in the menu bar, in the shape of Omarchy's bar modules: a descriptor per module in

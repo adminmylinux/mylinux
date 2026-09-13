@@ -36,6 +36,7 @@ bool KeyGrab::eventFilter(QObject *, QEvent *event)
     if (Qt::KeyboardModifier m = modifierOf(ke->key())) { if (press) mods |= m; else mods &= ~m; }
     if (mods != m_mods) { m_mods = mods; emit modifiersChanged(); }
 
+    if (m_grabbed) return false;                                 // grabbed: the client gets everything, digits included
     if (!(ke->modifiers() & Qt::MetaModifier)) return false;
     if (ke->modifiers() & Qt::ControlModifier) return false;
     // The launcher menu: Super+Space (xkb 65) and Super+Esc (xkb 9), plain Super only.

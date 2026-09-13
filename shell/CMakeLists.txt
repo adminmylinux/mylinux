@@ -45,3 +45,18 @@ qt_add_qml_module(myshell
 
 target_link_libraries(myshell PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::WaylandCompositor)
 install(TARGETS myshell RUNTIME DESTINATION bin)
+
+# ---- vncview: the VNC viewer (needs libvncclient; skipped when the SDK sysroot lacks it) ----
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(VNC IMPORTED_TARGET libvncclient)
+endif()
+if(VNC_FOUND)
+    qt_add_executable(vncview vncview/main.cpp vncview/vncsession.cpp vncview/vncsession.h vncview/vncsurface.cpp vncview/vncsurface.h vncview/machines.cpp vncview/machines.h)
+    target_include_directories(vncview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vncview)   # the generated type registration includes <vncsurface.h> etc.
+    qt_add_qml_module(vncview URI VncView VERSION 1.0 QML_FILES vncview/Main.qml)
+    target_link_libraries(vncview PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick PkgConfig::VNC)
+    install(TARGETS vncview RUNTIME DESTINATION bin)
+else()
+    message(STATUS "libvncclient not found: vncview is not built")
+endif()

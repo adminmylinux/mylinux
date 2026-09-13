@@ -725,3 +725,12 @@ clipboard fidelity, shell restart added); tools/vmtest/disktest.py covers the ap
 run with an interrupted stage, foreign/extra disks, lock, shutdown unwind, reboot). Both suites pass on the
 baked image 872299994c1b. VM stops are clean poweroffs now: a killed QEMU is a power cut and left rewritten
 files empty on the test disk once. Report: docs/REVIEW-REPORT-2026-09-10-sections-6-10.md.
+
+VNC viewer (2026-09-13): shell/vncview (Qt Quick + libvncclient in its own thread; QQuickPaintedItem painting
+damaged rectangles from a front copy; xkb keysyms from nativeVirtualKey; Tight/ZRLE with JPEG quality presets;
+VeNCrypt/VncAuth/none; saved machines in ~/.config/mylinux/vnc/machines.json, passwords in the secrets store).
+Compositor: input grab for app id "vncview" when fullscreen or after ⌘⌃G (all Shortcuts and KeyGrab stand down,
+Ctrl+Alt+G releases). `vnc` wrapper prefers /mnt/share/vncview (tools/app-build.sh copies it). Buildroot:
+libvncserver + jpeg. vmtest vnc_viewer: Xvnc + xterm on the test disk, typing through the viewer, F11 grab, release.
+Not tested against wayvnc's VeNCrypt X509Plain yet (needs a real Omarchy box); libvncclient does not verify
+the server certificate.

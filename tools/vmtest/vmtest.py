@@ -409,6 +409,52 @@ def scenario_shell_paste(vm):
     vm.qmp("key", "esc", "sleep", 0.3, "key", "esc", "sleep", 0.5)
 
 
+def ensure_vnc_server(vm):
+    """TigerVNC's Xvnc plus xterm on the test disk (installed once), started on display :5 / port 5905 with a red
+    root window and an xterm that writes what it receives to /tmp/vnc-typed."""
+    marker = os.path.join(SHARE, "vmtest", "vncsrv.done")
+    if os.path.exists(marker): os.remove(marker)
+    vm.serial("setsid sh -c 'apps-run test -x /usr/bin/Xvnc && apps-run test -x /usr/bin/xterm || { apps-run env DEBIAN_FRONTEND=noninteractive dpkg --configure -a; apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends tigervnc-standalone-server xterm x11-xserver-utils; }; echo rc=$? > /mnt/share/vmtest/vncsrv.done' < /dev/null > /var/log/vncsrv-install.log 2>&1 &", 2)
+    deadline = time.time() + 600
+    while time.time() < deadline and not os.path.exists(marker): time.sleep(5)
+    if not os.path.exists(marker) or "rc=0" not in open(marker).read():
+        raise Fail("VNC server packages could not be installed on the test disk (/var/log/vncsrv-install.log in the guest)")
+    vm.serial("killall Xvnc xterm 2>/dev/null; : > /tmp/vnc-typed; cd /root; setsid apps-run Xvnc :5 -SecurityTypes None -geometry 900x600 -rfbport 5905 -desktop vmtest > /var/log/xvnc.log 2>&1 < /dev/null & sleep 2; apps-run env DISPLAY=:5 xsetroot -solid red; setsid apps-run env DISPLAY=:5 xterm -geometry 60x20+50+50 -e sh -c 'cat > /tmp/vnc-typed' > /dev/null 2>&1 < /dev/null & echo", 5)
+
+
+def scenario_vnc_viewer(vm):
+    """vncview against a local Xvnc: connects and renders, typing reaches the remote xterm, F11 makes it fullscreen
+    with the compositor's input grab on, Ctrl+Alt+G releases both."""
+    ensure_vnc_server(vm)
+    launcher = "/usr/bin/vnc" if "vnc-present" in vm.serial("test -x /usr/bin/vnc && echo vnc-pre''sent", 2) else "env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software /mnt/share/vncview"
+    vm.serial("killall vncview 2>/dev/null; cd /root; setsid %s localhost:5905 > /var/log/vncview.log 2>&1 < /dev/null & echo" % launcher, 2)
+    d = vm.wait_for(lambda d: any(w["appId"] == "vncview" and w["mapped"] for w in d["windows"]), "viewer window", 30)
+    w = [w for w in d["windows"] if w["appId"] == "vncview"][0]
+    # click inside the remote xterm (at 50,50 in the 900x600 framebuffer, scaled into the surface under the 32 px tab bar)
+    sx = w["x"] + d["layerX"]; sy = w["y"] + d["layerY"] + w["titleHeight"]; W = w["width"]; H = w["height"] - w["titleHeight"] - 32
+    scale = min(W / 900.0, H / 600.0); ox = (W - 900 * scale) / 2; oy = 32 + (H - 600 * scale) / 2
+    vm.qmp("click", int(sx + ox + 250 * scale), int(sy + oy + 150 * scale), "sleep", 0.8)
+    stamp = "vnc%d" % int(time.time())
+    vm.qmp("type", stamp + "\n", "sleep", 1.5)
+    out = os.path.join(SHARE, "vmtest", "vnc-typed.txt")
+    if os.path.exists(out): os.remove(out)
+    vm.serial("cp /tmp/vnc-typed /mnt/share/vmtest/vnc-typed.txt; echo", 2)
+    time.sleep(0.5)
+    got = open(out).read() if os.path.exists(out) else ""
+    if stamp not in got:
+        raise Fail("typed text did not reach the remote xterm through the viewer: %r" % got)
+    # fullscreen + grab
+    vm.qmp("key", "f11", "sleep", 1.2)
+    d = vm.wait_for(lambda d: any(w["appId"] == "vncview" and w["fullscreen"] and w["clientFullscreen"] for w in d["windows"]) and d["inputGrabbed"], "viewer fullscreen with the input grab on", 10)
+    vm.qmp("combo", "meta_l-2", "sleep", 0.8)          # a shell shortcut must now go to the remote, not the shell
+    d = vm.diag()
+    if d["workspace"] != 1: raise Fail("⌘2 switched workspaces although the viewer had the grab")
+    vm.qmp("combo", "ctrl-alt-g", "sleep", 1.2)
+    d = vm.wait_for(lambda d: not d["inputGrabbed"] and not any(w["appId"] == "vncview" and w["fullscreen"] for w in d["windows"]), "grab released and fullscreen left", 10)
+    vm.serial("killall vncview Xvnc xterm 2>/dev/null; echo", 2)
+    vm.wait_for(lambda d: not any(w["appId"] == "vncview" for w in d["windows"]), "viewer closed", 10)
+
+
 def scenario_shell_restart(vm):
     """/etc/init.d/S99shell restart brings the compositor back with the autostart windows, diagnostics answering."""
     vm.serial("/etc/init.d/S99shell restart; echo", 2)
@@ -588,6 +634,7 @@ SCENARIOS = [
     ("bar_modules", scenario_bar_modules),
     ("proxmox_module", scenario_proxmox_module),
     ("shell_paste", scenario_shell_paste),
+    ("vnc_viewer", scenario_vnc_viewer),
 ]
 
 

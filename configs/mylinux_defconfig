@@ -25,6 +25,10 @@ BR2_PACKAGE_LIBINPUT=y
 
 # --- first-boot apps-disk setup: format the disk, fetch a Debian rootfs over https, resize ---
 BR2_PACKAGE_OPENSSL=y
+# VNC client library for vncview (Tight/ZRLE with libjpeg, VeNCrypt TLS through OpenSSL)
+BR2_PACKAGE_LIBVNCSERVER=y
+BR2_PACKAGE_JPEG=y
+BR2_PACKAGE_ZLIB=y
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_LIBCURL=y
 BR2_PACKAGE_LIBCURL_CURL=y

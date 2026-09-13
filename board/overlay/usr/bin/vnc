@@ -1,0 +1,8 @@
+#!/bin/sh
+# VNC viewer. Usage: vnc [host[:port]] [saved-name]     (no arguments: the Machines tab)
+# Dev loop: a vncview binary in the share (tools/app-build.sh shell) overrides the image's copy.
+BIN=/usr/bin/vncview; [ -x /mnt/share/vncview ] && BIN=/mnt/share/vncview
+[ -f /etc/profile.d/qt.sh ] && . /etc/profile.d/qt.sh
+export QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+unset QT_QPA_EGLFS_INTEGRATION QT_QPA_EGLFS_ALWAYS_SET_MODE MESA_LOADER_DRIVER_OVERRIDE QT_QPA_EGLFS_HIDECURSOR
+exec "$BIN" "$@"
