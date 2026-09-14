@@ -1,13 +1,16 @@
 #!/bin/sh
 # Create out/myLinux.app (or $MYLINUX_OUT/myLinux.app): a thin macOS bundle around Homebrew's QEMU so the Mac shows "myLinux"
 # as the app name, Dock icon and window title. run.sh calls this.
+# Contents/MacOS/qemu-myLinux is QEMU (run.sh starts it with the machine's arguments); Contents/MacOS/myLinux, the
+# bundle's main executable, is a small script for launches from the Dock or Finder: with no arguments there is no
+# machine to run, so it asks myLinux Launcher to start the last-used machine (or bring a running one forward).
 set -eu
 cd "$(dirname "$0")/.."
 APP="${MYLINUX_OUT:-out}/myLinux.app"
 QEMU=$(command -v qemu-system-aarch64) || { echo "qemu-system-aarch64 not found (brew install qemu)" >&2; exit 1; }
 QEMU=$(readlink -f "$QEMU" 2>/dev/null || echo "$QEMU")
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-BIN="$APP/Contents/MacOS/myLinux"
+BIN="$APP/Contents/MacOS/qemu-myLinux"
 # A patched copy of QEMU (window title and app-menu items say myLinux, see tools/brand-qemu.py),
 # refreshed whenever Homebrew's binary changes. Patched into a temporary file and moved into place,
 # so a failed patch leaves the previous binary; if the patcher cannot handle this QEMU (new Mach-O
@@ -24,6 +27,15 @@ if [ -L "$BIN" ] || [ ! -f "$BIN" ] || [ "$QEMU" -nt "$BIN" ]; then
 ENT
   fi
 fi
+# the Dock/Finder entry point (replaces the QEMU binary that bundles before 2026-09-14 had under this name)
+cat > "$APP/Contents/MacOS/myLinux.new" <<'SH'
+#!/bin/sh
+# myLinux opened from the Dock or Finder: no machine arguments, so hand over to myLinux Launcher.
+# Anything with arguments is QEMU's business (an older run.sh calling the previous binary name).
+case "${1:-}" in ''|-psn_*) exec /usr/bin/open "mylinux-launcher://start" ;; esac
+exec "$(dirname "$0")/qemu-myLinux" "$@"
+SH
+chmod +x "$APP/Contents/MacOS/myLinux.new" && mv -f "$APP/Contents/MacOS/myLinux.new" "$APP/Contents/MacOS/myLinux"
 # QEMU finds its data (BIOS/ROM files, keymaps) at <bindir>/../share/qemu; point it at Homebrew's.
 ln -sfn "$(dirname "$(dirname "$QEMU")")/share" "$APP/Contents/share"
 cat > "$APP/Contents/Info.plist" <<'PLIST'

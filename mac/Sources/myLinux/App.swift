@@ -32,6 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ImageManager.shared.refresh()
     }
 
+    /// mylinux-launcher://start — sent by the myLinux app in the Dock (tools/make-app-bundle.sh) when it is clicked:
+    /// bring the machine forward if it runs, otherwise start the machine used last (the first one before any start).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "mylinux-launcher" && url.host == "start" {
+            QuickStart.run()
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool {
         RunManager.shared.active.isEmpty
     }
@@ -67,6 +75,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.waitForShutdown(deadline: deadline)
             }
         }
+    }
+}
+
+enum QuickStart {
+    static let lastKey = "lastStartedProfile"
+
+    static func run(store: ProfileStore = .shared, runs: RunManager = .shared) {
+        let last = UserDefaults.standard.string(forKey: lastKey).flatMap(UUID.init(uuidString:))
+        guard let profile = store.profiles.first(where: { $0.id == last }) ?? store.profiles.first else {
+            NSApp.activate(); return
+        }
+        let runner = runs.runner(for: profile.id)
+        if runner.isActive || Runner.diskInUse(profile.appsDisk) {
+            // already running: its window is a "myLinux" app instance; bring one forward
+            NSRunningApplication.runningApplications(withBundleIdentifier: "dev.mylinux.vm").first?.activate()
+            return
+        }
+        runner.start(profile)
+        if case .failed = runner.state { NSApp.activate() }       // show the reason in the launcher
     }
 }
 

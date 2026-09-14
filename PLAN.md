@@ -763,3 +763,10 @@ same window in a teal-blue-indigo gradient with a translucent second machine beh
 desktop icon's pink-violet. tools/icons/make-icons.sh packs .icns (16-1024 px) and the files are committed;
 make-app-bundle.sh copies tools/icons/myLinux.icns whenever it differs (gen-icon.py is the fallback only), build-app.sh
 uses the launcher icon and ships the desktop one in its runtime copy.
+
+Dock entry for the desktop (2026-09-14): out/myLinux.app's main executable is now a script; QEMU moved to
+Contents/MacOS/qemu-myLinux, which run.sh starts directly (the process still belongs to the bundle, so a running machine
+shows under a kept Dock icon). Opened from the Dock or Finder without arguments, the script opens
+mylinux-launcher://start; the launcher (CFBundleURLTypes) brings a running machine forward or starts the last-started
+profile (UserDefaults lastStartedProfile, set on every start; the first profile otherwise). Arguments pass through to
+QEMU for an older run.sh.

@@ -69,7 +69,9 @@ Each machine has its own apps disk and share folder, so "Work" and "Try things o
 installs, plus its own keyboard and pointer handling, memory, screen size and clipboard setting. **Shut
 Down** powers the guest off through the serial console (the guest has no power button); **Force Quit** is
 the power cut. Machines keep running when the launcher quits, and a machine started from a terminal shows
-up as "running outside the app".
+up as "running outside the app". Keep **myLinux** itself in the Dock too (it is `out/myLinux.app`, or the one
+in Application Support): clicking it starts the machine you used last through the launcher, or brings it
+forward when it is already running.
 
 Without this checkout the app works on its own: it downloads the release image into
 `~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`. It

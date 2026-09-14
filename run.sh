@@ -80,7 +80,7 @@ case "${MOUSE:-tablet}" in
 esac
 
 # ---- the QEMU command, built as a proper argument list (no word splitting of paths) ---------------
-QEMU="$OUT/myLinux.app/Contents/MacOS/myLinux"
+QEMU="$OUT/myLinux.app/Contents/MacOS/qemu-myLinux"
 set -- \
   -name "$NAME" -M virt -accel hvf -cpu host -smp 4 -m "$MEM" \
   -kernel "$OUT/Image" -initrd "$OUT/rootfs.cpio.gz" \

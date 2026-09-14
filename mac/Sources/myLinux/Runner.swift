@@ -89,6 +89,7 @@ final class Runner: ObservableObject {
         }
         process = proc; profile = p
         state = .starting
+        UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
         connectSerial()
     }
 

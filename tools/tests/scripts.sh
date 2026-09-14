@@ -135,10 +135,12 @@ chmod +x "$W/bin/python3"; printf '#!/bin/sh\nexit 0\n' > "$W/bin/codesign"; pri
 mkdir -p "$W/tools"; : > "$W/tools/brand-qemu.py"; : > "$W/tools/gen-icon.py"
 (cd "$W" && PATH="$W/bin:$PATH" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
 is_rc "bundle prepared even when branding fails" $rc 0
-[ -x "$W/out/myLinux.app/Contents/MacOS/myLinux" ] && ok "unbranded QEMU copy in place" || ko "no binary in the bundle"
+[ -x "$W/out/myLinux.app/Contents/MacOS/qemu-myLinux" ] && ok "unbranded QEMU copy in place" || ko "no binary in the bundle"
+head -1 "$W/out/myLinux.app/Contents/MacOS/myLinux" | grep -q '^#!/bin/sh' && ok "Dock entry point is the launcher hand-over script" || ko "no Dock entry script"
+out=$(sh "$W/out/myLinux.app/Contents/MacOS/myLinux" -version 2>&1); has "entry script passes arguments to QEMU" "$out" "fake qemu"
 (cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/bundle dir" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
 is_rc "MYLINUX_OUT: bundle in another directory" $rc 0
-[ -x "$T/bundle dir/myLinux.app/Contents/MacOS/myLinux" ] && ok "MYLINUX_OUT: QEMU copy in the data directory" || ko "MYLINUX_OUT: no binary in the data directory bundle"
+[ -x "$T/bundle dir/myLinux.app/Contents/MacOS/qemu-myLinux" ] && ok "MYLINUX_OUT: QEMU copy in the data directory" || ko "MYLINUX_OUT: no binary in the data directory bundle"
 
 echo "tools/host-window.sh"
 out=$(sh "$REPO/tools/host-window.sh" bogus 2>&1); rc=$?
