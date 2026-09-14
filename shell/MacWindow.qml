@@ -263,9 +263,10 @@ Item {
                 id: termGear
                 visible: win.isTerminal
                 anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter
-                width: Theme.px(24); height: width; radius: Theme.px(6)
+                width: Theme.px(30); height: width; radius: Theme.px(7)
                 color: termSettings.visible ? "#d4d4d8" : gearMouse.containsMouse ? "#dedee2" : "transparent"
-                Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; text: "⚙"; color: "#4a4a4e"; font.pixelSize: Theme.fpx(15); font.family: Theme.uiFont }
+                // the gear glyph draws small for its font size: sized from the bar (px, not fpx) so it stays a button at 0.75x
+                Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; text: "⚙"; color: "#3a3a3e"; font.pixelSize: Theme.px(29); font.family: Theme.uiFont }
                 MouseArea { id: gearMouse; anchors.fill: parent; hoverEnabled: true
                     onClicked: { win.raise(); termSettings.visible = !termSettings.visible } }
             }
