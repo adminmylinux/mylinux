@@ -185,6 +185,25 @@ def scenario_firefox_typing(vm):
     vm.serial("killall firefox-esr", 2)
 
 
+def scenario_firefox_popup_menu(vm):
+    """A click on an item in a client's popup menu picks it: ☰ > Settings opens Firefox's settings. The popup items
+    used to take keyboard focus on the press, Firefox closed the menu on losing focus, and nothing happened."""
+    ensure_firefox(vm)
+    vm.qmp("combo", "meta_l-3", "sleep", 0.8)          # an empty workspace: the window fills it, the whole menu is on screen
+    vm.serial("killall firefox-esr 2>/dev/null; rm -rf /tmp/vmtest-ffprof; mkdir -p /tmp/vmtest-ffprof; cd /root; env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 MOZ_DISABLE_AUTO_SAFE_MODE=1 setsid apps-run firefox-esr --no-remote --profile /tmp/vmtest-ffprof about:blank >/dev/null 2>&1 </dev/null &", 2)
+    d = vm.wait_for(lambda d: any(w["appId"] == "firefox-esr" and w["mapped"] for w in d["windows"]), "Firefox", 40)
+    time.sleep(6)
+    d = vm.diag()
+    w = [w for w in d["windows"] if w["appId"] == "firefox-esr" and w["mapped"]][0]
+    right = d["layerX"] + w["x"] + w["width"]; top = d["layerY"] + w["y"] + w["titleHeight"]
+    # the ☰ button sits 25 px from the window's right edge; the menu hangs from it, Settings 534 px below the button
+    vm.qmp("click", right - 25, top + 63, "sleep", 2)
+    vm.qmp("click", right - 266, top + 597, "sleep", 1)
+    vm.wait_for(lambda d: any(w["appId"] == "firefox-esr" and w["title"].startswith("Settings") for w in d["windows"]),
+                "Firefox settings opened from the ☰ menu", 15)
+    vm.serial("killall firefox-esr", 2)
+
+
 def scenario_empty_workspace_focus(vm):
     vm.qmp("combo", "meta_l-9", "sleep", 0.8)
     d = vm.wait_for(lambda d: d["workspace"] == 9, "workspace 9")
@@ -679,6 +698,7 @@ SCENARIOS = [
     ("single_activation", scenario_single_activation),
     ("scale_relayout", scenario_scale_relayout),
     ("client_fullscreen", scenario_client_fullscreen),
+    ("firefox_popup_menu", scenario_firefox_popup_menu),
     ("agent_usage_fixtures", scenario_agent_usage_fixtures),
     ("clipboard_fidelity", scenario_clipboard_fidelity),
     ("shell_restart", scenario_shell_restart),

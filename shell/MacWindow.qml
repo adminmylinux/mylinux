@@ -164,6 +164,17 @@ Item {
     Behavior on opacity { NumberAnimation { duration: 110 } }
     Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
+    property var quietItems: []           // popup items already set up by quietPopups
+    function quietPopups(item) {
+        for (const child of item.children) {
+            if (child.focusOnClick === undefined || quietItems.indexOf(child) >= 0) continue
+            child.focusOnClick = false
+            quietItems.push(child)
+            child.childrenChanged.connect(() => win.quietPopups(child))
+            child.Component.onDestruction.connect(() => { const i = win.quietItems.indexOf(child); if (i >= 0) win.quietItems.splice(i, 1) })
+            win.quietPopups(child)
+        }
+    }
     function raise() {
         let top = 0
         for (let i = 0; i < parent.children.length; ++i) top = Math.max(top, parent.children[i].z)
@@ -255,6 +266,9 @@ Item {
             shellSurface: win.shellSurface
             moveItem: win
             autoCreatePopupItems: true
+            // Popup items (menus, and submenus inside them) must not take keyboard focus on click: the toplevel
+            // losing focus makes Firefox and GTK close the menu on the press, so the release never picks an item.
+            onChildrenChanged: win.quietPopups(surfaceItem)
             onSurfaceDestroyed: { if (win.output) win.output.removeWindow(win); win.destroy() }
             // Passive grab: raise on click without stealing the press from the client.
             TapHandler { gesturePolicy: TapHandler.DragThreshold; onPressedChanged: if (pressed) win.raise() }
