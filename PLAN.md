@@ -814,3 +814,14 @@ size (steps 1, 1.25, 1.5, 2, 3, 4; 1:1 = one remote pixel per item pixel, also b
 picture is larger than the item the visible part follows the pointer (VncSurface::follow, 40 px edge margin), so
 clicks map to the same remote spot as the pointer and no scrollbars are needed. displayScale re-emits on the remote's
 resize and the item's geometry (the label read 100% before the first frame otherwise). vnc_viewer types while zoomed.
+
+SSH tabs in vncview (2026-09-14): SshSession runs /usr/bin/ssh (OpenSSH client added to the base image, keys from
+/root/.ssh on the apps disk, -o StrictHostKeyChecking=accept-new) on a pty from forkpty and feeds it to a libvterm
+screen (package/libvterm, Buildroot external package for 0.3.3; the SDK re-exported). TermSurface paints the cell
+grid in DejaVu Sans Mono (runs of equal attributes as one draw), maps Qt keys to VTermKey/unichar, keeps a 5000-line
+scrollback from sb_pushline/sb_popline (wheel, Shift+PageUp), pastes with Ctrl+Shift+V / middle click. A saved
+password (SSH_<NAME>_PASSWORD in secrets.env) answers the first "password:" prompt; "connected" is decided when
+the output settles (400 ms) on something other than a prompt. machines.json entries carry type (vnc|ssh) and
+keyFile; older entries read as vnc. Main.qml: tab suffix "(ssh)", A−/A+/Paste in the bar for SSH tabs, a type switch
+in the form. Not yet: mouse selection/copy, mouse reporting to remote programs, per-machine font size. vmtest ssh_tab
+installs openssh-server on the test disk and types through the tab.

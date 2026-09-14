@@ -1,3 +1,4 @@
 source "$BR2_EXTERNAL_MYLINUX_PATH/package/myapp/Config.in"
 source "$BR2_EXTERNAL_MYLINUX_PATH/package/myshell/Config.in"
 source "$BR2_EXTERNAL_MYLINUX_PATH/package/inter/Config.in"
+source "$BR2_EXTERNAL_MYLINUX_PATH/package/libvterm/Config.in"

@@ -142,7 +142,14 @@ launcher) opens myLinux's own viewer: tabs for several machines, saved profiles 
 secrets store, Tight/ZRLE encodings with a fast/balanced/best quality choice, VeNCrypt TLS with username and
 password as wayvnc on Omarchy uses it. F11 makes a connection fullscreen; the compositor then hands every
 key and the pointer to the remote, Super shortcuts included, until Ctrl+Alt+G. ⌘⌃G grabs the keys in a
-window too. The shell's clipboard reaches the remote through the RFB cut-text message.
+window too. The shell's clipboard reaches the remote through the RFB cut-text message. The tab bar zooms
+the picture: Fit, −/+ steps, 1:1 for real remote pixels; zoomed in, the view follows the pointer.
+
+**SSH terminals** live in the same window: pick "SSH terminal" in the Machines form and each connection
+opens as its own tab, so several sessions run side by side. The OpenSSH client is in the base image; keys in
+`~/.ssh` (on the apps disk) are tried first, a saved password answers the first prompt, and a key file can
+be named per machine. The tab bar has A−/A+ for the text size and Paste (also Ctrl+Shift+V); Shift+PageUp
+scrolls the history. `vnc <name>` in a terminal opens a saved SSH machine too.
 
 ### Bar modules
 

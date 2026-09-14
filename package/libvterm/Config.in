@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBVTERM
+	bool "libvterm"
+	help
+	  An abstract VT220/xterm/ECMA-48 terminal emulator library (the one behind neovim's :terminal).
+	  vncview draws its SSH tabs with it.
+
+	  https://www.leonerd.org.uk/code/libvterm/

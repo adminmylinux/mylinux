@@ -17,18 +17,22 @@ Machines::Machines(QObject *parent) : QObject(parent)
     load();
 }
 
-QString Machines::secretKey(const QString &name)
+QString Machines::secretKey(const QString &name, const QString &type)
 {
     QString k = name.toUpper().replace(QRegularExpression("[^A-Z0-9]+"), "_").remove(QRegularExpression("^_+|_+$"));
     if (k.isEmpty()) k = "DEFAULT";
-    return "VNC_" + k + "_PASSWORD";
+    return (type == "ssh" ? "SSH_" : "VNC_") + k + "_PASSWORD";
 }
 
 void Machines::load()
 {
     m_list.clear();
     QFile f(m_path);
-    if (f.open(QIODevice::ReadOnly)) for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) m_list << v.toObject().toVariantMap();
+    if (f.open(QIODevice::ReadOnly)) for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) {
+        QVariantMap e = v.toObject().toVariantMap();
+        if (e.value("type").toString() != "ssh") e["type"] = "vnc";        // entries from before SSH tabs
+        m_list << e;
+    }
     emit changed();
 }
 
@@ -73,17 +77,23 @@ static bool writeSecrets(const QString &path, const QMap<QString, QString> &m)
     return f.commit();
 }
 
-QString Machines::password(const QString &name) const { return readSecrets(m_secrets).value(secretKey(name)); }
+QString Machines::password(const QString &name) const { return readSecrets(m_secrets).value(secretKey(name, get(name).value("type").toString())); }
 
-void Machines::save(const QString &name, const QString &host, int port, const QString &username, const QString &quality, const QString &password)
+void Machines::save(const QVariantMap &entry, const QString &password)
 {
-    const QString n = name.trimmed(); if (n.isEmpty()) return;
-    QVariantMap e; e["name"] = n; e["host"] = host.trimmed(); e["port"] = port > 0 ? port : 5900; e["username"] = username.trimmed(); e["quality"] = quality.isEmpty() ? "balanced" : quality;
+    const QString n = entry["name"].toString().trimmed(); if (n.isEmpty()) return;
+    const QString type = entry["type"].toString() == "ssh" ? "ssh" : "vnc";
+    QVariantMap e;
+    e["name"] = n; e["type"] = type; e["host"] = entry["host"].toString().trimmed();
+    const int port = entry["port"].toInt(); e["port"] = port > 0 ? port : (type == "ssh" ? 22 : 5900);
+    e["username"] = entry["username"].toString().trimmed();
+    if (type == "vnc") { const QString q = entry["quality"].toString(); e["quality"] = q.isEmpty() ? "balanced" : q; }
+    else e["keyFile"] = entry["keyFile"].toString().trimmed();
     bool replaced = false;
     for (int i = 0; i < m_list.size(); ++i) if (m_list[i].toMap()["name"] == n) { m_list[i] = e; replaced = true; }
     if (!replaced) m_list << e;
     if (!store()) qWarning() << "vncview: cannot write" << m_path;
-    if (!password.isEmpty()) { QMap<QString, QString> s = readSecrets(m_secrets); s[secretKey(n)] = password; if (!writeSecrets(m_secrets, s)) qWarning() << "vncview: cannot write" << m_secrets; }
+    if (!password.isEmpty()) { QMap<QString, QString> s = readSecrets(m_secrets); s[secretKey(n, type)] = password; if (!writeSecrets(m_secrets, s)) qWarning() << "vncview: cannot write" << m_secrets; }
     emit changed();
 }
 
@@ -92,6 +102,6 @@ void Machines::remove(const QString &name)
     for (int i = 0; i < m_list.size(); ++i) if (m_list[i].toMap()["name"] == name) { m_list.removeAt(i); break; }
     store();
     QMap<QString, QString> s = readSecrets(m_secrets);
-    if (s.remove(secretKey(name))) writeSecrets(m_secrets, s);
+    if (s.remove(secretKey(name, "vnc")) + s.remove(secretKey(name, "ssh"))) writeSecrets(m_secrets, s);
     emit changed();
 }

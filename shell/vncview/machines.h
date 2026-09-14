@@ -4,8 +4,9 @@
 #include <QVariantList>
 #include <QVariantMap>
 
-// Saved machines (~/.config/mylinux/vnc/machines.json: name, host, port, username, quality) and their
-// passwords, which live in the secrets store (~/.config/mylinux/secrets.env) as VNC_<NAME>_PASSWORD.
+// Saved machines (~/.config/mylinux/vnc/machines.json: name, type vnc|ssh, host, port, username, quality, keyFile)
+// and their passwords, which live in the secrets store (~/.config/mylinux/secrets.env) as VNC_<NAME>_PASSWORD or
+// SSH_<NAME>_PASSWORD.
 class Machines : public QObject
 {
     Q_OBJECT
@@ -15,11 +16,12 @@ class Machines : public QObject
 public:
     explicit Machines(QObject *parent = nullptr);
     QVariantList list() const { return m_list; }
-    Q_INVOKABLE void save(const QString &name, const QString &host, int port, const QString &username, const QString &quality, const QString &password);
+    // entry: name, type, host, port, username, quality (vnc), keyFile (ssh); an empty password keeps the saved one
+    Q_INVOKABLE void save(const QVariantMap &entry, const QString &password);
     Q_INVOKABLE void remove(const QString &name);
     Q_INVOKABLE QString password(const QString &name) const;
     Q_INVOKABLE QVariantMap get(const QString &name) const;
-    static QString secretKey(const QString &name);
+    static QString secretKey(const QString &name, const QString &type = "vnc");
 signals:
     void changed();
 private:

@@ -481,6 +481,48 @@ def ensure_vnc_server(vm):
     vm.serial("killall Xvnc xterm 2>/dev/null; : > /tmp/vnc-typed; cd /root; setsid apps-run Xvnc :5 -SecurityTypes None -geometry 900x600 -rfbport 5905 -desktop vmtest > /var/log/xvnc.log 2>&1 < /dev/null & sleep 2; apps-run env DISPLAY=:5 xsetroot -solid red; setsid apps-run env DISPLAY=:5 xterm -geometry 60x20+50+50 -e sh -c 'cat > /tmp/vnc-typed' > /dev/null 2>&1 < /dev/null & echo", 5)
 
 
+def ensure_sshd(vm):
+    """An OpenSSH server on the test disk (installed once), root password "test", listening on 2222."""
+    marker = os.path.join(SHARE, "vmtest", "sshd.done")
+    if os.path.exists(marker): os.remove(marker)
+    vm.serial("setsid sh -c 'apps-run test -x /usr/sbin/sshd || { apps-run env DEBIAN_FRONTEND=noninteractive dpkg --configure -a; apps-run apt-get update -q && apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends openssh-server; }; mkdir -p /mnt/apps/run/sshd; echo rc=$? > /mnt/share/vmtest/sshd.done' < /dev/null > /var/log/sshd-install.log 2>&1 &", 2)
+    deadline = time.time() + 600
+    while time.time() < deadline and not os.path.exists(marker): time.sleep(5)
+    if not os.path.exists(marker) or "rc=0" not in open(marker).read():
+        raise Fail("the SSH server could not be installed on the test disk (/var/log/sshd-install.log in the guest)")
+    vm.serial("printf 'root:test\\n' | apps-run chpasswd; apps-run pkill -f 'sshd -p 2222' 2>/dev/null; apps-run /usr/sbin/sshd -p 2222 -o PermitRootLogin=yes -o PasswordAuthentication=yes -o UsePAM=no; echo", 3)
+
+
+def scenario_ssh_tab(vm):
+    """An SSH machine opens as a terminal tab: the saved password answers the prompt, typing reaches the remote shell,
+    A+ enlarges the text (fewer columns)."""
+    ensure_sshd(vm)
+    vm.serial("mkdir -p /root/.config/mylinux/vnc; printf '[{\"name\":\"testssh\",\"type\":\"ssh\",\"host\":\"127.0.0.1\",\"port\":2222,\"username\":\"root\",\"keyFile\":\"\"}]' > /root/.config/mylinux/vnc/machines.json; printf 'SSH_TESTSSH_PASSWORD=test\\n' > /root/.config/mylinux/secrets.env; chmod 600 /root/.config/mylinux/secrets.env; rm -f /root/ssh-typed.txt; echo", 2)
+    vm.qmp("combo", "meta_l-3", "sleep", 0.8)
+    launcher = "/usr/bin/vnc" if "vnc-present" in vm.serial("test -x /usr/bin/vnc && echo vnc-pre''sent", 2) else "env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software /mnt/share/vncview"
+    vm.serial("killall vncview 2>/dev/null; cd /root; setsid %s 127.0.0.1 testssh > /var/log/vncview.log 2>&1 < /dev/null & echo" % launcher, 2)
+    d = vm.wait_for(lambda d: any(w["appId"] == "vncview" and w["mapped"] for w in d["windows"]), "viewer window", 30)
+    w = [w for w in d["windows"] if w["appId"] == "vncview"][0]
+    log = "/var/log/vncview.log"
+    deadline = time.time() + 30
+    while time.time() < deadline and "state connected" not in vm.serial("cat %s; echo" % log, 1): time.sleep(1)
+    out = vm.serial("cat %s; echo" % log, 1)
+    if "state connected" not in out: raise Fail("the SSH tab did not connect with the saved password: %r" % out[-300:])
+    sx = d["layerX"] + w["x"] + w["width"] // 2; sy = d["layerY"] + w["y"] + w["titleHeight"] + w["height"] // 2
+    stamp = "ssh%d" % int(time.time())
+    vm.qmp("click", sx, sy, "sleep", 0.5, "type", "echo %s > /root/ssh-typed.txt\n" % stamp, "sleep", 2)
+    typed = os.path.join(SHARE, "vmtest", "ssh-typed.txt")
+    if os.path.exists(typed): os.remove(typed)
+    vm.serial("cp /mnt/apps/root/ssh-typed.txt /mnt/share/vmtest/ssh-typed.txt 2>/dev/null; echo", 2)
+    got = open(typed).read() if os.path.exists(typed) else ""
+    if stamp not in got: raise Fail("typed text did not reach the remote shell through the SSH tab: %r" % got)
+    # A+ in the tab bar (the surface is re-laid out; a crash here would end the viewer before the close below)
+    d = vm.diag(); right = d["layerX"] + w["x"] + w["width"]; top = d["layerY"] + w["y"] + w["titleHeight"]
+    vm.qmp("click", right - 366, top + 16, "sleep", 1.2)
+    vm.serial("killall vncview; apps-run pkill -f 'sshd -p 2222'; echo", 2)
+    vm.wait_for(lambda d: not any(w["appId"] == "vncview" for w in d["windows"]), "viewer closed", 10)
+
+
 def scenario_vnc_viewer(vm):
     """vncview against a local Xvnc: connects and renders, typing reaches the remote xterm, F11 makes it fullscreen
     with the compositor's input grab on, Ctrl+Alt+G releases both."""
@@ -764,6 +806,7 @@ SCENARIOS = [
     ("shell_paste", scenario_shell_paste),
     ("vnc_viewer", scenario_vnc_viewer),
     ("vnc_tls_trust", scenario_vnc_tls_trust),
+    ("ssh_tab", scenario_ssh_tab),
 ]
 
 
