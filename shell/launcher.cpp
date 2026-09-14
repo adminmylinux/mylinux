@@ -1,5 +1,8 @@
 #include "launcher.h"
 #include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <QDir>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QDebug>
@@ -49,12 +52,45 @@ bool Launcher::launch(const QString &program, const QStringList &args)
 }
 
 
-bool Launcher::setTerminalPalette(qint64 pid, bool highContrast)
+// the pty foot (pid) put its shell on: the first child process whose stdin is a /dev/pts device
+static QString terminalPty(qint64 pid)
+{
+    const QDir proc("/proc");
+    for (const QString &entry : proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        bool ok; entry.toLongLong(&ok); if (!ok) continue;
+        QFile stat("/proc/" + entry + "/stat");
+        if (!stat.open(QIODevice::ReadOnly)) continue;
+        const QByteArray line = stat.readAll();
+        const int paren = line.lastIndexOf(')');
+        const QList<QByteArray> fields = line.mid(paren + 2).split(' ');   // state ppid ...
+        if (fields.size() < 2 || fields[1].toLongLong() != pid) continue;
+        const QString tty = QFile::symLinkTarget("/proc/" + entry + "/fd/0");
+        if (tty.startsWith("/dev/pts/")) return tty;
+    }
+    return QString();
+}
+
+bool Launcher::setTerminalPalette(qint64 pid, const QVariantMap &palette)
 {
     if (pid <= 1) return false;
     QFile comm(QStringLiteral("/proc/%1/comm").arg(pid));
     if (!comm.open(QIODevice::ReadOnly) || comm.readAll().trimmed() != "foot") return false;
-    return ::kill(pid_t(pid), highContrast ? SIGUSR2 : SIGUSR1) == 0;
+    const QString pty = terminalPty(pid);
+    if (pty.isEmpty()) return false;
+    const int fd = ::open(QFile::encodeName(pty).constData(), O_WRONLY | O_NOCTTY | O_NONBLOCK);
+    if (fd < 0) return false;
+    QByteArray seq;
+    auto osc = [&](const QByteArray &body) { seq += "\033]" + body + "\033\\"; };
+    auto hex = [](const QString &v) { return QByteArray("#") + v.toLatin1(); };
+    osc("11;" + hex(palette["background"].toString()));
+    osc("10;" + hex(palette["foreground"].toString()));
+    osc("17;" + hex(palette["selectionBackground"].toString()));
+    osc("19;" + hex(palette["selectionForeground"].toString()));
+    const QStringList colors = palette["colors"].toStringList();
+    for (int i = 0; i < colors.size() && i < 16; ++i) osc("4;" + QByteArray::number(i) + ";" + hex(colors[i]));
+    const bool ok = ::write(fd, seq.constData(), size_t(seq.size())) == seq.size();
+    ::close(fd);
+    return ok;
 }
 
 bool Launcher::sendControlKey(QObject *seatObject, const QVariantList &keys, int times) const

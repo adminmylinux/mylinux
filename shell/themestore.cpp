@@ -110,28 +110,49 @@ QString ThemeStore::contrastColor(const QString &hex, bool darkBackground, int s
     return QColor::fromHslF(h, sat, l).name().mid(1);
 }
 
-void ThemeStore::applyTerminal(const QString &id, double fontPt, bool highContrast)
+// The terminal palette for a mode: "normal" is the theme's own colours, "contrast" the theme's hues on an opaque
+// black or white ground (ThemeStore::contrastColor), "retro" a green-phosphor monochrome. Keys: background,
+// foreground, selectionBackground, selectionForeground, alpha, colors (16 hex strings, no '#').
+QVariantMap ThemeStore::terminalPalette(const QString &id, const QString &mode) const
 {
-    const QVariantMap t = theme(id); if (t.isEmpty()) return;
-    const QVariantMap c = t["colors"].toMap();
-    auto col = [&](const char *k, const char *def) { return c.value(k, def).toString().mid(1); };   // foot wants no '#'
-    fontPt = qBound(4.0, fontPt, 60.0);
-    QString ini = QStringLiteral("font=DejaVu Sans Mono:size=%1\npad=10x8\ninitial-window-size-pixels=760x440\ninitial-color-theme=%2\n# zooming (the title bar settings, Ctrl+plus/minus) keeps the window size: tiled terminals must not grow\nresize-keep-grid=no\n[csd]\npreferred=none\n")
-                      .arg(QString::number(fontPt, 'g', 3), highContrast ? QStringLiteral("light") : QStringLiteral("dark"));
-    QString colors = QStringLiteral("alpha=0.97\nbackground=%1\nforeground=%2\nselection-foreground=%3\nselection-background=%4\n")
-               .arg(col("background", "#1e1e1e"), col("foreground", "#e6e6e6"), col("selection_foreground", "#ffffff"), col("selection_background", "#444444"));
-    for (int i = 0; i < 8; ++i) colors += QStringLiteral("regular%1=%2\n").arg(i).arg(col(QByteArray("color" + QByteArray::number(i)).constData(), "#888888"));
-    for (int i = 0; i < 8; ++i) colors += QStringLiteral("bright%1=%2\n").arg(i).arg(col(QByteArray("color" + QByteArray::number(i + 8)).constData(), "#aaaaaa"));
-    // the second palette ("light" to foot) is high contrast: opaque, black or white ground, legible colours
-    const bool dark = QColor(QLatin1Char('#') + col("background", "#1e1e1e")).lightnessF() < 0.5;
-    QString contrast = QStringLiteral("alpha=1.0\nbackground=%1\nforeground=%2\nselection-foreground=%3\nselection-background=%4\n")
-               .arg(dark ? "000000" : "ffffff", dark ? "ffffff" : "000000", dark ? "000000" : "ffffff", dark ? "ffffff" : "000000");
-    for (int i = 0; i < 16; ++i) {
-        const QString src = col(QByteArray("color" + QByteArray::number(i)).constData(), i < 8 ? "#888888" : "#aaaaaa");
-        contrast += QStringLiteral("%1%2=%3\n").arg(i < 8 ? "regular" : "bright").arg(i % 8).arg(contrastColor(src, dark, i));
+    QVariantMap p;
+    QStringList colors;
+    if (mode == "retro") {
+        p["background"] = "000000"; p["foreground"] = "33ff33"; p["selectionBackground"] = "33ff33"; p["selectionForeground"] = "000000"; p["alpha"] = 1.0;
+        colors = { "003300", "22aa22", "33ff33", "88ff88", "119911", "55dd55", "44cc44", "33ff33",
+                   "226622", "66ff66", "55ff55", "aaffaa", "33cc33", "99ff99", "77ee77", "ccffcc" };
+    } else {
+        const QVariantMap t = theme(id);
+        const QVariantMap c = t["colors"].toMap();
+        auto col = [&](const char *k, const char *def) { return c.value(k, def).toString().mid(1); };   // foot wants no '#'
+        const bool dark = QColor(QLatin1Char('#') + col("background", "#1e1e1e")).lightnessF() < 0.5;
+        for (int i = 0; i < 16; ++i) colors << col(QByteArray("color" + QByteArray::number(i)).constData(), i < 8 ? "#888888" : "#aaaaaa");
+        if (mode == "contrast") {
+            p["background"] = dark ? "000000" : "ffffff"; p["foreground"] = dark ? "ffffff" : "000000";
+            p["selectionBackground"] = dark ? "ffffff" : "000000"; p["selectionForeground"] = dark ? "000000" : "ffffff"; p["alpha"] = 1.0;
+            for (int i = 0; i < 16; ++i) colors[i] = contrastColor(colors[i], dark, i);
+        } else {
+            p["background"] = col("background", "#1e1e1e"); p["foreground"] = col("foreground", "#e6e6e6");
+            p["selectionBackground"] = col("selection_background", "#444444"); p["selectionForeground"] = col("selection_foreground", "#ffffff"); p["alpha"] = 0.97;
+        }
     }
-    // foot 1.26: [colors-dark] / [colors-light], SIGUSR1 switches a running terminal to dark, SIGUSR2 to light
-    ini += "[colors-dark]\n" + colors + "[colors-light]\n" + contrast;
+    p["colors"] = colors;
+    return p;
+}
+
+void ThemeStore::applyTerminal(const QString &id, double fontPt, const QString &mode)
+{
+    const QVariantMap p = terminalPalette(id, mode);
+    fontPt = qBound(4.0, fontPt, 60.0);
+    QString ini = QStringLiteral("font=DejaVu Sans Mono:size=%1\npad=10x8\ninitial-window-size-pixels=760x440\n# zooming (the title bar settings, Ctrl+plus/minus) keeps the window size: tiled terminals must not grow\nresize-keep-grid=no\n[csd]\npreferred=none\n")
+                      .arg(QString::number(fontPt, 'g', 3));
+    QString colors = QStringLiteral("alpha=%1\nbackground=%2\nforeground=%3\nselection-foreground=%4\nselection-background=%5\n")
+               .arg(QString::number(p["alpha"].toDouble(), 'g', 3), p["background"].toString(), p["foreground"].toString(), p["selectionForeground"].toString(), p["selectionBackground"].toString());
+    const QStringList c = p["colors"].toStringList();
+    for (int i = 0; i < 16; ++i) colors += QStringLiteral("%1%2=%3\n").arg(i < 8 ? "regular" : "bright").arg(i % 8).arg(c[i]);
+    // foot 1.26 wants [colors-dark] / [colors-light]; running terminals are recoloured with OSC sequences instead
+    // (Launcher.setTerminalPalette), so both sections carry the one selected palette
+    ini += "[colors-dark]\n" + colors + "[colors-light]\n" + colors;
     QFile f("/etc/xdg/foot/foot.ini");
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) { f.write(ini.toUtf8()); f.close(); }
     else qWarning() << "theme: cannot write foot.ini";

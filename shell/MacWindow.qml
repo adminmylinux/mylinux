@@ -308,10 +308,11 @@ Item {
         terminalKeys(step > 0 ? [Qt.Key_Plus, Qt.Key_Equal] : [Qt.Key_Minus], Math.max(1, Math.round(Theme.scale * 2)))   // 1 pt × scale
         Theme.setTerminalFontPt(pt)
     }
-    function terminalContrast(on) {
-        Theme.setTerminalContrast(on)
+    readonly property var paletteNames: ({ normal: "Normal", contrast: "Contrast", retro: "Retro" })
+    function setTerminalPalette(mode) {
+        Theme.setTerminalPalette(mode)
         const client = shellSurface && shellSurface.surface ? shellSurface.surface.client : null
-        if (client) Launcher.setTerminalPalette(client.processId, on)
+        if (client) Launcher.setTerminalPalette(client.processId, ThemeStore.terminalPalette(Theme.themeId, mode))
     }
     Rectangle {
         id: termSettings
@@ -343,9 +344,32 @@ Item {
                 PopButton { width: Theme.px(64); label: "Reset"; onClicked: { win.terminalKeys([Qt.Key_0], 1); Theme.setTerminalFontPt(11) } }
             }
             Text { text: "COLORS"; color: "#6b6b72"; font.pixelSize: Theme.fpx(10); font.bold: true; font.family: Theme.uiFont }
-            Row { spacing: Theme.px(6)
-                PopButton { width: (termCol.width - Theme.px(6)) / 2; label: "Theme"; selected: !Theme.terminalContrast; onClicked: win.terminalContrast(false) }
-                PopButton { width: (termCol.width - Theme.px(6)) / 2; label: "High contrast"; selected: Theme.terminalContrast; onClicked: win.terminalContrast(true) }
+            // dropdown: the current palette, opening a list of the three below it
+            Column { id: paletteDrop; width: termCol.width; spacing: Theme.px(4)
+                property bool open: false
+                Rectangle { width: parent.width; height: Theme.px(28); radius: Theme.px(6)
+                    color: dropMouse.containsMouse || paletteDrop.open ? "#e3e3e8" : "#ececf0"; border.color: "#d2d2d8"
+                    Text { anchors.left: parent.left; anchors.leftMargin: Theme.px(10); anchors.verticalCenter: parent.verticalCenter
+                           text: win.paletteNames[Theme.terminalPalette] || "Normal"; color: "#1c1c1e"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
+                    Text { anchors.right: parent.right; anchors.rightMargin: Theme.px(10); anchors.verticalCenter: parent.verticalCenter
+                           text: paletteDrop.open ? "⌃" : "⌄"; color: "#6b6b72"; font.pixelSize: Theme.fpx(13); font.family: Theme.uiFont }
+                    MouseArea { id: dropMouse; anchors.fill: parent; hoverEnabled: true; onClicked: paletteDrop.open = !paletteDrop.open }
+                }
+                Rectangle { visible: paletteDrop.open; width: parent.width; height: optCol.implicitHeight + Theme.px(8); radius: Theme.px(6)
+                    color: "white"; border.color: "#d2d2d8"
+                    Column { id: optCol; x: Theme.px(4); y: Theme.px(4); width: parent.width - Theme.px(8)
+                        Repeater { model: ["normal", "contrast", "retro"]
+                            Rectangle { width: optCol.width; height: Theme.px(26); radius: Theme.px(5)
+                                color: optMouse.containsMouse ? "#2f6fea" : "transparent"
+                                Text { anchors.left: parent.left; anchors.leftMargin: Theme.px(8); anchors.verticalCenter: parent.verticalCenter
+                                       text: (Theme.terminalPalette === modelData ? "✓ " : "   ") + win.paletteNames[modelData]
+                                       color: optMouse.containsMouse ? "white" : "#1c1c1e"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
+                                Text { anchors.right: parent.right; anchors.rightMargin: Theme.px(8); anchors.verticalCenter: parent.verticalCenter
+                                       text: modelData === "retro" ? "green on black" : modelData === "contrast" ? "black & white" : "theme colours"
+                                       color: optMouse.containsMouse ? "#dfe8ff" : "#8a8a92"; font.pixelSize: Theme.fpx(10); font.family: Theme.uiFont }
+                                MouseArea { id: optMouse; anchors.fill: parent; hoverEnabled: true
+                                    onClicked: { paletteDrop.open = false; win.setTerminalPalette(modelData) } }
+                            } } } }
             }
             Text { width: termCol.width; wrapMode: Text.WordWrap; color: "#6b6b72"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont
                    text: "Changes this window now and every new terminal." }

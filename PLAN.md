@@ -801,3 +801,10 @@ signal, a backtrace and its maps lines to /run/mylinux-shell/crash.txt (resolve 
 copy in /run, and tools/app-build.sh replaces share binaries by rename instead of overwriting them in place (a guest
 running the old file from 9p could page in the new bytes; suspected, not proven, as the cause of that crash).
 Tests: tools/tests/guest.sh shell-run.
+
+Terminal colour modes (2026-09-14): the ⚙ popover's colours are a dropdown: Normal (theme), Contrast, Retro (green
+phosphor on black). ThemeStore::terminalPalette(id, mode) is the one source; applyTerminal writes it as both
+[colors-dark] and [colors-light]. A running foot is recoloured through OSC 10/11/17/19/4 written to the pty of its
+shell (Launcher::setTerminalPalette finds the child whose stdin is /dev/pts/N): foot cannot reload its config, and
+SIGUSR1/2 only toggle the two palettes it loaded at start, which cannot express three modes. terminal/palette in
+mylinux.ini; the older highContrast=true reads as contrast. vmtest terminal_settings picks Retro from the dropdown.

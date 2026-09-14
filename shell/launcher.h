@@ -15,7 +15,9 @@ public:
     Q_INVOKABLE QString socketName() const;
     // switch a running foot terminal between its two palettes (SIGUSR1 theme, SIGUSR2 high contrast); only a
     // process whose name is foot is signalled
-    Q_INVOKABLE bool setTerminalPalette(qint64 pid, bool highContrast);
+    // Recolour a running foot terminal (ThemeStore.terminalPalette map) by writing OSC 10/11/17/19/4 sequences to the
+    // pty of its shell: foot has no config reload, and its two built-in palettes cannot express three modes.
+    Q_INVOKABLE bool setTerminalPalette(qint64 pid, const QVariantMap &palette);
     // Ctrl+<key> to the seat's keyboard focus, `times` times, with the modifier state the client sees (QML's
     // WaylandSeat.sendKeyEvent sends bare keys). The first of `keys` that exists unshifted on the layout is used.
     Q_INVOKABLE bool sendControlKey(QObject *seat, const QVariantList &keys, int times) const;

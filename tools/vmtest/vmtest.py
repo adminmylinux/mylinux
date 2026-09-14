@@ -206,7 +206,7 @@ def scenario_firefox_popup_menu(vm):
 
 def scenario_terminal_settings(vm):
     """The terminal title bar's settings: A+ zooms the open terminal without growing its window and saves the size,
-    High contrast is saved for new terminals (foot.ini initial-color-theme=light, the high-contrast palette)."""
+    the colours dropdown's Retro is saved and written to foot.ini for new terminals."""
     ini = os.path.join(SHARE, "mylinux.ini")
     def ini_value(key):
         import re
@@ -221,24 +221,26 @@ def scenario_terminal_settings(vm):
     vm.qmp("click", int(right - 26 * k), int(top + w["titleHeight"] / 2), "sleep", 1.2)       # the gear
     pop_left = right - 276 * k; pop_top = top + w["titleHeight"] + 4 * k
     vm.qmp("click", int(pop_left + 148 * k), int(pop_top + 49 * k), "sleep", 1.2)            # A+
-    vm.qmp("click", int(pop_left + 196 * k), int(pop_top + 110 * k), "sleep", 1.2)           # High contrast
+    vm.qmp("click", int(pop_left + 130 * k), int(pop_top + 106 * k), "sleep", 1.2)           # colours dropdown
+    vm.qmp("click", int(pop_left + 50 * k), int(pop_top + 192 * k), "sleep", 1.2)            # Retro
     d2 = vm.diag(); w2 = [x for x in d2["windows"] if x["appId"] == "foot" and x["workspace"] == 5][0]
     try:
         if int(ini_value("terminalFontPt") or 0) != min(40, before_pt + 1):
             raise Fail("A+ did not save the terminal size (%s -> %s)" % (before_pt, ini_value("terminalFontPt")))
         if (w2["width"], w2["height"]) != (w["width"], w["height"]):
             raise Fail("zooming changed the terminal window size %s -> %s" % ((w["width"], w["height"]), (w2["width"], w2["height"])))
-        if ini_value("highContrast") != "true":
-            raise Fail("High contrast was not saved")
+        if ini_value("palette") != "retro":
+            raise Fail("Retro was not saved (palette=%s)" % ini_value("palette"))
         out = os.path.join(SHARE, "vmtest", "foot.ini")
         vm.serial("cp /etc/xdg/foot/foot.ini /mnt/share/vmtest/foot.ini; echo", 2)
         foot = open(out).read() if os.path.exists(out) else ""
-        if "initial-color-theme=light" not in foot or "resize-keep-grid=no" not in foot:
-            raise Fail("foot.ini does not start new terminals in high contrast / keep the window size")
+        if "foreground=33ff33" not in foot or "resize-keep-grid=no" not in foot:
+            raise Fail("foot.ini does not start new terminals in retro / keep the window size")
     finally:
         # back through the same buttons (editing mylinux.ini under a running shell is undone by its next write)
         vm.qmp("click", int(pop_left + 52 * k), int(pop_top + 49 * k), "sleep", 1.2)         # A−
-        vm.qmp("click", int(pop_left + 72 * k), int(pop_top + 110 * k), "sleep", 1.2)        # Theme
+        vm.qmp("click", int(pop_left + 130 * k), int(pop_top + 106 * k), "sleep", 1.2)       # dropdown
+        vm.qmp("click", int(pop_left + 50 * k), int(pop_top + 140 * k), "sleep", 1.2)        # Normal
         vm.serial("killall foot; echo", 2)
 
 

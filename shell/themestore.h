@@ -21,7 +21,8 @@ public:
     Q_INVOKABLE void rescan();
     // rewrite foot.ini: font size (fractional), the theme palette as [colors-dark] and a high-contrast palette derived
     // from it as [colors-light]; initial-color-theme picks one for new terminals, SIGUSR1/2 switch running ones
-    Q_INVOKABLE void applyTerminal(const QString &id, double fontPt, bool highContrast = false);
+    Q_INVOKABLE void applyTerminal(const QString &id, double fontPt, const QString &mode = "normal");
+    Q_INVOKABLE QVariantMap terminalPalette(const QString &id, const QString &mode) const;   // normal | contrast | retro
     static QString contrastColor(const QString &hex, bool darkBackground, int slot);   // exposed for tests
     // Convert every *.webp under dir to .png (libwebp loaded at runtime; Qt has no WebP plugin here).
     // Returns the number converted, -1 if libwebp is missing.

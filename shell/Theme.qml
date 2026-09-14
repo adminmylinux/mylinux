@@ -15,8 +15,11 @@ QtObject {
     property int terminalFontPt: bounded("display/terminalFontPt", 11, 6, 40)
     // terminals are not bitmap-scaled (MacWindow.surfaceScale): foot draws its own text at size × scale, sharp at any scale
     readonly property real terminalRenderPt: Math.round(terminalFontPt * scale * 2) / 2
-    property bool terminalContrast: String(Settings.value("terminal/highContrast", "false")) === "true"
-    function applyTerminal() { ThemeStore.applyTerminal(themeId, terminalRenderPt, terminalContrast) }
+    // terminal colours: normal (the theme), contrast, retro; "highContrast=true" from before 2026-09-14 reads as contrast
+    property string terminalPalette: ["normal", "contrast", "retro"].indexOf(String(Settings.value("terminal/palette", ""))) >= 0
+                                     ? String(Settings.value("terminal/palette", ""))
+                                     : (String(Settings.value("terminal/highContrast", "false")) === "true" ? "contrast" : "normal")
+    function applyTerminal() { ThemeStore.applyTerminal(themeId, terminalRenderPt, terminalPalette) }
     onTerminalRenderPtChanged: applyTerminal()
     // keyboard layout sent to Wayland clients (xkb): us / no / is, Apple-keyboard variant
     // "en" is what the website used to write for the US layout
@@ -92,5 +95,5 @@ QtObject {
     function setTextScale(v) { textScale = v; Settings.set("display/textScale", v) }
     function setBrightness(v) { brightness = v; Settings.set("display/brightness", v) }
     function setTerminalFontPt(v) { terminalFontPt = v; Settings.set("display/terminalFontPt", v); applyTerminal() }
-    function setTerminalContrast(on) { terminalContrast = on; Settings.set("terminal/highContrast", on ? "true" : "false"); applyTerminal() }
+    function setTerminalPalette(mode) { terminalPalette = mode; Settings.set("terminal/palette", mode); applyTerminal() }
 }
