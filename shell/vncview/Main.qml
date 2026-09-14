@@ -19,32 +19,47 @@ Window {
 
     Component { id: sessionComp; VncSession {} }
     Component { id: sshComp; SshSession {} }
-    function addTab(entry) { sessions = sessions.concat([entry]); tabs.currentIndex = sessions.length - 1 }
+    property bool sessionsTouched: false   // sessionsChanged also fires while the window is built: nothing to save then
+    function addTab(entry) { sessionsTouched = true; sessions = sessions.concat([entry]); tabs.currentIndex = sessions.length - 1 }
     function connectTo(name, host, port, username, password, quality) {
         const s = sessionComp.createObject(win)
         s.quality = quality || "balanced"
-        addTab({ type: "vnc", title: name && name.length ? name : host, host: host, port: port, session: s })
+        addTab({ type: "vnc", title: name && name.length ? name : host, host: host, port: port, username: username || "", session: s })
         s.open(host, port, username || "", password || "")
     }
-    function connectSsh(name, host, port, username, password, keyFile) {
+    function connectSsh(name, host, port, username, password, keyFile, tmux) {
         const s = sshComp.createObject(win)
-        addTab({ type: "ssh", title: name && name.length ? name : host, host: host, port: port, session: s })
-        s.open(host, port, username || "", password || "", keyFile || "")
+        addTab({ type: "ssh", title: name && name.length ? name : host, host: host, port: port, username: username || "", keyFile: keyFile || "", tmux: tmux || "", session: s })
+        s.open(host, port, username || "", password || "", keyFile || "", tmux || "")
     }
     function openMachine(m) {
-        if (m.type === "ssh") connectSsh(m.name, m.host, m.port, m.username, Machines.password(m.name), m.keyFile || "")
+        if (m.type === "ssh") connectSsh(m.name, m.host, m.port, m.username, Machines.password(m.name), m.keyFile || "", m.tmux || "")
         else connectTo(m.name, m.host, m.port, m.username, Machines.password(m.name), m.quality)
+    }
+    // the open tabs, remembered across a shell or machine restart (the shell starts `vnc --restore` when the file exists)
+    onSessionsChanged: if (sessionsTouched) Machines.saveSession(sessions.map(e => ({ type: e.type, name: e.title, host: e.host, port: e.port,
+                                                                 username: e.username || "", keyFile: e.keyFile || "", tmux: e.tmux || "",
+                                                                 quality: e.session.quality || "" })))
+    onClosing: Machines.saveSession([])                         // closed on purpose: nothing to bring back
+    function restoreSession() {
+        for (const t of Machines.session()) {
+            const m = Machines.get(t.name)                        // a saved machine: its password and current settings
+            if (m.name === t.name) { openMachine(m); continue }
+            if (t.type === "ssh") connectSsh(t.name, t.host, t.port, t.username, "", t.keyFile, t.tmux)
+            else connectTo(t.name, t.host, t.port, t.username, "", t.quality)
+        }
     }
     function closeTab(i) {
         const e = sessions[i]; if (!e) return
         e.session.close(); e.session.destroy()
+        sessionsTouched = true
         sessions = sessions.slice(0, i).concat(sessions.slice(i + 1))
         tabs.currentIndex = Math.min(tabs.currentIndex, sessions.length - 1)
     }
     function toggleFullscreen() { visibility = fullscreen ? Window.Windowed : Window.FullScreen }
-    Component.onCompleted: if (startHost && startHost.length) {
+    Component.onCompleted: if (startRestore) restoreSession(); else if (startHost && startHost.length) {
         const m = Machines.get(startName)
-        if (m.type === "ssh") connectSsh(startName, startHost, startPort > 0 && startPort !== 5900 ? startPort : (m.port || 22), m.username || "", startName.length ? Machines.password(startName) : "", m.keyFile || "")
+        if (m.type === "ssh") connectSsh(startName, startHost, startPort > 0 && startPort !== 5900 ? startPort : (m.port || 22), m.username || "", startName.length ? Machines.password(startName) : "", m.keyFile || "", m.tmux || "")
         else connectTo(startName, startHost, startPort, m.username || "", startName.length ? Machines.password(startName) : "", m.quality || "balanced")
     }
 
@@ -146,7 +161,7 @@ Window {
                                : (modelData.session.error ? "Disconnected: " + modelData.session.error : "Disconnected") + " (click to reconnect)" }
                     MouseArea { anchors.fill: parent; onClicked: {
                         const m = Machines.get(modelData.title)
-                        if (page.isSsh) modelData.session.open(modelData.host, modelData.port, m.username || "", Machines.password(modelData.title), m.keyFile || "")
+                        if (page.isSsh) modelData.session.open(modelData.host, modelData.port, m.username || "", Machines.password(modelData.title), m.keyFile || "", m.tmux || "")
                         else modelData.session.open(modelData.host, modelData.port, m.username || "", Machines.password(modelData.title)) } } }
             } }
 
@@ -161,7 +176,7 @@ Window {
                                     color: modelData.type === "ssh" ? "#2f6f3a" : "#3d4f8a"
                                     Text { anchors.centerIn: parent; text: modelData.type === "ssh" ? "SSH" : "VNC"; color: "white"; font.pixelSize: 10; font.bold: true; font.family: win.font } }
                         Text { anchors.left: parent.left; anchors.leftMargin: 58; anchors.verticalCenter: parent.verticalCenter
-                               text: modelData.name + "   " + modelData.host + ":" + modelData.port + (modelData.username ? "   " + modelData.username : "") + "   " + (modelData.type === "ssh" ? (modelData.keyFile ? "key " + modelData.keyFile : "") : modelData.quality)
+                               text: modelData.name + "   " + modelData.host + ":" + modelData.port + (modelData.username ? "   " + modelData.username : "") + "   " + (modelData.type === "ssh" ? (modelData.keyFile ? "key " + modelData.keyFile + " " : "") + (modelData.tmux ? "tmux " + modelData.tmux : "") : modelData.quality)
                                color: "#e6e6ea"; font.pixelSize: 13; font.family: win.font }
                         MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; onClicked: win.openMachine(modelData) }
                         Text { anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter; text: "remove"; color: "#9a9aa2"; font.pixelSize: 11; font.family: win.font
@@ -185,7 +200,8 @@ Window {
                 Field { id: fPort; placeholder: kind.ssh ? "Port (22)" : "Port (5900)"; next: fUser }
                 Field { id: fUser; placeholder: kind.ssh ? "Username" : "Username (wayvnc with auth; empty for password-only servers)"; next: fPass }
                 Field { id: fPass; placeholder: kind.ssh ? "Password (optional: keys in ~/.ssh are tried first)" : "Password"; secret: true; next: fKey }
-                Field { id: fKey; visible: kind.ssh; placeholder: "Key file (optional, for example /root/.ssh/id_ed25519)" }
+                Field { id: fKey; visible: kind.ssh; placeholder: "Key file (optional, for example /root/.ssh/id_ed25519)"; next: fTmux }
+                Field { id: fTmux; visible: kind.ssh; placeholder: "tmux session (optional, e.g. main): the shell survives a closed tab; needs tmux on the machine" }
                 Row { spacing: 8; visible: !kind.ssh
                     Repeater { model: ["fast", "balanced", "best"]
                         Rectangle { width: 90; height: 28; radius: 6; color: quality.value === modelData ? win.accent : "#2a2a30"
@@ -195,7 +211,7 @@ Window {
                 function formEntry() {
                     const port = parseInt(fPort.text) || (kind.ssh ? 22 : 5900)
                     return { name: fName.text.length ? fName.text : fHost.text, type: kind.value, host: fHost.text, port: port,
-                             username: fUser.text, quality: quality.value, keyFile: fKey.text }
+                             username: fUser.text, quality: quality.value, keyFile: fKey.text, tmux: fTmux.text }
                 }
                 Row { spacing: 8
                     Rectangle { width: 140; height: 34; radius: 8; color: "#3d6de6"
@@ -210,7 +226,7 @@ Window {
                         MouseArea { anchors.fill: parent; onClicked: {
                             if (!fHost.text.length) return
                             const e = form.formEntry()
-                            if (kind.ssh) win.connectSsh(fName.text, e.host, e.port, e.username, fPass.text, e.keyFile)
+                            if (kind.ssh) win.connectSsh(fName.text, e.host, e.port, e.username, fPass.text, e.keyFile, e.tmux)
                             else win.connectTo(fName.text, e.host, e.port, e.username, fPass.text, e.quality) } } } }
             }
         }

@@ -38,7 +38,8 @@ public:
     int cols() const { return m_cols; }
     int scrollbackLines() const { return m_scrollback.size(); }
 
-    Q_INVOKABLE void open(const QString &host, int port, const QString &username, const QString &password, const QString &keyFile);
+    // tmux: a session name; the login attaches to it (tmux new-session -A), so the shell survives a closed tab
+    Q_INVOKABLE void open(const QString &host, int port, const QString &username, const QString &password, const QString &keyFile, const QString &tmux = QString());
     Q_INVOKABLE void close();
     Q_INVOKABLE void resize(int rows, int cols);
     Q_INVOKABLE void sendText(const QString &text);              // paste: raw bytes to the remote

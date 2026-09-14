@@ -21,11 +21,15 @@ public:
     Q_INVOKABLE void remove(const QString &name);
     Q_INVOKABLE QString password(const QString &name) const;
     Q_INVOKABLE QVariantMap get(const QString &name) const;
+    // the tabs open right now (~/.config/mylinux/vnc/session.json): written on every change, removed when the last
+    // tab closes or the window is closed on purpose, so a machine restart or a shell restart brings them back
+    Q_INVOKABLE QVariantList session() const;
+    Q_INVOKABLE void saveSession(const QVariantList &tabs);
     static QString secretKey(const QString &name, const QString &type = "vnc");
 signals:
     void changed();
 private:
     void load(); bool store();
-    QString m_path, m_secrets;
+    QString m_path, m_secrets, m_sessionPath;
     QVariantList m_list;
 };

@@ -48,6 +48,8 @@ WaylandCompositor {
             if (!ready && needsDisk.some(k => cmd.indexOf(k) >= 0)) continue
             Launcher.launch(cmd); launched++
         }
+        // the VNC/SSH viewer left tabs open when the shell or the machine went down: bring them back
+        if (ready && Launcher.fileExists("/root/.config/mylinux/vnc/session.json")) { Launcher.launch("/usr/bin/vnc", ["--restore"]); launched++ }
         if (!ready && launched === 0) Launcher.launch("/usr/bin/foot")
         if (ready && launched === 0) startupMenu.start()
         if (ready) autostarted = true

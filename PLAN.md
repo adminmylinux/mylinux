@@ -825,3 +825,12 @@ the output settles (400 ms) on something other than a prompt. machines.json entr
 keyFile; older entries read as vnc. Main.qml: tab suffix "(ssh)", A−/A+/Paste in the bar for SSH tabs, a type switch
 in the form. Not yet: mouse selection/copy, mouse reporting to remote programs, per-machine font size. vmtest ssh_tab
 installs openssh-server on the test disk and types through the tab.
+
+Viewer session restore and tmux (2026-09-14): Main.qml saves the open tabs (type, name, host, port, username, keyFile,
+tmux, quality) to ~/.config/mylinux/vnc/session.json on every change once a tab was added or closed (sessionsChanged
+also fires while the window is built, which used to erase the file), removes it when the last tab closes or the window
+is closed on purpose (onClosing); a SIGTERM or a dying compositor leaves it. runAutostart in the shell starts
+`vnc --restore` when the file exists (apps disk ready), which reopens each tab through the saved machine (password
+from the secrets store; unsaved "connect once" tabs come back without a password). SSH machines carry an optional tmux
+session name: ssh -t ... tmux new-session -A -s <name>, so the shell survives a closed tab. vmtest ssh_tab: SIGTERM,
+S99shell restart, viewer back and connected, `tmux display -p '#S'` inside the tab reads "main".

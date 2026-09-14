@@ -151,6 +151,12 @@ opens as its own tab, so several sessions run side by side. The OpenSSH client i
 be named per machine. The tab bar has A−/A+ for the text size and Paste (also Ctrl+Shift+V); Shift+PageUp
 scrolls the history. `vnc <name>` in a terminal opens a saved SSH machine too.
 
+Open tabs come back after a restart: the viewer remembers them (`~/.config/mylinux/vnc/session.json`) and the
+shell reopens it with the same VNC and SSH connections when the machine or the shell starts again. Closing
+the window or its last tab forgets them. For an SSH machine, name a **tmux session** in its profile and the
+login attaches to it (`tmux new-session -A`): whatever ran there survives a closed tab or a restart. That
+needs tmux on the remote machine.
+
 ### Bar modules
 
 Your own items in the menu bar, in the shape of Omarchy's bar modules: a descriptor per module in

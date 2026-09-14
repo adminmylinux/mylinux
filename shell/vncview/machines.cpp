@@ -14,6 +14,7 @@ Machines::Machines(QObject *parent) : QObject(parent)
     const QString home = qEnvironmentVariable("HOME", "/root");
     m_path = home + "/.config/mylinux/vnc/machines.json";
     m_secrets = home + "/.config/mylinux/secrets.env";
+    m_sessionPath = home + "/.config/mylinux/vnc/session.json";
     load();
 }
 
@@ -88,13 +89,31 @@ void Machines::save(const QVariantMap &entry, const QString &password)
     const int port = entry["port"].toInt(); e["port"] = port > 0 ? port : (type == "ssh" ? 22 : 5900);
     e["username"] = entry["username"].toString().trimmed();
     if (type == "vnc") { const QString q = entry["quality"].toString(); e["quality"] = q.isEmpty() ? "balanced" : q; }
-    else e["keyFile"] = entry["keyFile"].toString().trimmed();
+    else { e["keyFile"] = entry["keyFile"].toString().trimmed(); e["tmux"] = entry["tmux"].toString().trimmed(); }
     bool replaced = false;
     for (int i = 0; i < m_list.size(); ++i) if (m_list[i].toMap()["name"] == n) { m_list[i] = e; replaced = true; }
     if (!replaced) m_list << e;
     if (!store()) qWarning() << "vncview: cannot write" << m_path;
     if (!password.isEmpty()) { QMap<QString, QString> s = readSecrets(m_secrets); s[secretKey(n, type)] = password; if (!writeSecrets(m_secrets, s)) qWarning() << "vncview: cannot write" << m_secrets; }
     emit changed();
+}
+
+QVariantList Machines::session() const
+{
+    QFile f(m_sessionPath); QVariantList out;
+    if (f.open(QIODevice::ReadOnly)) for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) out << v.toObject().toVariantMap();
+    return out;
+}
+
+void Machines::saveSession(const QVariantList &tabs)
+{
+    if (tabs.isEmpty()) { QFile::remove(m_sessionPath); return; }
+    QDir().mkpath(QFileInfo(m_sessionPath).path());
+    QSaveFile f(m_sessionPath);
+    if (!f.open(QIODevice::WriteOnly)) return;
+    QJsonArray a; for (const QVariant &v : tabs) a << QJsonObject::fromVariantMap(v.toMap());
+    f.write(QJsonDocument(a).toJson(QJsonDocument::Compact));
+    f.commit();
 }
 
 void Machines::remove(const QString &name)

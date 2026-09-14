@@ -34,7 +34,7 @@ void SshSession::setState(const QString &s, const QString &err)
     emit changed(); emit damaged();
 }
 
-void SshSession::open(const QString &host, int port, const QString &username, const QString &password, const QString &keyFile)
+void SshSession::open(const QString &host, int port, const QString &username, const QString &password, const QString &keyFile, const QString &tmux)
 {
     close();
     m_host = host; m_port = port > 0 ? port : 22; m_password = password; m_passwordSent = false; m_recent.clear();
@@ -60,12 +60,16 @@ void SshSession::open(const QString &host, int port, const QString &username, co
         if (!getenv("LANG")) setenv("LANG", "C.UTF-8", 1);
         signal(SIGPIPE, SIG_DFL); signal(SIGINT, SIG_DFL); signal(SIGCHLD, SIG_DFL);
         QByteArray target = (username.isEmpty() ? host : username + "@" + host).toUtf8(), portS = QByteArray::number(m_port), key = keyFile.toUtf8();
-        const char *argv[16]; int n = 0;
+        const QByteArray session = tmux.trimmed().toUtf8();
+        const char *argv[24]; int n = 0;
         argv[n++] = "ssh"; argv[n++] = "-p"; argv[n++] = portS.constData();
         argv[n++] = "-o"; argv[n++] = "StrictHostKeyChecking=accept-new";       // first contact is trusted, a changed key still refused
         argv[n++] = "-o"; argv[n++] = "ServerAliveInterval=30";
         if (!key.isEmpty()) { argv[n++] = "-i"; argv[n++] = key.constData(); }
-        argv[n++] = target.constData(); argv[n] = nullptr;
+        if (!session.isEmpty()) argv[n++] = "-t";                                    // a tty for tmux
+        argv[n++] = target.constData();
+        if (!session.isEmpty()) { argv[n++] = "tmux"; argv[n++] = "new-session"; argv[n++] = "-A"; argv[n++] = "-s"; argv[n++] = session.constData(); }
+        argv[n] = nullptr;
         execvp("ssh", const_cast<char *const *>(argv));
         const char *msg = "vncview: cannot run ssh (is the OpenSSH client installed?)\r\n";
         if (write(STDOUT_FILENO, msg, strlen(msg)) < 0) {}

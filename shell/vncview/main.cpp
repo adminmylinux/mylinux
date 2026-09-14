@@ -15,6 +15,7 @@ int main(int argc, char *argv[])
     app.setDesktopFileName("vncview");                      // the Wayland app id the compositor's grab rule looks for
     QString host, name; int port = 5900;
     const QStringList args = app.arguments().mid(1);
+    const bool restore = args.contains("--restore");          // reopen the tabs of the previous run (session.json)
     if (!args.isEmpty() && !args[0].startsWith('-')) {
         const QString a = args[0]; const int c = a.lastIndexOf(':');
         if (c > 0 && a.mid(c + 1).toInt() > 0) { host = a.left(c); port = a.mid(c + 1).toInt(); } else host = a;
@@ -24,6 +25,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("startHost", host);
     engine.rootContext()->setContextProperty("startPort", port);
     engine.rootContext()->setContextProperty("startName", name);
+    engine.rootContext()->setContextProperty("startRestore", restore);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("VncView", "Main");
     return app.exec();

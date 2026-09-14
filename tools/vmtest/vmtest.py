@@ -495,9 +495,9 @@ def ensure_sshd(vm):
 
 def scenario_ssh_tab(vm):
     """An SSH machine opens as a terminal tab: the saved password answers the prompt, typing reaches the remote shell,
-    A+ enlarges the text (fewer columns)."""
+    A+ works; an open tab survives a shutdown-like end (the shell reopens the viewer) and reattaches to its tmux."""
     ensure_sshd(vm)
-    vm.serial("mkdir -p /root/.config/mylinux/vnc; printf '[{\"name\":\"testssh\",\"type\":\"ssh\",\"host\":\"127.0.0.1\",\"port\":2222,\"username\":\"root\",\"keyFile\":\"\"}]' > /root/.config/mylinux/vnc/machines.json; printf 'SSH_TESTSSH_PASSWORD=test\\n' > /root/.config/mylinux/secrets.env; chmod 600 /root/.config/mylinux/secrets.env; rm -f /root/ssh-typed.txt; echo", 2)
+    vm.serial("mkdir -p /root/.config/mylinux/vnc; printf '[{\"name\":\"testssh\",\"type\":\"ssh\",\"host\":\"127.0.0.1\",\"port\":2222,\"username\":\"root\",\"keyFile\":\"\",\"tmux\":\"main\"}]' > /root/.config/mylinux/vnc/machines.json; printf 'SSH_TESTSSH_PASSWORD=test\\n' > /root/.config/mylinux/secrets.env; chmod 600 /root/.config/mylinux/secrets.env; rm -f /root/ssh-typed.txt; echo", 2)
     vm.qmp("combo", "meta_l-3", "sleep", 0.8)
     launcher = "/usr/bin/vnc" if "vnc-present" in vm.serial("test -x /usr/bin/vnc && echo vnc-pre''sent", 2) else "env XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=wayland-0 QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software /mnt/share/vncview"
     vm.serial("killall vncview 2>/dev/null; cd /root; setsid %s 127.0.0.1 testssh > /var/log/vncview.log 2>&1 < /dev/null & echo" % launcher, 2)
@@ -519,7 +519,30 @@ def scenario_ssh_tab(vm):
     # A+ in the tab bar (the surface is re-laid out; a crash here would end the viewer before the close below)
     d = vm.diag(); right = d["layerX"] + w["x"] + w["width"]; top = d["layerY"] + w["y"] + w["titleHeight"]
     vm.qmp("click", right - 366, top + 16, "sleep", 1.2)
-    vm.serial("killall vncview; apps-run pkill -f 'sshd -p 2222'; echo", 2)
+    # the open tab is remembered: a SIGTERM (what a shutdown does) leaves session.json, and the restarted shell
+    # starts the viewer again with the tab reconnected (through tmux "main", which needs tmux on the test disk)
+    if "tmux-present" not in vm.serial("apps-run test -x /usr/bin/tmux && echo tmux-pre''sent", 2):
+        marker = os.path.join(SHARE, "vmtest", "tmux.done")
+        if os.path.exists(marker): os.remove(marker)
+        vm.serial("setsid sh -c 'apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends tmux; echo rc=$? > /mnt/share/vmtest/tmux.done' < /dev/null > /var/log/tmux-install.log 2>&1 &", 2)
+        deadline = time.time() + 300
+        while time.time() < deadline and not os.path.exists(marker): time.sleep(5)
+    vm.serial("killall -TERM vncview; sleep 1; apps-run tmux kill-server 2>/dev/null; printf '[{\"host\":\"127.0.0.1\",\"name\":\"testssh\",\"port\":2222,\"type\":\"ssh\",\"username\":\"root\",\"tmux\":\"main\"}]' > /root/.config/mylinux/vnc/session.json; : > /var/log/apps.log; /etc/init.d/S99shell restart; echo", 4)
+    time.sleep(12); vm.wait_for(lambda d: d is not None, "shell back", 60)
+    d = vm.wait_for(lambda d: any(w["appId"] == "vncview" and w["mapped"] for w in d["windows"]), "viewer brought back by the shell", 40)
+    deadline = time.time() + 30
+    while time.time() < deadline and "state connected" not in vm.serial("cat /var/log/apps.log; echo", 1): time.sleep(1)
+    if "state connected" not in vm.serial("cat /var/log/apps.log; echo", 1): raise Fail("the restored SSH tab did not reconnect")
+    w = [w for w in d["windows"] if w["appId"] == "vncview"][0]
+    vm.qmp("combo", "meta_l-%d" % w["workspace"], "sleep", 1.5)
+    d = vm.diag(); w = [w for w in d["windows"] if w["appId"] == "vncview"][0]     # placed by the tiling by now
+    vm.qmp("click", d["layerX"] + w["x"] + w["width"] // 2, d["layerY"] + w["y"] + w["titleHeight"] + w["height"] // 2, "sleep", 0.8,
+           "type", "tmux display -p '#S' > /root/tmux-name.txt\n", "sleep", 2.5)
+    if os.path.exists(typed): os.remove(typed)
+    vm.serial("cp /mnt/apps/root/tmux-name.txt /mnt/share/vmtest/ssh-typed.txt 2>/dev/null; echo", 2)
+    got = open(typed).read().strip() if os.path.exists(typed) else ""
+    if got != "main": raise Fail("the restored tab is not inside the tmux session (got %r)" % got)
+    vm.serial("killall vncview; apps-run tmux kill-server 2>/dev/null; apps-run pkill -f 'sshd -p 2222'; rm -f /root/.config/mylinux/vnc/session.json; echo", 2)
     vm.wait_for(lambda d: not any(w["appId"] == "vncview" for w in d["windows"]), "viewer closed", 10)
 
 
