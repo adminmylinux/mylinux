@@ -9,6 +9,48 @@
 #include <QFile>
 #include <QDate>
 #include <cstdio>
+#include <string>
+#include <csignal>
+#include <cstring>
+#include <ctime>
+#include <execinfo.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+// A crash leaves the report shell-run copies to share/shell-exits.log: the signal, a backtrace (addresses resolve with
+// addr2line against the unstripped build, using the load address from the maps lines) and the mappings.
+static void writeStr(int fd, const char *s) { if (write(fd, s, strlen(s)) < 0) {} }
+static void onFatalSignal(int sig)
+{
+    int fd = open("/run/mylinux-shell/crash.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        char line[96];
+        snprintf(line, sizeof line, "myshell: fatal signal %d (%s) at %ld\n", sig, strsignal(sig), long(time(nullptr)));
+        writeStr(fd, line);
+        void *frames[64];
+        const int n = backtrace(frames, 64);
+        backtrace_symbols_fd(frames, n, fd);
+        writeStr(fd, "-- maps (myshell, Qt)\n");
+        int maps = open("/proc/self/maps", O_RDONLY);
+        if (maps >= 0) {
+            char buf[4096]; ssize_t r;
+            // only the lines naming the binary or Qt libraries keep the report short
+            std::string pending;
+            while ((r = read(maps, buf, sizeof buf)) > 0) {
+                pending.append(buf, size_t(r));
+                size_t nl;
+                while ((nl = pending.find('\n')) != std::string::npos) {
+                    const std::string l = pending.substr(0, nl + 1); pending.erase(0, nl + 1);
+                    if (l.find("myshell") != std::string::npos || l.find("libQt6") != std::string::npos) writeStr(fd, l.c_str());
+                }
+            }
+            close(maps);
+        }
+        close(fd);
+    }
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
 
 int main(int argc, char *argv[])
 {
@@ -34,6 +76,9 @@ int main(int argc, char *argv[])
         return 0;
     }
     // The compositor itself runs on eglfs (KMS); its clients talk Wayland.
+
+    for (int sig : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT}) signal(sig, onFatalSignal);
+    backtrace(nullptr, 0);      // loads libgcc now: the first backtrace() call allocates, which a crashed heap may not survive
 
     qputenv("QT_QPA_PLATFORM", qgetenv("MYSHELL_PLATFORM").isEmpty() ? "eglfs" : qgetenv("MYSHELL_PLATFORM"));
     QGuiApplication app(argc, argv);

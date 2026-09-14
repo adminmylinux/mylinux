@@ -1,0 +1,37 @@
+#!/bin/sh
+# Runs the desktop shell and starts it again when it dies: a crashed compositor used to leave a black screen until
+# someone found a terminal outside it. Every unexpected exit is recorded on the share (visible on the Mac even when
+# the desktop is gone): exit status, the end of the shell's log, and myshell's own crash report if it wrote one.
+# S99shell stop creates the stop flag before ending the shell, so a deliberate stop is not restarted.
+# Usage: shell-run <binary>        (S99shell starts it in its own session)
+BIN="$1"
+RUN=${MYLINUX_SHELL_RUN:-/run/mylinux-shell}
+LOG=${MYLINUX_SHELL_LOG:-/var/log/shell.log}
+EXITS=${MYLINUX_SHELL_EXITS:-/mnt/share/shell-exits.log}
+MAX=${MYLINUX_SHELL_MAX_RESTARTS:-3}         # restarts allowed within WINDOW seconds before giving up
+WINDOW=${MYLINUX_SHELL_WINDOW:-60}
+mkdir -p "$RUN"
+: > "$LOG"
+recent=""
+while :; do
+  "$BIN" < /dev/null >> "$LOG" 2>&1
+  rc=$?
+  [ -e "$RUN/stop" ] && exit 0
+  now=$(date +%s)
+  if [ "$rc" -gt 128 ]; then why="signal $((rc - 128))"; else why="exit status $rc"; fi
+  {
+    echo "== $(date '+%Y-%m-%d %H:%M:%S') myshell ended unexpectedly ($why)"
+    tail -n 20 "$LOG"
+    [ -s "$RUN/crash.txt" ] && { echo "-- crash report"; cat "$RUN/crash.txt"; }
+  } >> "$EXITS" 2>/dev/null
+  rm -f "$RUN/crash.txt"
+  kept=""
+  for t in $recent; do [ $((now - t)) -lt "$WINDOW" ] && kept="$kept $t"; done
+  recent="$kept $now"
+  if [ "$(echo $recent | wc -w)" -gt "$MAX" ]; then
+    echo "== giving up: more than $MAX restarts within ${WINDOW}s (restartshell to try again)" >> "$EXITS" 2>/dev/null
+    exit 1
+  fi
+  echo "== restarting" >> "$EXITS" 2>/dev/null
+  sleep 1
+done

@@ -24,8 +24,10 @@ orb run -m debian sh -c "
   [ -f CMakeCache.txt ] || cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE='$SDK/share/buildroot/toolchainfile.cmake' -DCMAKE_BUILD_TYPE=Release '$HERE/$DIR' > cmake.log
   if ! ninja > ninja.log 2>&1; then grep -v '^\[' ninja.log | tail -25; echo 'BUILD FAILED'; exit 1; fi
   tail -2 ninja.log
-  cp -f $BIN '$HERE/share/$BIN'
-  [ -x bin/vncview ] && cp -f bin/vncview '$HERE/share/vncview' && echo 'vncview -> share/vncview (the vnc wrapper in the VM prefers it)'
+  # new file + rename, never an in-place overwrite: a guest process running the old binary from the share keeps
+  # its (old) file instead of paging in the new one's bytes
+  cp -f $BIN '$HERE/share/.$BIN.new' && mv -f '$HERE/share/.$BIN.new' '$HERE/share/$BIN'
+  [ -x bin/vncview ] && cp -f bin/vncview '$HERE/share/.vncview.new' && mv -f '$HERE/share/.vncview.new' '$HERE/share/vncview' && echo 'vncview -> share/vncview (the vnc wrapper in the VM prefers it)'
 "
 ls -la share/$BIN
 echo "In the VM: /etc/init.d/S99shell restart   (or reboot)"

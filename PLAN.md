@@ -791,3 +791,13 @@ initial-color-theme picks one for new terminals and Launcher.setTerminalPalette 
 foot process (checked via /proc/pid/comm). Terminals are not bitmap-scaled any more (surfaceScale 1): foot renders at
 terminalFontPt × scale (Theme.terminalRenderPt), which is sharp at 0.75x where the scaled bitmap smeared. The top-right
 resize corner was shrunk like the top-left one so it no longer covers the button. vmtest terminal_settings.
+
+Shell crash recovery (2026-09-14): a myshell crash (seen once when switching 0.75x -> 1x on the user's machine, not
+reproducible in the test VM) left a black screen. /usr/lib/mylinux/shell-run now runs the shell and restarts it
+(at most 3 restarts in 60 s), appending each unexpected exit to share/shell-exits.log: signal or status, the end of
+/var/log/shell.log and myshell's crash report. myshell installs a fatal-signal handler (main.cpp) that writes the
+signal, a backtrace and its maps lines to /run/mylinux-shell/crash.txt (resolve with addr2line against
+~/br/shell-build/myshell). S99shell stop sets /run/mylinux-shell/stop first. A share/myshell dev build runs from a RAM
+copy in /run, and tools/app-build.sh replaces share binaries by rename instead of overwriting them in place (a guest
+running the old file from 9p could page in the new bytes; suspected, not proven, as the cause of that crash).
+Tests: tools/tests/guest.sh shell-run.

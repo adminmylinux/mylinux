@@ -21,16 +21,25 @@ case "$1" in
       export QT_QPA_EGLFS_KMS_CONFIG=/tmp/kms.json
     fi
     L=$(sed -n 's/^layout=//p' $SHARE/mylinux.ini 2>/dev/null | head -1); export XKB_DEFAULT_LAYOUT="${L:-us}" XKB_DEFAULT_VARIANT=mac
-    SHELL_BIN=/usr/bin/myshell; [ -x $SHARE/myshell ] && SHELL_BIN=$SHARE/myshell
+    SHELL_BIN=/usr/bin/myshell
+    # A dev build in the share runs from a RAM copy: the Mac side replaces share/myshell while this one runs, and a
+    # binary executed straight from 9p pages its code in from whatever the file holds by then (crashes on first use
+    # of a code path). The copy keeps the name myshell (killall, ps).
+    if [ -x $SHARE/myshell ] && mkdir -p /run/mylinux-shell && cp $SHARE/myshell /run/mylinux-shell/myshell.new \
+        && mv -f /run/mylinux-shell/myshell.new /run/mylinux-shell/myshell; then
+      SHELL_BIN=/run/mylinux-shell/myshell
+    fi
     [ -x $SHARE/myapp ] && export PATH="$SHARE:$PATH"
     printf 'Starting shell (%s): ' "$SHELL_BIN"
-    # Own session: a shell started from a terminal window must not die with that terminal.
-    setsid "$SHELL_BIN" < /dev/null > /var/log/shell.log 2>&1 &
+    # Own session: a shell started from a terminal window must not die with that terminal. shell-run restarts it
+    # after a crash and records why in share/shell-exits.log.
+    mkdir -p /run/mylinux-shell && rm -f /run/mylinux-shell/stop
+    setsid /usr/lib/mylinux/shell-run "$SHELL_BIN" < /dev/null > /dev/null 2>&1 &
     echo OK
     # Mac <-> guest text clipboard (see clipboard-bridge); one instance is enough across shell restarts
     pidof clipboard-bridge > /dev/null || setsid /usr/bin/clipboard-bridge < /dev/null > /var/log/clipboard.log 2>&1 &
     ;;
-  stop) killall myshell 2>/dev/null ;;
+  stop) mkdir -p /run/mylinux-shell && touch /run/mylinux-shell/stop; killall myshell 2>/dev/null ;;
   restart)
     # Detach first: when run from a terminal inside the desktop, stopping the compositor closes that
     # terminal, which would kill this script before it restarts the shell (black screen).

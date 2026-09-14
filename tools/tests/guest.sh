@@ -209,5 +209,36 @@ has "gtk-3.0 back to light" "$(cat "$H/.config/gtk-3.0/settings.ini")" "gtk-appl
 hasnt "Chromium flag removed for light" "$(cat "$AR/etc/chromium.d/mylinux-appearance")" "force-dark-mode"
 ( HOME_DIR="$H" APPS_ROOT="$AR" sh "$CS" blue ) 2>/dev/null; is_rc "bad mode refused" $? 2
 
+echo "usr/lib/mylinux/shell-run"
+SR="$OV/usr/lib/mylinux/shell-run"; SRD="$T/shellrun"; mkdir -p "$SRD"
+# a fake shell: counts its runs, crashes (SIGSEGV) the first two times, then waits for the stop flag and is "killed"
+cat > "$SRD/myshell" <<EOF2
+#!/bin/sh
+n=\$(cat "$SRD/runs" 2>/dev/null || echo 0); n=\$((n + 1)); echo \$n > "$SRD/runs"
+echo "log line of run \$n"
+if [ \$n -le 2 ]; then printf 'myshell: fatal signal 11\\n0x1234\\n' > "$SRD/run/crash.txt"; kill -SEGV \$\$; fi
+while [ ! -e "$SRD/run/stop" ]; do sleep 0.2; done
+exit 143
+EOF2
+chmod +x "$SRD/myshell"
+export MYLINUX_SHELL_RUN="$SRD/run" MYLINUX_SHELL_LOG="$SRD/shell.log" MYLINUX_SHELL_EXITS="$SRD/exits.log"
+sh "$SR" "$SRD/myshell" 2>/dev/null & SRPID=$!
+for i in $(seq 1 50); do [ "$(cat "$SRD/runs" 2>/dev/null)" = 3 ] && break; sleep 0.2; done
+is "a crashed shell is started again" "$(cat "$SRD/runs")" 3
+has "the exit is recorded with its signal" "$(cat "$SRD/exits.log")" "ended unexpectedly (signal 11)"
+has "the end of the shell log is recorded" "$(cat "$SRD/exits.log")" "log line of run 1"
+has "the crash report is recorded" "$(cat "$SRD/exits.log")" "myshell: fatal signal 11"
+[ ! -e "$SRD/run/crash.txt" ] && ok "the crash report is not repeated for the next exit" || ko "crash report left behind"
+touch "$SRD/run/stop"
+for i in $(seq 1 30); do kill -0 $SRPID 2>/dev/null || break; sleep 0.2; done
+kill -0 $SRPID 2>/dev/null && { ko "a deliberate stop ends shell-run"; kill $SRPID; } || ok "a deliberate stop ends shell-run"
+is "a deliberate stop is not recorded as a crash" "$(grep -c 'ended unexpectedly' "$SRD/exits.log")" 2
+# crash loop: a shell that always dies is given up on after MAX restarts
+printf '#!/bin/sh\nexit 1\n' > "$SRD/broken"; chmod +x "$SRD/broken"; rm -f "$SRD/run/stop" "$SRD/exits.log"
+MYLINUX_SHELL_MAX_RESTARTS=2 sh "$SR" "$SRD/broken"; is_rc "a crash loop gives up" $? 1
+is "the crash loop ran MAX + 1 times" "$(grep -c 'ended unexpectedly' "$SRD/exits.log")" 3
+has "giving up is recorded" "$(cat "$SRD/exits.log")" "giving up"
+unset MYLINUX_SHELL_RUN MYLINUX_SHELL_LOG MYLINUX_SHELL_EXITS
+
 if [ $fails -eq 0 ]; then echo "guest: all passed"; else echo "guest: $fails failed"; fi
 exit $fails
