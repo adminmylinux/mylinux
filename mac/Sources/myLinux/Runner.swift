@@ -130,20 +130,41 @@ final class Runner: ObservableObject {
                 DispatchQueue.main.async { if self?.state == .starting { self?.state = .running } }   // running, console unavailable
                 return
             }
-            var on: Int32 = 1
-            setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
-            DispatchQueue.main.async {
-                guard let self else { close(fd); return }
-                self.serialFD = fd; self.consoleConnected = true
-                if self.state == .starting { self.state = .running }
-            }
-            Runner.readLoop(fd: fd) { [weak self] text in
-                DispatchQueue.main.async { self?.appendConsole(text) }
-            }
-            DispatchQueue.main.async {
-                guard let self, self.serialFD == fd else { return }
-                self.closeSerial()
-            }
+            self?.readConsole(fd)
+        }
+    }
+
+    /// Runs on a background queue until the guest side closes (QEMU exited).
+    private func readConsole(_ fd: Int32) {
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { close(fd); return }
+            self.serialFD = fd; self.consoleConnected = true
+            if self.state == .starting { self.state = .running }
+        }
+        Runner.readLoop(fd: fd) { [weak self] text in
+            DispatchQueue.main.async { self?.appendConsole(text) }
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.serialFD == fd else { return }
+            self.closeSerial()
+            // a machine this launcher did not start ends here (there is no child process to report it)
+            if self.process == nil && (self.state == .stopping || self.state == .inUseElsewhere) { self.state = .stopped; self.stoppingSince = nil }
+        }
+    }
+
+    /// The console of a machine started elsewhere (an earlier launcher, a terminal running run.sh with the same
+    /// socket): the socket path comes from the profile, so a relaunched launcher can still reach the root shell.
+    private var attaching = false
+    func attachConsole() {
+        guard state == .inUseElsewhere, serialFD < 0, !attaching, FileManager.default.fileExists(atPath: serialSocket) else { return }
+        attaching = true
+        let path = serialSocket
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let fd = Runner.connectUnix(path)
+            DispatchQueue.main.async { self?.attaching = false }
+            if fd >= 0 { self?.readConsole(fd) }
         }
     }
 
@@ -175,7 +196,7 @@ final class Runner: ObservableObject {
 
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
-        guard state == .running || state == .starting else { return }
+        guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) else { return }
         guard consoleConnected else { forceQuit(); return }
         state = .stopping; stoppingSince = Date()
         send("\u{03}")                       // interrupt whatever the console shell is running
@@ -202,7 +223,8 @@ final class Runner: ObservableObject {
         case .stopped, .failed, .inUseElsewhere:
             let inUse = Runner.diskInUse(disk)
             if inUse && state != .inUseElsewhere { state = .inUseElsewhere }
-            if !inUse && state == .inUseElsewhere { state = .stopped }
+            if !inUse && state == .inUseElsewhere { state = .stopped; closeSerial() }
+            if inUse { attachConsole() }
         default: break
         }
     }

@@ -21,7 +21,7 @@ struct MachineView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if showConsole && (runner.isActive || !runner.console.isEmpty) {
+            if showConsole && (runner.isActive || runner.consoleConnected || !runner.console.isEmpty) {
                 ConsoleView(runner: runner)
             } else {
                 form
@@ -38,7 +38,7 @@ struct MachineView: View {
                     Text("Console").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .disabled(!runner.isActive && runner.console.isEmpty)
+                .disabled(!runner.isActive && !runner.consoleConnected && runner.console.isEmpty)
             }
         }
     }
@@ -68,7 +68,11 @@ struct MachineView: View {
                     Text("Shutting down…").foregroundStyle(.secondary)
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }
                 case .inUseElsewhere:
-                    Text("Running outside the app").foregroundStyle(.secondary)
+                    Text(runner.consoleConnected ? "Started outside this launcher" : "Running outside the app").foregroundStyle(.secondary)
+                    if runner.consoleConnected {
+                        Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
+                            .buttonStyle(.borderedProminent)
+                    }
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }
                 }
             }
