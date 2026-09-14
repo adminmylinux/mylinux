@@ -12,7 +12,8 @@ Window {
     color: "#141416"
     readonly property color accent: "#2f6fe6"
     readonly property string font: "Inter"
-    property var sessions: []            // { title, host, port, session: VncSession, surface }
+    property var sessions: []            // { title, host, port, session: VncSession }
+    property var currentSurface: null    // the VncSurface of the shown tab (zoom controls act on it)
     property bool fullscreen: visibility === Window.FullScreen
 
     Component { id: sessionComp; VncSession {} }
@@ -56,6 +57,20 @@ Window {
         }
         Row { anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter; spacing: 10
             Text { visible: tabs.currentIndex >= 0; text: tabs.currentIndex >= 0 && win.sessions[tabs.currentIndex] ? (win.sessions[tabs.currentIndex].session.state + (win.sessions[tabs.currentIndex].session.fbWidth ? "  " + win.sessions[tabs.currentIndex].session.fbWidth + "×" + win.sessions[tabs.currentIndex].session.fbHeight : "")) : ""; color: "#9a9aa2"; font.pixelSize: 11; font.family: win.font }
+            // zoom: fit / steps / real pixels; when zoomed in the view follows the pointer
+            Row { id: zoomRow; visible: tabs.currentIndex >= 0 && win.currentSurface !== null; spacing: 4; anchors.verticalCenter: parent.verticalCenter
+                component ZoomButton: Rectangle { property string label; property bool selected: false; signal clicked()
+                    width: Math.max(26, zl.implicitWidth + 12); height: 22; radius: 5
+                    color: selected ? win.accent : zm.containsMouse ? "#3a3a42" : "#2a2a30"; border.color: selected ? win.accent : "#3a3a42"
+                    Text { id: zl; anchors.centerIn: parent; text: parent.label; color: "white"; font.pixelSize: 12; font.family: win.font }
+                    MouseArea { id: zm; anchors.fill: parent; hoverEnabled: true; onClicked: parent.clicked() } }
+                ZoomButton { label: "Fit"; selected: win.currentSurface && Math.abs(win.currentSurface.zoom - 1) < 0.001; onClicked: win.currentSurface.zoom = 1 }
+                ZoomButton { label: "−"; onClicked: win.currentSurface.zoomStep(-1) }
+                Text { width: 44; height: 22; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter
+                       text: win.currentSurface ? Math.round(win.currentSurface.displayScale * 100) + "%" : ""; color: "#e6e6ea"; font.pixelSize: 12; font.family: win.font }
+                ZoomButton { label: "+"; onClicked: win.currentSurface.zoomStep(1) }
+                ZoomButton { label: "1:1"; selected: win.currentSurface && Math.abs(win.currentSurface.displayScale - 1) < 0.01; onClicked: win.currentSurface.zoomToPixels() }
+            }
             Text { text: "F11 full screen · Ctrl+Alt+G release keys"; color: "#6e6e78"; font.pixelSize: 11; font.family: win.font }
         }
     }
@@ -66,8 +81,9 @@ Window {
         Repeater { model: win.sessions
             Item { anchors.fill: parent; visible: tabs.currentIndex === index
                 VncSurface { id: surf; anchors.fill: parent; session: modelData.session; focus: visible
-                             onVisibleChanged: if (visible) forceActiveFocus()
-                             Component.onCompleted: forceActiveFocus()
+                             onVisibleChanged: if (visible) { forceActiveFocus(); win.currentSurface = surf }
+                             Component.onCompleted: { forceActiveFocus(); if (visible) win.currentSurface = surf }
+                             Component.onDestruction: if (win.currentSurface === surf) win.currentSurface = null
                              Keys.onPressed: (ev) => { if (ev.key === Qt.Key_F11) { win.toggleFullscreen(); ev.accepted = true } } }
                 // unknown or changed TLS certificate: show the fingerprint, trust pins it (~/.config/mylinux/vnc/certs)
                 Rectangle { anchors.centerIn: parent; visible: modelData.session.state === "untrusted"; width: Math.min(parent.width - 40, 620); height: trustCol.implicitHeight + 36; radius: 10; color: "#ee1e1e22"

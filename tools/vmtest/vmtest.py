@@ -502,6 +502,18 @@ def scenario_vnc_viewer(vm):
     got = open(out).read() if os.path.exists(out) else ""
     if stamp not in got:
         raise Fail("typed text did not reach the remote xterm through the viewer: %r" % got)
+    # zoomed in (+ in the tab bar) the view follows the pointer and clicks still land: type a second stamp
+    vm.qmp("click", sx + W - 266, sy + 16, "sleep", 0.8)
+    vm.qmp("click", int(sx + ox + 250 * scale), int(sy + oy + 150 * scale), "sleep", 0.8)   # the same spot follows the pointer at the fit position
+    stamp2 = "zoom%d" % int(time.time())
+    vm.qmp("type", stamp2 + "\n", "sleep", 1.5)
+    if os.path.exists(out): os.remove(out)
+    vm.serial("cp /tmp/vnc-typed /mnt/share/vmtest/vnc-typed.txt; echo", 2)
+    time.sleep(0.5)
+    got = open(out).read() if os.path.exists(out) else ""
+    if stamp2 not in got:
+        raise Fail("typed text did not reach the remote xterm while zoomed: %r" % got)
+    vm.qmp("click", sx + W - 372, sy + 16, "sleep", 0.6)     # Fit
     # fullscreen + grab
     vm.qmp("key", "f11", "sleep", 1.2)
     d = vm.wait_for(lambda d: any(w["appId"] == "vncview" and w["fullscreen"] and w["clientFullscreen"] for w in d["windows"]) and d["inputGrabbed"], "viewer fullscreen with the input grab on", 10)

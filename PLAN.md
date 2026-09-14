@@ -808,3 +808,9 @@ phosphor on black). ThemeStore::terminalPalette(id, mode) is the one source; app
 shell (Launcher::setTerminalPalette finds the child whose stdin is /dev/pts/N): foot cannot reload its config, and
 SIGUSR1/2 only toggle the two palettes it loaded at start, which cannot express three modes. terminal/palette in
 mylinux.ini; the older highContrast=true reads as contrast. vmtest terminal_settings picks Retro from the dropdown.
+
+VNC zoom (2026-09-14): the viewer's tab bar has Fit / − / percent / + / 1:1. VncSurface.zoom multiplies the fitted
+size (steps 1, 1.25, 1.5, 2, 3, 4; 1:1 = one remote pixel per item pixel, also below 1 for a small remote); when the
+picture is larger than the item the visible part follows the pointer (VncSurface::follow, 40 px edge margin), so
+clicks map to the same remote spot as the pointer and no scrollbars are needed. displayScale re-emits on the remote's
+resize and the item's geometry (the label read 100% before the first frame otherwise). vnc_viewer types while zoomed.

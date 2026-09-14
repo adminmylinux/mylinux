@@ -30,7 +30,7 @@ void VncSurface::setSession(VncSession *s)
             const qreal sx = t.width() / fb.width(), sy = t.height() / fb.height();
             update(QRect(int(std::floor(t.x() + r.x() * sx)) - 1, int(std::floor(t.y() + r.y() * sy)) - 1, int(std::ceil(r.width() * sx)) + 2, int(std::ceil(r.height() * sy)) + 2));
         });
-        connect(s, &VncSession::resized, this, [this] { update(); });
+        connect(s, &VncSession::resized, this, [this] { emit changed(); update(); });   // displayScale follows the remote's size
     }
     emit sessionChanged(); update();
 }
@@ -40,8 +40,58 @@ QRectF VncSurface::target() const
     if (!m_session || m_session->fbWidth() <= 0) return boundingRect();
     const QSizeF fb(m_session->fbWidth(), m_session->fbHeight());
     if (!m_keepAspect) return boundingRect();
-    QSizeF s = fb.scaled(size(), Qt::KeepAspectRatio);
-    return QRectF((width() - s.width()) / 2, (height() - s.height()) / 2, s.width(), s.height());
+    QSizeF s = fb.scaled(size(), Qt::KeepAspectRatio) * m_zoom;
+    // centred while it fits; once larger than the item, the pan fraction picks the visible part
+    const qreal x = s.width() <= width() ? (width() - s.width()) / 2 : -(s.width() - width()) * m_pan.x();
+    const qreal y = s.height() <= height() ? (height() - s.height()) / 2 : -(s.height() - height()) * m_pan.y();
+    return QRectF(x, y, s.width(), s.height());
+}
+
+double VncSurface::displayScale() const
+{
+    if (!m_session || m_session->fbWidth() <= 0) return 1;
+    return target().width() / m_session->fbWidth();
+}
+
+void VncSurface::setZoom(double z)
+{
+    z = qBound(0.25, z, 8.0);              // below 1 only through 1:1 on a remote smaller than the window
+    if (qFuzzyCompare(z, m_zoom)) return;
+    m_zoom = z; emit changed(); update();
+}
+
+void VncSurface::zoomStep(int dir)
+{
+    static const double steps[] = { 1, 1.25, 1.5, 2, 3, 4 };
+    if (m_zoom < 1 - 1e-6) { setZoom(dir > 0 ? 1 : m_zoom); return; }
+    int i = 0;
+    for (int k = 0; k < 6; ++k) if (steps[k] <= m_zoom + 1e-6) i = k;
+    i = qBound(0, i + dir, 5);
+    setZoom(steps[i]);
+}
+
+void VncSurface::zoomToPixels()
+{
+    if (!m_session || m_session->fbWidth() <= 0 || width() <= 0) return;
+    const QSizeF fit = QSizeF(m_session->fbWidth(), m_session->fbHeight()).scaled(size(), Qt::KeepAspectRatio);
+    setZoom(m_session->fbWidth() / fit.width());
+}
+
+// the pointer's position as a fraction of the item, with a margin so the edges are reachable without pushing
+// the pointer out of the window
+void VncSurface::follow(const QPointF &p)
+{
+    if (m_zoom <= 1 || width() <= 0 || height() <= 0) return;
+    const qreal m = 40;
+    const QPointF pan(qBound(0.0, (p.x() - m) / qMax(1.0, width() - 2 * m), 1.0), qBound(0.0, (p.y() - m) / qMax(1.0, height() - 2 * m), 1.0));
+    if ((pan - m_pan).manhattanLength() < 0.002) return;
+    m_pan = pan; emit changed(); update();
+}
+
+void VncSurface::geometryChange(const QRectF &n, const QRectF &o)
+{
+    QQuickPaintedItem::geometryChange(n, o);
+    if (n.size() != o.size()) emit changed();       // the fit, and so displayScale, depend on the item's size
 }
 
 void VncSurface::paint(QPainter *p)
@@ -77,8 +127,8 @@ static int rfbButton(Qt::MouseButton b)
 
 void VncSurface::mousePressEvent(QMouseEvent *e) { forceActiveFocus(); m_mask |= rfbButton(e->button()); pointer(e->position(), m_mask); e->accept(); }
 void VncSurface::mouseReleaseEvent(QMouseEvent *e) { m_mask &= ~rfbButton(e->button()); pointer(e->position(), m_mask); e->accept(); }
-void VncSurface::mouseMoveEvent(QMouseEvent *e) { pointer(e->position(), m_mask); e->accept(); }
-void VncSurface::hoverMoveEvent(QHoverEvent *e) { pointer(e->position(), m_mask); }
+void VncSurface::mouseMoveEvent(QMouseEvent *e) { follow(e->position()); pointer(e->position(), m_mask); e->accept(); }
+void VncSurface::hoverMoveEvent(QHoverEvent *e) { follow(e->position()); pointer(e->position(), m_mask); }
 void VncSurface::wheelEvent(QWheelEvent *e)
 {
     // one RFB wheel click per 120 units; buttons 4/5 vertical, 6/7 horizontal
