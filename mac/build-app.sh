@@ -26,14 +26,10 @@ cp run.sh "$NEW/Contents/Resources/runtime/"
 for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done
-# icon, also handed to make-app-bundle.sh for the QEMU wrapper (a Mac without python3 cannot render it)
-ICON=out/mac/myLinux.icns
-[ -f "$ICON" ] || {
-  python3 tools/gen-icon.py out/mac/myLinux.png
-  sips -s format icns out/mac/myLinux.png --out "$ICON" >/dev/null
-}
-cp "$ICON" "$NEW/Contents/Resources/myLinux.icns"
-cp "$ICON" "$NEW/Contents/Resources/runtime/tools/myLinux.icns"
+# icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds
+mkdir -p "$NEW/Contents/Resources/runtime/tools/icons"
+cp "tools/icons/myLinux Launcher.icns" "$NEW/Contents/Resources/myLinux Launcher.icns"
+cp tools/icons/myLinux.icns "$NEW/Contents/Resources/runtime/tools/icons/myLinux.icns"
 
 VERSION=$(git -C "$REPO" describe --tags --always 2>/dev/null || echo 0.1)
 cat > "$NEW/Contents/Info.plist" <<PLIST
@@ -44,7 +40,7 @@ cat > "$NEW/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>myLinux Launcher</string>
   <key>CFBundleExecutable</key><string>myLinux Launcher</string>
   <key>CFBundleIdentifier</key><string>dev.mylinux.launcher</string>
-  <key>CFBundleIconFile</key><string>myLinux</string>
+  <key>CFBundleIconFile</key><string>myLinux Launcher</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>

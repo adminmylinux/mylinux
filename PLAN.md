@@ -755,3 +755,11 @@ path. Standalone the app downloads releases into Application Support; Settings >
 mac/build-app.sh bundles run.sh + tools into Contents/Resources/runtime and names the app "myLinux Launcher" (the
 QEMU wrapper is already "myLinux"). Tests: mac/Tests (11, in tools/check.sh) plus MYLINUX_OUT/PLACER cases in
 tools/tests/scripts.sh.
+
+App icons (2026-09-14): tools/icons/icons.swift draws both icons with Core Graphics on Apple's 824/1024 grid with
+continuous corners (SwiftUI's continuous rounded rectangle). myLinux (the QEMU wrapper, the desktop): navy-violet-pink
+dusk gradient, a window with traffic lights and a glowing cyan ">" and pink "_", a small dock. myLinux Launcher: the
+same window in a teal-blue-indigo gradient with a translucent second machine behind it and a white play button in the
+desktop icon's pink-violet. tools/icons/make-icons.sh packs .icns (16-1024 px) and the files are committed;
+make-app-bundle.sh copies tools/icons/myLinux.icns whenever it differs (gen-icon.py is the fallback only), build-app.sh
+uses the launcher icon and ships the desktop one in its runtime copy.

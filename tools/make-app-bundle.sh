@@ -42,13 +42,15 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>NSHighResolutionCapable</key><false/>
 </dict></plist>
 PLIST
-# icon: rounded gradient square with a window glyph, rendered by tools/gen-icon.py, converted with sips; a prebuilt
-# tools/myLinux.icns (shipped inside the Mac launcher app, where python3 may be missing) is used as is. No icon is
-# not an error.
-[ -f "$APP/Contents/Resources/myLinux.icns" ] || {
-  if [ -f tools/myLinux.icns ]; then cp -f tools/myLinux.icns "$APP/Contents/Resources/myLinux.icns"
-  elif python3 tools/gen-icon.py "$APP/Contents/Resources/myLinux.png" 2>/dev/null; then
-    sips -s format icns "$APP/Contents/Resources/myLinux.png" --out "$APP/Contents/Resources/myLinux.icns" >/dev/null || true
+# icon: tools/icons/myLinux.icns (drawn by tools/icons/make-icons.sh, committed), refreshed whenever it changes so an
+# existing bundle picks up a new icon; the Finder and Dock cache icons, so the bundle is touched after a change.
+# Without that file (an old checkout), tools/gen-icon.py renders the original one. No icon is not an error.
+ICNS="$APP/Contents/Resources/myLinux.icns"
+if [ -f tools/icons/myLinux.icns ]; then
+  if ! cmp -s tools/icons/myLinux.icns "$ICNS"; then cp -f tools/icons/myLinux.icns "$ICNS" && touch "$APP"; fi
+elif [ ! -f "$ICNS" ]; then
+  if python3 tools/gen-icon.py "$APP/Contents/Resources/myLinux.png" 2>/dev/null; then
+    sips -s format icns "$APP/Contents/Resources/myLinux.png" --out "$ICNS" >/dev/null || true
   else echo "warning: no icon (python3 unavailable)" >&2; fi
-}
+fi
 echo "$APP ready"
