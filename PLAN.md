@@ -775,3 +775,19 @@ Scale below 1x (2026-09-14): the Display panel offers 0.5x and 0.75x (and ⌘⌥
 contract already allowed 0.5..3. Below 1 the shell chrome is drawn smaller but sharp and client surfaces get a larger
 logical size, drawn scaled down by the compositor (smoothly filtered, so fine text softens at 0.5x). Checked headless
 (-display none, QMP screendumps) at 1, 0.75 and 0.5 with both web apps and the panel row of seven buttons.
+
+Popup menus (2026-09-14): QtWayland's auto-created popup items take keyboard focus on a press (focusOnClick); the
+toplevel losing focus made Firefox close its menu 13 ms after the press, so no menu item could be clicked (found with
+WAYLAND_DEBUG=client). MacWindow.quietPopups turns focusOnClick off for popups and nested submenus. vmtest
+firefox_popup_menu (☰ > Settings), which fails on the previous shell.
+
+Terminal settings (2026-09-14): foot windows get a ⚙ at the right of our title bar. Text size A−/A+ zooms the open
+terminal live through Launcher.sendControlKey (QKeyEvent via sendFullKeyEvent: QML's WaylandSeat.sendKeyEvent sends
+bare keys without the Control modifier; "+" or "=" whichever the layout has unshifted) and saves the size for new
+terminals; foot.ini has resize-keep-grid=no so a tiled terminal keeps its window size (Qt's XdgToplevel has no tiled
+states). Colours: foot.ini carries the theme palette as [colors-dark] and a derived high-contrast palette (opaque,
+black/white ground, colours lifted to readable lightness: ThemeStore::contrastColor) as [colors-light];
+initial-color-theme picks one for new terminals and Launcher.setTerminalPalette sends SIGUSR1/SIGUSR2 to the window's
+foot process (checked via /proc/pid/comm). Terminals are not bitmap-scaled any more (surfaceScale 1): foot renders at
+terminalFontPt × scale (Theme.terminalRenderPt), which is sharp at 0.75x where the scaled bitmap smeared. The top-right
+resize corner was shrunk like the top-left one so it no longer covers the button. vmtest terminal_settings.

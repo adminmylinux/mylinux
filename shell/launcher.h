@@ -13,7 +13,12 @@ public:
     explicit Launcher(QObject *parent = nullptr);
     Q_INVOKABLE bool launch(const QString &program, const QStringList &args = {});
     Q_INVOKABLE QString socketName() const;
-    Q_INVOKABLE void setTerminalFont(int pt);
+    // switch a running foot terminal between its two palettes (SIGUSR1 theme, SIGUSR2 high contrast); only a
+    // process whose name is foot is signalled
+    Q_INVOKABLE bool setTerminalPalette(qint64 pid, bool highContrast);
+    // Ctrl+<key> to the seat's keyboard focus, `times` times, with the modifier state the client sees (QML's
+    // WaylandSeat.sendKeyEvent sends bare keys). The first of `keys` that exists unshifted on the layout is used.
+    Q_INVOKABLE bool sendControlKey(QObject *seat, const QVariantList &keys, int times) const;
     Q_INVOKABLE bool hostCommand(const QString &cmd);
     Q_INVOKABLE bool fileExists(const QString &path) const;
     Q_INVOKABLE bool writeFile(const QString &path, const QString &text) const;   // atomic (tmp + rename)

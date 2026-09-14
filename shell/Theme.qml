@@ -13,6 +13,11 @@ QtObject {
     property real textScale: bounded("display/textScale", 1.0, 0.5, 3)
     property real brightness: bounded("display/brightness", 1.0, 0.2, 1)
     property int terminalFontPt: bounded("display/terminalFontPt", 11, 6, 40)
+    // terminals are not bitmap-scaled (MacWindow.surfaceScale): foot draws its own text at size × scale, sharp at any scale
+    readonly property real terminalRenderPt: Math.round(terminalFontPt * scale * 2) / 2
+    property bool terminalContrast: String(Settings.value("terminal/highContrast", "false")) === "true"
+    function applyTerminal() { ThemeStore.applyTerminal(themeId, terminalRenderPt, terminalContrast) }
+    onTerminalRenderPtChanged: applyTerminal()
     // keyboard layout sent to Wayland clients (xkb): us / no / is, Apple-keyboard variant
     // "en" is what the website used to write for the US layout
     property string keyboardLayout: { const l = String(Settings.value("input/layout", "us")); return l === "en" ? "us" : (["us", "no", "is"].indexOf(l) >= 0 ? l : "us") }
@@ -42,7 +47,7 @@ QtObject {
     function setTheme(id) {
         themeId = id; backgroundIndex = 0
         Settings.set("theme/id", id); Settings.set("theme/background", 0)
-        ThemeStore.applyTerminal(id, terminalFontPt)
+        applyTerminal()
     }
     function nextBackground() {
         const b = themeData && themeData.backgrounds ? themeData.backgrounds : []
@@ -59,7 +64,7 @@ QtObject {
     readonly property int outputScale: 1
 
     // write the terminal palette for the persisted theme at start-up (foot reads it per launch)
-    Component.onCompleted: { ThemeStore.applyTerminal(themeId, terminalFontPt); applyClipboardSharing(); Launcher.launch("/usr/bin/color-scheme-apply", [darkMode ? "dark" : "light"]) }
+    Component.onCompleted: { applyTerminal(); applyClipboardSharing(); Launcher.launch("/usr/bin/color-scheme-apply", [darkMode ? "dark" : "light"]) }
 
     function setScale(v) { scale = v; Settings.set("display/scale", v) }
     // Our macOS-style title bars: "auto" = only for apps that do not decorate themselves, "always", "never"
@@ -86,5 +91,6 @@ QtObject {
     function setTitleBars(v) { titleBars = v; Settings.set("wm/titlebars", v) }
     function setTextScale(v) { textScale = v; Settings.set("display/textScale", v) }
     function setBrightness(v) { brightness = v; Settings.set("display/brightness", v) }
-    function setTerminalFontPt(v) { terminalFontPt = v; Settings.set("display/terminalFontPt", v); ThemeStore.applyTerminal(themeId, v) }
+    function setTerminalFontPt(v) { terminalFontPt = v; Settings.set("display/terminalFontPt", v); applyTerminal() }
+    function setTerminalContrast(on) { terminalContrast = on; Settings.set("terminal/highContrast", on ? "true" : "false"); applyTerminal() }
 }

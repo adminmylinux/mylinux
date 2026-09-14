@@ -19,7 +19,10 @@ public:
     bool converting() const { return m_converting; }
     Q_INVOKABLE QVariantMap theme(const QString &id) const;
     Q_INVOKABLE void rescan();
-    Q_INVOKABLE void applyTerminal(const QString &id, int fontPt);   // rewrite foot.ini colours + font
+    // rewrite foot.ini: font size (fractional), the theme palette as [colors-dark] and a high-contrast palette derived
+    // from it as [colors-light]; initial-color-theme picks one for new terminals, SIGUSR1/2 switch running ones
+    Q_INVOKABLE void applyTerminal(const QString &id, double fontPt, bool highContrast = false);
+    static QString contrastColor(const QString &hex, bool darkBackground, int slot);   // exposed for tests
     // Convert every *.webp under dir to .png (libwebp loaded at runtime; Qt has no WebP plugin here).
     // Returns the number converted, -1 if libwebp is missing.
     static int convertWebp(const QString &dir);

@@ -1,4 +1,5 @@
 #include "themestore.h"
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -92,18 +93,45 @@ QVariantMap ThemeStore::theme(const QString &id) const
     return m_themes.isEmpty() ? QVariantMap() : m_themes.first().toMap();
 }
 
-void ThemeStore::applyTerminal(const QString &id, int fontPt)
+// High contrast from a theme colour: on a dark background everything is pushed towards white (and fully
+// saturated hues keep their identity), on a light one towards black. Slot 0/8 (black) and 7/15 (white) become the
+// extremes, so `ls` and prompt colours stay legible even when the terminal is drawn small.
+QString ThemeStore::contrastColor(const QString &hex, bool darkBackground, int slot)
+{
+    const int base = slot % 8;
+    if (base == 0) return darkBackground ? (slot < 8 ? "000000" : "9a9a9a") : (slot < 8 ? "000000" : "3a3a3a");
+    if (base == 7) return darkBackground ? "ffffff" : (slot < 8 ? "1a1a1a" : "000000");
+    QColor c(QLatin1Char('#') + hex);
+    if (!c.isValid()) return darkBackground ? "ffffff" : "000000";
+    float h, sat, l, a; c.getHslF(&h, &sat, &l, &a);
+    if (darkBackground) l = qMax(l, slot < 8 ? 0.68f : 0.80f);
+    else l = qMin(l, slot < 8 ? 0.30f : 0.22f);
+    sat = qMax(sat, 0.55f);
+    return QColor::fromHslF(h, sat, l).name().mid(1);
+}
+
+void ThemeStore::applyTerminal(const QString &id, double fontPt, bool highContrast)
 {
     const QVariantMap t = theme(id); if (t.isEmpty()) return;
     const QVariantMap c = t["colors"].toMap();
     auto col = [&](const char *k, const char *def) { return c.value(k, def).toString().mid(1); };   // foot wants no '#'
-    QString ini = QStringLiteral("font=DejaVu Sans Mono:size=%1\npad=10x8\ninitial-window-size-pixels=760x440\n[csd]\npreferred=none\n").arg(fontPt);
+    fontPt = qBound(4.0, fontPt, 60.0);
+    QString ini = QStringLiteral("font=DejaVu Sans Mono:size=%1\npad=10x8\ninitial-window-size-pixels=760x440\ninitial-color-theme=%2\n# zooming (the title bar settings, Ctrl+plus/minus) keeps the window size: tiled terminals must not grow\nresize-keep-grid=no\n[csd]\npreferred=none\n")
+                      .arg(QString::number(fontPt, 'g', 3), highContrast ? QStringLiteral("light") : QStringLiteral("dark"));
     QString colors = QStringLiteral("alpha=0.97\nbackground=%1\nforeground=%2\nselection-foreground=%3\nselection-background=%4\n")
                .arg(col("background", "#1e1e1e"), col("foreground", "#e6e6e6"), col("selection_foreground", "#ffffff"), col("selection_background", "#444444"));
     for (int i = 0; i < 8; ++i) colors += QStringLiteral("regular%1=%2\n").arg(i).arg(col(QByteArray("color" + QByteArray::number(i)).constData(), "#888888"));
     for (int i = 0; i < 8; ++i) colors += QStringLiteral("bright%1=%2\n").arg(i).arg(col(QByteArray("color" + QByteArray::number(i + 8)).constData(), "#aaaaaa"));
-    // foot 1.26 wants the per-mode sections (plain [colors] is deprecated); we use one palette for both
-    ini += "[colors-dark]\n" + colors + "[colors-light]\n" + colors;
+    // the second palette ("light" to foot) is high contrast: opaque, black or white ground, legible colours
+    const bool dark = QColor(QLatin1Char('#') + col("background", "#1e1e1e")).lightnessF() < 0.5;
+    QString contrast = QStringLiteral("alpha=1.0\nbackground=%1\nforeground=%2\nselection-foreground=%3\nselection-background=%4\n")
+               .arg(dark ? "000000" : "ffffff", dark ? "ffffff" : "000000", dark ? "000000" : "ffffff", dark ? "ffffff" : "000000");
+    for (int i = 0; i < 16; ++i) {
+        const QString src = col(QByteArray("color" + QByteArray::number(i)).constData(), i < 8 ? "#888888" : "#aaaaaa");
+        contrast += QStringLiteral("%1%2=%3\n").arg(i < 8 ? "regular" : "bright").arg(i % 8).arg(contrastColor(src, dark, i));
+    }
+    // foot 1.26: [colors-dark] / [colors-light], SIGUSR1 switches a running terminal to dark, SIGUSR2 to light
+    ini += "[colors-dark]\n" + colors + "[colors-light]\n" + contrast;
     QFile f("/etc/xdg/foot/foot.ini");
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) { f.write(ini.toUtf8()); f.close(); }
     else qWarning() << "theme: cannot write foot.ini";

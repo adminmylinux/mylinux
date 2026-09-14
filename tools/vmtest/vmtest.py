@@ -204,6 +204,44 @@ def scenario_firefox_popup_menu(vm):
     vm.serial("killall firefox-esr", 2)
 
 
+def scenario_terminal_settings(vm):
+    """The terminal title bar's settings: A+ zooms the open terminal without growing its window and saves the size,
+    High contrast is saved for new terminals (foot.ini initial-color-theme=light, the high-contrast palette)."""
+    ini = os.path.join(SHARE, "mylinux.ini")
+    def ini_value(key):
+        import re
+        m = re.search(r"(?m)^%s=(.*)$" % key, open(ini).read()); return m.group(1) if m else None
+    vm.qmp("combo", "meta_l-5", "sleep", 0.8, "combo", "meta_l-ret")
+    d = vm.wait_for(lambda d: d["workspace"] == 5 and any(w["appId"] == "foot" and w["mapped"] and w["workspace"] == 5 for w in d["windows"]), "terminal on workspace 5", 30)
+    time.sleep(1)
+    w = [w for w in d["windows"] if w["appId"] == "foot" and w["workspace"] == 5][0]
+    k = d["scale"]
+    right = d["layerX"] + w["x"] + w["width"]; top = d["layerY"] + w["y"]
+    before_pt = int(ini_value("terminalFontPt") or 11)
+    vm.qmp("click", int(right - 26 * k), int(top + w["titleHeight"] / 2), "sleep", 1.2)       # the gear
+    pop_left = right - 276 * k; pop_top = top + w["titleHeight"] + 4 * k
+    vm.qmp("click", int(pop_left + 148 * k), int(pop_top + 49 * k), "sleep", 1.2)            # A+
+    vm.qmp("click", int(pop_left + 196 * k), int(pop_top + 110 * k), "sleep", 1.2)           # High contrast
+    d2 = vm.diag(); w2 = [x for x in d2["windows"] if x["appId"] == "foot" and x["workspace"] == 5][0]
+    try:
+        if int(ini_value("terminalFontPt") or 0) != min(40, before_pt + 1):
+            raise Fail("A+ did not save the terminal size (%s -> %s)" % (before_pt, ini_value("terminalFontPt")))
+        if (w2["width"], w2["height"]) != (w["width"], w["height"]):
+            raise Fail("zooming changed the terminal window size %s -> %s" % ((w["width"], w["height"]), (w2["width"], w2["height"])))
+        if ini_value("highContrast") != "true":
+            raise Fail("High contrast was not saved")
+        out = os.path.join(SHARE, "vmtest", "foot.ini")
+        vm.serial("cp /etc/xdg/foot/foot.ini /mnt/share/vmtest/foot.ini; echo", 2)
+        foot = open(out).read() if os.path.exists(out) else ""
+        if "initial-color-theme=light" not in foot or "resize-keep-grid=no" not in foot:
+            raise Fail("foot.ini does not start new terminals in high contrast / keep the window size")
+    finally:
+        # back through the same buttons (editing mylinux.ini under a running shell is undone by its next write)
+        vm.qmp("click", int(pop_left + 52 * k), int(pop_top + 49 * k), "sleep", 1.2)         # A−
+        vm.qmp("click", int(pop_left + 72 * k), int(pop_top + 110 * k), "sleep", 1.2)        # Theme
+        vm.serial("killall foot; echo", 2)
+
+
 def scenario_empty_workspace_focus(vm):
     vm.qmp("combo", "meta_l-9", "sleep", 0.8)
     d = vm.wait_for(lambda d: d["workspace"] == 9, "workspace 9")
@@ -699,6 +737,7 @@ SCENARIOS = [
     ("scale_relayout", scenario_scale_relayout),
     ("client_fullscreen", scenario_client_fullscreen),
     ("firefox_popup_menu", scenario_firefox_popup_menu),
+    ("terminal_settings", scenario_terminal_settings),
     ("agent_usage_fixtures", scenario_agent_usage_fixtures),
     ("clipboard_fidelity", scenario_clipboard_fidelity),
     ("shell_restart", scenario_shell_restart),

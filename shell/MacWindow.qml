@@ -19,8 +19,12 @@ Item {
     readonly property int titleHeight: showTitle ? Theme.px(34) : 0
     onTitleHeightChanged: if (tiled && output && output.tilings) output.tilingOf(win).relayout()   // re-send the tile size
     readonly property int radius: Theme.px(12)
-    // fractional UI scale is applied to the client surface as an item scale; integer scale is HiDPI in the client
-    readonly property real surfaceScale: Theme.scale / Theme.outputScale
+    // fractional UI scale is applied to the client surface as an item scale; integer scale is HiDPI in the client.
+    // Terminals are the exception: foot draws its text at size × scale itself (Theme.terminalRenderPt), which stays
+    // sharp where a scaled-down bitmap smears thin glyphs.
+    readonly property bool isTerminal: !!toplevel && toplevel.appId === "foot"
+    readonly property real surfaceScale: isTerminal ? 1 : Theme.scale / Theme.outputScale
+    onIsTerminalChanged: reconfigure()
     property bool minimized: false
     property int workspace: 1
     property bool scratch: false          // lives on the scratchpad (⌘S shows/hides it over any workspace)
@@ -61,7 +65,7 @@ Item {
     property rect savedGeo: Qt.rect(0, 0, 0, 0)      // floating geometry before fullscreen / zoom (surface units)
     property bool savedTiled: false                  // was in the tiling tree when fullscreen started
     readonly property bool activated: !!output && output.focusedWindow === win
-    onActivatedChanged: reconfigure()
+    onActivatedChanged: { reconfigure(); if (!activated) termSettings.visible = false }
     property rect tileRect: Qt.rect(0, 0, 0, 0)
     function xdgStates(extra) {
         const s = []
@@ -254,6 +258,17 @@ Item {
                 text: win.title; color: "#3a3a3c"; font.pixelSize: Theme.fpx(14); font.family: Theme.uiFont; font.bold: true
                 elide: Text.ElideRight; width: parent.width - 180; horizontalAlignment: Text.AlignHCenter
             }
+            // terminal settings (text size, colours)
+            Rectangle {
+                id: termGear
+                visible: win.isTerminal
+                anchors.right: parent.right; anchors.rightMargin: Theme.px(14); anchors.verticalCenter: parent.verticalCenter
+                width: Theme.px(24); height: width; radius: Theme.px(6)
+                color: termSettings.visible ? "#d4d4d8" : gearMouse.containsMouse ? "#dedee2" : "transparent"
+                Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 1; text: "⚙"; color: "#4a4a4e"; font.pixelSize: Theme.fpx(15); font.family: Theme.uiFont }
+                MouseArea { id: gearMouse; anchors.fill: parent; hoverEnabled: true
+                    onClicked: { win.raise(); termSettings.visible = !termSettings.visible } }
+            }
         }
 
         // The client's pixels
@@ -271,9 +286,70 @@ Item {
             onChildrenChanged: win.quietPopups(surfaceItem)
             onSurfaceDestroyed: { if (win.output) win.output.removeWindow(win); win.destroy() }
             // Passive grab: raise on click without stealing the press from the client.
-            TapHandler { gesturePolicy: TapHandler.DragThreshold; onPressedChanged: if (pressed) win.raise() }
+            TapHandler { gesturePolicy: TapHandler.DragThreshold; onPressedChanged: if (pressed) { termSettings.visible = false; win.raise() } }
         }
 
+    }
+
+    // ---- terminal settings popover ----
+    // Text size: the window zooms right away through foot's own keys (Ctrl+plus/minus, 0.5 pt a step) and the size is
+    // saved for new terminals. Colours: foot keeps the theme palette and a high-contrast one; SIGUSR1/SIGUSR2 switch a
+    // running terminal, and the choice is saved for new ones.
+    // Control+key to this terminal (Launcher.sendControlKey picks "+" or "=", whichever the layout has unshifted)
+    function terminalKeys(keys, times) {
+        const seat = output && output.compositor ? output.compositor.defaultSeat : null
+        if (!seat) return
+        surfaceItem.takeFocus()
+        Launcher.sendControlKey(seat, keys, times)
+    }
+    function terminalZoom(step) {
+        const pt = Math.max(6, Math.min(40, Theme.terminalFontPt + step))
+        if (pt === Theme.terminalFontPt) return
+        terminalKeys(step > 0 ? [Qt.Key_Plus, Qt.Key_Equal] : [Qt.Key_Minus], Math.max(1, Math.round(Theme.scale * 2)))   // 1 pt × scale
+        Theme.setTerminalFontPt(pt)
+    }
+    function terminalContrast(on) {
+        Theme.setTerminalContrast(on)
+        const client = shellSurface && shellSurface.surface ? shellSurface.surface.client : null
+        if (client) Launcher.setTerminalPalette(client.processId, on)
+    }
+    Rectangle {
+        id: termSettings
+        visible: false
+        z: 250
+        anchors.right: parent.right; anchors.rightMargin: Theme.px(8)
+        y: win.titleHeight + Theme.px(4)
+        width: Theme.px(268); height: termCol.implicitHeight + Theme.px(24)
+        radius: Theme.px(10); color: "#f7f7f9"; border.color: "#c9c9ce"
+        Rectangle { anchors.fill: parent; anchors.margins: -Theme.px(5); z: -1; radius: parent.radius + Theme.px(5); color: "#26000000" }
+        MouseArea { anchors.fill: parent }          // keep clicks off the terminal underneath
+        component PopButton: Rectangle {
+            property string label; property bool selected: false; signal clicked()
+            height: Theme.px(28); radius: Theme.px(6)
+            color: selected ? "#2f6fea" : pm.pressed ? "#d0d0d6" : pm.containsMouse ? "#e3e3e8" : "#ececf0"
+            border.color: selected ? "#2f6fea" : "#d2d2d8"
+            Text { anchors.centerIn: parent; text: parent.label; color: parent.selected ? "white" : "#1c1c1e"; font.pixelSize: Theme.fpx(12); font.family: Theme.uiFont }
+            MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; onClicked: parent.clicked() }
+        }
+        Column {
+            id: termCol
+            x: Theme.px(12); y: Theme.px(12); width: parent.width - Theme.px(24); spacing: Theme.px(10)
+            Text { text: "TEXT SIZE"; color: "#6b6b72"; font.pixelSize: Theme.fpx(10); font.bold: true; font.family: Theme.uiFont }
+            Row { spacing: Theme.px(6)
+                PopButton { width: Theme.px(40); label: "A−"; onClicked: win.terminalZoom(-1) }
+                Text { width: Theme.px(64); height: Theme.px(28); verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter
+                       text: Theme.terminalFontPt + " pt"; color: "#1c1c1e"; font.pixelSize: Theme.fpx(13); font.family: Theme.uiFont }
+                PopButton { width: Theme.px(40); label: "A+"; onClicked: win.terminalZoom(1) }
+                PopButton { width: Theme.px(64); label: "Reset"; onClicked: { win.terminalKeys([Qt.Key_0], 1); Theme.setTerminalFontPt(11) } }
+            }
+            Text { text: "COLORS"; color: "#6b6b72"; font.pixelSize: Theme.fpx(10); font.bold: true; font.family: Theme.uiFont }
+            Row { spacing: Theme.px(6)
+                PopButton { width: (termCol.width - Theme.px(6)) / 2; label: "Theme"; selected: !Theme.terminalContrast; onClicked: win.terminalContrast(false) }
+                PopButton { width: (termCol.width - Theme.px(6)) / 2; label: "High contrast"; selected: Theme.terminalContrast; onClicked: win.terminalContrast(true) }
+            }
+            Text { width: termCol.width; wrapMode: Text.WordWrap; color: "#6b6b72"; font.pixelSize: Theme.fpx(11); font.family: Theme.uiFont
+                   text: "Changes this window now and every new terminal." }
+        }
     }
 
     // Omarchy-style ⌘ + left drag moves the window (floating it), ⌘ + right drag resizes it.
@@ -344,9 +420,9 @@ Item {
     ResizeHandle { edges: Qt.RightEdge;  x: parent.width - inner; y: corner; width: outer + inner; height: parent.height - 2 * corner }
     ResizeHandle { edges: Qt.TopEdge;    x: corner; y: -outer; width: parent.width - 2 * corner; height: outer + inner }
     ResizeHandle { edges: Qt.BottomEdge; x: corner; y: parent.height - inner; width: parent.width - 2 * corner; height: outer + inner }
-    // top-left corner: small, so it never covers the traffic lights (which start 12 px in)
+    // top corners: small, so they never cover the traffic lights (12 px in) or the terminal's settings button
     ResizeHandle { edges: Qt.LeftEdge | Qt.TopEdge;      x: -outer; y: -outer; width: outer + inner + 4; height: outer + inner + 4 }
-    ResizeHandle { edges: Qt.RightEdge | Qt.TopEdge;     x: parent.width - corner; y: -outer; width: corner + outer; height: corner + outer }
+    ResizeHandle { edges: Qt.RightEdge | Qt.TopEdge;     x: parent.width - inner - 4; y: -outer; width: outer + inner + 4; height: outer + inner + 4 }
     ResizeHandle { edges: Qt.LeftEdge | Qt.BottomEdge;   x: -outer; y: parent.height - corner; width: corner + outer; height: corner + outer }
     ResizeHandle { edges: Qt.RightEdge | Qt.BottomEdge;  x: parent.width - corner; y: parent.height - corner; width: corner + outer; height: corner + outer }
 }

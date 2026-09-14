@@ -1,10 +1,13 @@
 #include "launcher.h"
+#include <signal.h>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QDebug>
 #include <QFile>
 #include <QRegularExpression>
 #include <QWaylandSeat>
+#include <QWaylandKeyboard>
+#include <QKeyEvent>
 #include <QWaylandSurface>
 
 Launcher::Launcher(QObject *parent) : QObject(parent) {}
@@ -46,14 +49,29 @@ bool Launcher::launch(const QString &program, const QStringList &args)
 }
 
 
-void Launcher::setTerminalFont(int pt)
+bool Launcher::setTerminalPalette(qint64 pid, bool highContrast)
 {
-    QFile f(QStringLiteral("/etc/xdg/foot/foot.ini"));
-    if (!f.open(QIODevice::ReadOnly)) return;
-    QString ini = QString::fromUtf8(f.readAll()); f.close();
-    ini.replace(QRegularExpression(QStringLiteral("^font=.*$"), QRegularExpression::MultilineOption),
-                QStringLiteral("font=DejaVu Sans Mono:size=%1").arg(pt));
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) { f.write(ini.toUtf8()); f.close(); }
+    if (pid <= 1) return false;
+    QFile comm(QStringLiteral("/proc/%1/comm").arg(pid));
+    if (!comm.open(QIODevice::ReadOnly) || comm.readAll().trimmed() != "foot") return false;
+    return ::kill(pid_t(pid), highContrast ? SIGUSR2 : SIGUSR1) == 0;
+}
+
+bool Launcher::sendControlKey(QObject *seatObject, const QVariantList &keys, int times) const
+{
+    auto *seat = qobject_cast<QWaylandSeat *>(seatObject);
+    if (!seat || !seat->keyboardFocus() || !seat->keyboard()) return false;
+    int key = 0;
+    for (const QVariant &k : keys) if (seat->keyboard()->keyToScanCode(k.toInt())) { key = k.toInt(); break; }
+    if (!key) return false;
+    for (int i = 0; i < qBound(1, times, 8); ++i) {
+        QKeyEvent press(QEvent::KeyPress, key, Qt::ControlModifier), release(QEvent::KeyRelease, key, Qt::ControlModifier);
+        seat->sendFullKeyEvent(&press); seat->sendFullKeyEvent(&release);
+    }
+    // a bare Shift tap: the press carries no modifiers, which resets the state the client last saw
+    QKeyEvent shiftPress(QEvent::KeyPress, Qt::Key_Shift, Qt::NoModifier), shiftRelease(QEvent::KeyRelease, Qt::Key_Shift, Qt::NoModifier);
+    seat->sendFullKeyEvent(&shiftPress); seat->sendFullKeyEvent(&shiftRelease);
+    return true;
 }
 
 bool Launcher::hostCommand(const QString &cmd)
