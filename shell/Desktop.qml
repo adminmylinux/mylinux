@@ -81,8 +81,8 @@ Window {
     }
     Connections { target: Theme; function onScaleChanged() { root.relayoutAll() } function onTitleBarsChanged() { root.relayoutAll() } }
     function scaleStep(up) {
-        const steps = [1, 1.25, 1.5, 2]
-        let i = steps.findIndex(v => Math.abs(v - Theme.scale) < 0.01); if (i < 0) i = 0
+        const steps = [0.5, 0.75, 1, 1.25, 1.5, 2]
+        let i = steps.findIndex(v => Math.abs(v - Theme.scale) < 0.01); if (i < 0) i = 2
         i = Math.max(0, Math.min(steps.length - 1, i + (up ? 1 : -1))); Theme.setScale(steps[i])
     }
     // Bring a window forward wherever it is (menu bar window list, dock).

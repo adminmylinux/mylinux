@@ -77,12 +77,13 @@ Item {
 
         Label { text: "SCALE" }
         Row { spacing: Theme.px(8)
-            Repeater { model: [1, 1.25, 1.5, 2, 2.5]
+            // below 1x: more room on a small (laptop) window; the shell stays sharp, apps are drawn scaled down
+            Repeater { id: scales; model: [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5]
                 Rectangle {
-                    width: (col.width - Theme.px(8) * 4) / 5; height: Theme.px(34); radius: Theme.px(6)
+                    width: (col.width - Theme.px(8) * (scales.count - 1)) / scales.count; height: Theme.px(34); radius: Theme.px(6)
                     property bool current: Math.abs(Theme.scale - modelData) < 0.01
                     color: current ? "#4d4d58" : "#2a2a30"; border.color: current ? "#9a9aa8" : "#3a3a42"
-                    Text { anchors.centerIn: parent; text: modelData + "x"; color: "#e6e6ea"; font.pixelSize: Theme.fpx(12); font.family: Theme.monoFont }
+                    Text { anchors.centerIn: parent; text: modelData + "x"; color: "#e6e6ea"; font.pixelSize: Theme.fpx(11); font.family: Theme.monoFont }
                     MouseArea { anchors.fill: parent; onClicked: Theme.setScale(modelData) }
                 } } }
         Rectangle { width: parent.width; height: 1; color: "#33ffffff" }

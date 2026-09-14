@@ -770,3 +770,8 @@ shows under a kept Dock icon). Opened from the Dock or Finder without arguments,
 mylinux-launcher://start; the launcher (CFBundleURLTypes) brings a running machine forward or starts the last-started
 profile (UserDefaults lastStartedProfile, set on every start; the first profile otherwise). Arguments pass through to
 QEMU for an older run.sh.
+
+Scale below 1x (2026-09-14): the Display panel offers 0.5x and 0.75x (and ⌘⌥/ steps down to them). Theme and the web
+contract already allowed 0.5..3. Below 1 the shell chrome is drawn smaller but sharp and client surfaces get a larger
+logical size, drawn scaled down by the compositor (smoothly filtered, so fine text softens at 0.5x). Checked headless
+(-display none, QMP screendumps) at 1, 0.75 and 0.5 with both web apps and the panel row of seven buttons.
