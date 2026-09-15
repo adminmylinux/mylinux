@@ -6,8 +6,9 @@ import Foundation
 //  - developer: a myLinux source checkout (Settings) provides run.sh, tools/ and out/, so builds and hot-swapped
 //    binaries in that checkout are what starts.
 enum Paths {
-    static let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("myLinux", isDirectory: true)
+    // MYLINUX_SUPPORT_DIR points tests at a folder of their own instead of the user's data
+    static let support: URL = ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("myLinux", isDirectory: true)
     static var profilesFile: URL { support.appendingPathComponent("profiles.json") }
     static var logs: URL { support.appendingPathComponent("logs", isDirectory: true) }
     static var machines: URL { support.appendingPathComponent("machines", isDirectory: true) }

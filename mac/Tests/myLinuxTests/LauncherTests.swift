@@ -84,3 +84,56 @@ final class PathTests: XCTestCase {
         XCTAssertFalse(Paths.isCheckout("/tmp"))
     }
 }
+
+final class RemoteTests: XCTestCase {
+    func testKeysymsForSpecialKeys() {
+        XCTAssertEqual(KeyMap.keysym(keyCode: 36, characters: "\r", charactersIgnoringModifiers: "\r", shift: false), 0xff0d)   // Return
+        XCTAssertEqual(KeyMap.keysym(keyCode: 53, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", shift: false), 0xff1b)
+        XCTAssertEqual(KeyMap.keysym(keyCode: 122, characters: "", charactersIgnoringModifiers: "", shift: false), 0xffbe)   // F1
+    }
+    func testKeysymsFollowTheLayout() {
+        XCTAssertEqual(KeyMap.keysym(keyCode: 0, characters: "a", charactersIgnoringModifiers: "a", shift: false), 0x61)
+        XCTAssertEqual(KeyMap.keysym(keyCode: 0, characters: "A", charactersIgnoringModifiers: "a", shift: true), 0x41, "Shift sends the shifted glyph")
+        XCTAssertEqual(KeyMap.keysym(keyCode: 0, characters: "\u{01}", charactersIgnoringModifiers: "a", shift: false), 0x61, "Ctrl+a arrives as a")
+        XCTAssertEqual(KeyMap.keysym(keyCode: 39, characters: "ø", charactersIgnoringModifiers: "ø", shift: false), 0xf8, "Latin-1 keysym for ø")
+        XCTAssertEqual(KeyMap.keysym(keyCode: 0, characters: "€", charactersIgnoringModifiers: "€", shift: false), 0x01000000 + 0x20ac, "Unicode keysym")
+    }
+    func testProfileDecodingToleratesOldFiles() throws {
+        let json = #"[{"id":"3E5B5E7E-0C3E-4E2E-9B7B-0F1E2D3C4B5A","name":"imac","kind":"ssh","host":"192.168.0.61"}]"#
+        let list = try JSONDecoder().decode([RemoteProfile].self, from: Data(json.utf8))
+        XCTAssertEqual(list.first?.port, 22, "an SSH profile without a port gets 22")
+        XCTAssertEqual(list.first?.keyboard, .mac)
+        XCTAssertEqual(list.first?.problems, [])
+    }
+    func testProblems() {
+        var p = RemoteProfile(kind: .vnc)
+        XCTAssertFalse(p.problems.isEmpty, "a host is required")
+        p.host = "omarchy"; p.port = 70000
+        XCTAssertFalse(p.problems.isEmpty, "the port must be valid")
+        p.port = 5900
+        XCTAssertTrue(p.problems.isEmpty)
+        XCTAssertEqual(p.keyboard, .optionSuper, "VNC desktops default to Option as Super")
+    }
+    func testCertificateDescription() throws {
+        // a self-signed certificate made for the test
+        let pem = try String(contentsOfFile: NSTemporaryDirectory() + "mylinux-test-cert.pem", encoding: .utf8)
+        let info = try XCTUnwrap(CertPin.describe(pem))
+        XCTAssertEqual(info.name, "mylinux-test")
+        XCTAssertEqual(info.fingerprint.count, 32 * 3 - 1)
+    }
+}
+
+/// Against a real VeNCrypt server: MYLINUX_TEST_VNC_HOST=192.168.0.61 swift test --filter CertProbe
+final class CertProbeTests: XCTestCase {
+    func testFetchesTheServerCertificate() throws {
+        guard let host = ProcessInfo.processInfo.environment["MYLINUX_TEST_VNC_HOST"] else { throw XCTSkip("MYLINUX_TEST_VNC_HOST not set") }
+        let done = expectation(description: "certificate")
+        var result: Result<CertPin.Info, Error>?
+        CertPin.fetch(host: host, port: 5900) { r in result = r; done.fulfill() }
+        wait(for: [done], timeout: 15)
+        let info = try XCTUnwrap(result).get()
+        XCTAssertFalse(info.name.isEmpty, "the certificate names the machine")
+        XCTAssertEqual(info.fingerprint.count, 95)
+        XCTAssertTrue(info.pem.hasPrefix("-----BEGIN CERTIFICATE-----"))
+    }
+}

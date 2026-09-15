@@ -73,6 +73,18 @@ up as "running outside the app". Keep **myLinux** itself in the Dock too (it is 
 in Application Support): clicking it starts the machine you used last through the launcher, or brings it
 forward when it is already running.
 
+**Remote machines, natively.** The launcher's sidebar has a *Remote* group: VNC desktops and SSH terminals
+opened straight from the Mac, so only one keyboard owner sits between you and the remote (see
+`docs/MAC-REMOTE-PLAN.md`). VNC uses libvncclient (Homebrew `libvncserver`) decoding into an IOSurface, with
+Tight/ZRLE, VeNCrypt TLS and a trust-on-first-use certificate sheet like the myLinux viewer's; zoom (Fit, −/+,
+1:1) follows the pointer; ⌘+trackpad and pinch zoom too. Each connection gets a keyboard mode — *Mac keeps its
+shortcuts*, *Option is Super*, or *Everything to the remote* (⌘Tab and ⌘Space included, Ctrl+Option+G gives the
+keyboard back; needs Accessibility permission once) — plus a list of shortcuts the Mac always keeps. SSH tabs run
+the Mac's `ssh` in a SwiftTerm view: your keys and agent work as in Terminal, a saved password is handed to ssh
+through an askpass helper that reads the Keychain, and a tmux session name attaches on login. Connections open as
+native window tabs and can go fullscreen per display. Passwords live in the Keychain, profiles in
+`~/Library/Application Support/myLinux/remote.json`, certificate pins next to it.
+
 Without this checkout the app works on its own: it downloads the release image into
 `~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`. It
 still needs Homebrew's QEMU (`brew install qemu`). Point Settings › Developer at a checkout to start from
@@ -274,6 +286,10 @@ run.sh / build.sh           run on the Mac / build inside Debian
 ```
 
 ## Checks and tests
+
+`tools/mac-remote-test.sh` drives the launcher's native VNC and SSH against the test VM (its ports forwarded to
+the Mac with `FORWARD=`), typing through the viewer and logging in with a Keychain password.
+
 
 ```bash
 tools/check.sh              # web typecheck + tests, shell syntax, Python syntax, QML lint, script tests

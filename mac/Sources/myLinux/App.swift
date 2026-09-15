@@ -7,6 +7,7 @@ struct MyLinuxApp: App {
     @StateObject private var settings = AppSettings.shared
     @StateObject private var store = ProfileStore.shared
     @StateObject private var runs = RunManager.shared
+    @StateObject private var remote = RemoteStore.shared
 
     var body: some Scene {
         WindowGroup("myLinux Machines") {
@@ -14,6 +15,7 @@ struct MyLinuxApp: App {
                 .environmentObject(settings)
                 .environmentObject(store)
                 .environmentObject(runs)
+                .environmentObject(remote)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -30,13 +32,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         signal(SIGPIPE, SIG_IGN)                 // a closed serial socket must not end the app
         ImageManager.shared.refresh()
+        // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--remote"), i + 1 < args.count, let id = UUID(uuidString: args[i + 1]),
+           let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { RemoteWindowController.show(p) }
+        }
     }
 
     /// mylinux-launcher://start — sent by the myLinux app in the Dock (tools/make-app-bundle.sh) when it is clicked:
     /// bring the machine forward if it runs, otherwise start the machine used last (the first one before any start).
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "mylinux-launcher" && url.host == "start" {
-            QuickStart.run()
+        for url in urls where url.scheme == "mylinux-launcher" {
+            if url.host == "start" { QuickStart.run() }
+            // mylinux-launcher://remote/<profile id>  opens a remote machine's window
+            if url.host == "remote", let id = UUID(uuidString: url.lastPathComponent), let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {
+                RemoteWindowController.show(p)
+            }
         }
     }
 

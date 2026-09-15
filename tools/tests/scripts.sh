@@ -114,6 +114,9 @@ out=$(cd "$W" && DRYRUN=1 NAME='myLinux (test)' sh run.sh 2>&1)
 has "instance name reaches QEMU" "$out" "myLinux (test)"
 out=$(cd "$W" && DRYRUN=1 PLACER=0 sh run.sh 2>&1); rc=$?
 is_rc "PLACER=0 accepted" $rc 0
+out=$(cd "$W" && DRYRUN=1 FORWARD=15905:5905,12222:2222 sh run.sh 2>&1); has "FORWARD adds host forwards to the user netdev" "$out" "user,id=n0,hostfwd=tcp:127.0.0.1:15905-:5905,hostfwd=tcp:127.0.0.1:12222-:2222"
+out=$(cd "$W" && DRYRUN=1 FORWARD=abc sh run.sh 2>&1); rc=$?
+not_rc0 "malformed FORWARD is refused" $rc
 D="$T/Application Support/myLinux"; mkdir -p "$D"; printf 'k' > "$D/Image"; printf 'r' > "$D/rootfs.cpio.gz"
 out=$(cd / && DRYRUN=1 MYLINUX_OUT="$D" SHARE_DIR="$T/s" sh "$W/run.sh" 2>&1); rc=$?
 is_rc "MYLINUX_OUT: images from another data directory" $rc 0

@@ -14,6 +14,7 @@ APP="out/mac/myLinux Launcher.app"
 NEW="out/mac/.myLinux Launcher.app.new"
 
 command -v swift >/dev/null || { echo "swift not found (install Xcode or the Command Line Tools)" >&2; exit 1; }
+export PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}:/opt/homebrew/lib/pkgconfig"     # libvncclient from Homebrew
 (cd mac && swift build -c release --product myLinux)
 BIN="$(cd mac && swift build -c release --show-bin-path)/myLinux"
 [ -x "$BIN" ] || { echo "the launcher binary was not built" >&2; exit 1; }
@@ -55,7 +56,11 @@ cat > "$NEW/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-codesign --force --sign - "$NEW" >/dev/null 2>&1 || echo "warning: could not sign the app" >&2
+# Signed with the local "myLinux Launcher (local signing)" certificate when the login keychain has one (a stable
+# signature keeps the Accessibility permission the full keyboard grab needs across rebuilds); ad hoc otherwise.
+IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(myLinux Launcher (local signing)\)".*/\1/p' | head -1)
+codesign --force --deep --sign "${IDENTITY:--}" "$NEW" >/dev/null 2>&1 || echo "warning: could not sign the app" >&2
+[ -n "$IDENTITY" ] && echo "signed with: $IDENTITY" || echo "signed ad hoc (no local signing certificate)"
 rm -rf "$APP"
 mv "$NEW" "$APP"
 echo "$APP ready"

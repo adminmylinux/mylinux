@@ -130,3 +130,17 @@ the certificate's own name works by opening the socket first and marking the cli
 
 Decision: proceed with phases 1–3 as planned; keep phase 5 (H.264) as an option after the server-side frame
 rate is understood.
+
+## Status (2026-09-15): phases 1–3 implemented
+
+In `mac/Sources/myLinux/Remote/`: `RemoteProfile` (profiles in remote.json, passwords in the Keychain through the
+`security` tool so ssh's askpass helper can read them without a prompt), `VncConnection` (libvncclient thread,
+IOSurface or staged copy, pins, cut text), `VncView` (layer, zoom/follow, wheel with momentum, pinch, keyboard modes),
+`KeyboardGrab` (HID event tap with watchdog, keep-for-Mac list, Ctrl+Option+G), `CertPin` + `TLSPeek` (the VeNCrypt
+handshake in Network.framework, the certificate read through SecureTransport's break-on-server-auth), `SshTerminal`
+(SwiftTerm over `/usr/bin/ssh`, SSH_ASKPASS to the Keychain, tmux), `RemoteWindow` (native window tabs, toolbar,
+HUD, trust and password sheets), `RemoteEditor` (SwiftUI form). `myLinux --remote <id>` and
+`mylinux-launcher://remote/<id>` open a profile. Tests: 17 XCTests (key map, profile format, certificate parsing, a
+gated probe against a real VeNCrypt server) and `tools/mac-remote-test.sh` end to end against the test VM.
+Not yet: phase 4 (session restore, ⌘K palette, import from the guest's machines.json) and 5 (H.264). Open question
+from the spike: whether ⌘Tab/⌘Space are swallowed by the tap on this macOS — the user's test decides.

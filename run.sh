@@ -5,6 +5,7 @@
 # Environment: RES=WxH, MEM=6G, APPS_IMG=path, APPS_SIZE_GB=16, SHARE_DIR=path, NAME=window title,
 #              GRAB=opt|full|none, MOUSE=tablet|relative, CLIPBOARD=0, DRYRUN=1 (print the QEMU command and exit),
 #              PLACER=0 (do not move the window onto the current display; no Automation permission needed),
+#              FORWARD=host:guest[,host:guest...] (TCP ports on 127.0.0.1 forwarded into the guest, for tests),
 #              MYLINUX_OUT=dir holding Image, rootfs.cpio.gz, the default apps.img and the myLinux.app wrapper
 #              (default: out/ of the repository; the Mac launcher app points it at its Application Support folder).
 # Works from any directory: paths are resolved against the repository, relative overrides against
@@ -79,6 +80,12 @@ case "${MOUSE:-tablet}" in
   *) die "MOUSE must be tablet or relative" ;;
 esac
 
+# Port forwards for tests: FORWARD=15905:5905,12222:2222 reaches the guest's Xvnc and sshd from the Mac.
+NETDEV="user,id=n0"
+for fw in $(printf '%s' "${FORWARD:-}" | tr ',' ' '); do
+  case "$fw" in [0-9]*:[0-9]*) NETDEV="$NETDEV,hostfwd=tcp:127.0.0.1:${fw%%:*}-:${fw##*:}" ;; *) die "FORWARD entries look like hostport:guestport (got '$fw')" ;; esac
+done
+
 # ---- the QEMU command, built as a proper argument list (no word splitting of paths) ---------------
 QEMU="$OUT/myLinux.app/Contents/MacOS/qemu-myLinux"
 set -- \
@@ -87,7 +94,7 @@ set -- \
   -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60" \
   -device "virtio-gpu-pci,xres=$XRES,yres=$YRES" \
   -device virtio-keyboard-pci -device "$POINTER" \
-  -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+  -netdev "$NETDEV" -device virtio-net-pci,netdev=n0 \
   -drive "file=$APPS_IMG,if=none,format=raw,id=apps" -device "virtio-blk-pci,drive=apps,serial=mylinux-apps" \
   -display "cocoa,show-cursor=on,zoom-to-fit=off,zoom-interpolation=on,left-command-key=on,$KEYS" \
   -serial "${SERIAL:-mon:stdio}" \

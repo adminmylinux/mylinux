@@ -5,10 +5,12 @@ struct ContentView: View {
     @EnvironmentObject var store: ProfileStore
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var runs: RunManager
+    @EnvironmentObject var remote: RemoteStore
     @StateObject private var images = ImageManager.shared
     @State private var selection: UUID?
 
     private var selected: Profile? { store.profiles.first { $0.id == selection } }
+    private var selectedRemote: RemoteProfile? { remote.profiles.first { $0.id == selection } }
 
     var body: some View {
         NavigationSplitView {
@@ -23,6 +25,26 @@ struct ContentView: View {
                             }
                     }
                 }
+                // VNC desktops and SSH terminals reached natively from the Mac (docs/MAC-REMOTE-PLAN.md)
+                Section("Remote") {
+                    ForEach(remote.profiles) { r in
+                        HStack(spacing: 8) {
+                            Image(systemName: r.kind == .ssh ? "terminal" : "display").foregroundStyle(.secondary).frame(width: 14)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(r.title).lineLimit(1)
+                                Text("\(r.host):\(r.port)" + (r.username.isEmpty ? "" : " · \(r.username)")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                        .padding(.vertical, 2).tag(r.id)
+                        .contextMenu {
+                            Button("Connect") { RemoteWindowController.show(r) }
+                            Button("Remove", role: .destructive) { removeRemote(r) }
+                        }
+                    }
+                    if remote.profiles.isEmpty {
+                        Text("No remote machines yet").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             .navigationSplitViewColumnWidth(min: 210, ideal: 230)
             .safeAreaInset(edge: .bottom) { sidebarFooter }
@@ -30,6 +52,8 @@ struct ContentView: View {
             if let p = selected {
                 MachineView(profile: p, runner: runs.runner(for: p.id))
                     .id(p.id)
+            } else if let r = selectedRemote {
+                RemoteEditor(profile: r).id(r.id)
             } else {
                 ContentUnavailableView("No machine selected", systemImage: "desktopcomputer",
                                        description: Text("Pick a machine on the left, or add one."))
@@ -57,8 +81,23 @@ struct ContentView: View {
                 Label("Add machine", systemImage: "plus")
             }
             .buttonStyle(.link)
+            HStack(spacing: 12) {
+                Button { selection = remote.add(.vnc).id } label: { Label("Add VNC", systemImage: "display") }
+                Button { selection = remote.add(.ssh).id } label: { Label("Add SSH", systemImage: "terminal") }
+            }
+            .buttonStyle(.link)
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
+    }
+
+    private func removeRemote(_ r: RemoteProfile) {
+        let alert = NSAlert()
+        alert.messageText = "Remove “\(r.title)”?"
+        alert.informativeText = "Its saved password is removed from the Keychain too."
+        alert.addButton(withTitle: "Remove"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if selection == r.id { selection = nil }
+        remote.remove(r.id)
     }
 
     private func remove(_ p: Profile) {
