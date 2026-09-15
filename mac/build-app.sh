@@ -46,10 +46,11 @@ cat > "$NEW/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <!-- mylinux-launcher://start: what the myLinux app in the Dock sends when clicked -->
+  <!-- mylinux-launcher://start: what the myLinux app in the Dock sends when clicked;
+       mylinux://vnc/<name>, mylinux://ssh/<name>: open a remote machine (Shortcuts, scripts, `open`) -->
   <key>CFBundleURLTypes</key><array><dict>
     <key>CFBundleURLName</key><string>dev.mylinux.launcher</string>
-    <key>CFBundleURLSchemes</key><array><string>mylinux-launcher</string></array>
+    <key>CFBundleURLSchemes</key><array><string>mylinux-launcher</string><string>mylinux</string></array>
   </dict></array>
   <!-- the checkout this was built from; offered as the developer checkout when it is still there -->
   <key>MyLinuxRepo</key><string>$REPO</string>

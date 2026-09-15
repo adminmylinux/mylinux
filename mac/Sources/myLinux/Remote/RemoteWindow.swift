@@ -28,7 +28,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         _ = trace
         if let existing = open.first(where: { $0.profile.id == profile.id }) { existing.window?.makeKeyAndOrderFront(nil); return existing }
         let c = RemoteWindowController(profile: profile)
-        open.append(c)
+        open.append(c); RemoteSession.noteOpenWindows()
         if let last = open.dropLast().last?.window, let w = c.window { last.addTabbedWindow(w, ordered: .above) }
         c.showWindow(nil); c.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -184,6 +184,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     func windowWillClose(_ n: Notification) {
         hudTimer?.invalidate(); vnc?.stop(); vncView?.setGrab(false, keep: [])
         RemoteWindowController.open.removeAll { $0 === self }
+        RemoteSession.noteOpenWindows()             // closed on purpose: not brought back next time (unless quitting)
     }
 
     // ---- toolbar ----

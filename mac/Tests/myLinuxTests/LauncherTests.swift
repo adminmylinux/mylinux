@@ -114,16 +114,27 @@ final class RemoteTests: XCTestCase {
         XCTAssertTrue(p.problems.isEmpty)
         XCTAssertEqual(p.keyboard, .optionSuper, "VNC desktops default to Option as Super")
     }
+    /// A self-signed certificate for the tests (CN mylinux-test), made once with the system openssl.
+    static func testCertificate() throws -> String {
+        let path = NSTemporaryDirectory() + "mylinux-test-cert.pem"
+        if !FileManager.default.fileExists(atPath: path) {
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
+            p.arguments = ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", "/dev/null",
+                           "-subj", "/CN=mylinux-test", "-days", "1", "-out", path]
+            p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+            try p.run(); p.waitUntilExit()
+        }
+        return try String(contentsOfFile: path, encoding: .utf8)
+    }
     func testPinRoundTrip() throws {
-        let pem = try String(contentsOfFile: NSTemporaryDirectory() + "mylinux-test-cert.pem", encoding: .utf8)
+        let pem = try RemoteTests.testCertificate()
         let first = try XCTUnwrap(CertPin.describe(pem))
         let again = try XCTUnwrap(CertPin.describe(first.pem), "the PEM we write must read back")
         XCTAssertEqual(again.fingerprint, first.fingerprint)
         XCTAssertFalse(first.pem.contains("\r"))
     }
     func testCertificateDescription() throws {
-        // a self-signed certificate made for the test
-        let pem = try String(contentsOfFile: NSTemporaryDirectory() + "mylinux-test-cert.pem", encoding: .utf8)
+        let pem = try RemoteTests.testCertificate()
         let info = try XCTUnwrap(CertPin.describe(pem))
         XCTAssertEqual(info.name, "mylinux-test")
         XCTAssertEqual(info.fingerprint.count, 32 * 3 - 1)
@@ -148,6 +159,95 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertTrue(KeyboardGrab.shared.passThrough)
         StatusMenu.shared.menuDidClose(menu)
         XCTAssertFalse(KeyboardGrab.shared.passThrough)
+    }
+}
+
+/// Phase 4 of docs/MAC-REMOTE-PLAN.md: the session file, the URLs, the import, the ⌘K list.
+final class RemoteSessionTests: XCTestCase {
+    private func tempDir() throws -> URL {
+        let d = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("mylinux-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: d) }
+        return d
+    }
+    func testTheSessionFileRoundTripsAndGoesAwayWhenEmpty() throws {
+        let file = try tempDir().appendingPathComponent("remote-session.json")
+        let ids = [UUID(), UUID()]
+        RemoteSession.save(ids, to: file)
+        XCTAssertEqual(RemoteSession.load(from: file), ids, "in the order they were opened")
+        RemoteSession.save([], to: file)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "no windows: nothing to bring back")
+        XCTAssertEqual(RemoteSession.load(from: file), [])
+    }
+    func testLinksNameTheMachine() throws {
+        XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux://vnc/omarchy%20imac")!), .remote(kind: .vnc, name: "omarchy imac"))
+        XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux://ssh/build-box/")!), .remote(kind: .ssh, name: "build-box"))
+        XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux-launcher://start")!), .start)
+        let id = UUID()
+        XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux-launcher://remote/\(id.uuidString)")!), .remote(kind: nil, name: id.uuidString), "the older form still works")
+        XCTAssertNil(RemoteLink.parse(URL(string: "https://mylinux.app/vnc/x")!))
+        XCTAssertNil(RemoteLink.parse(URL(string: "mylinux://settings")!))
+    }
+    func testFindingAProfileByNameHostOrId() throws {
+        let store = RemoteStore(file: try tempDir().appendingPathComponent("remote.json"))
+        var a = RemoteProfile(kind: .vnc); a.name = "Omarchy iMac"; a.host = "192.168.0.61"
+        var b = RemoteProfile(kind: .ssh); b.name = "omarchy imac"; b.host = "192.168.0.61"
+        store.profiles = [a, b]
+        XCTAssertEqual(store.find("omarchy imac", kind: .vnc)?.id, a.id, "case does not matter")
+        XCTAssertEqual(store.find("omarchy imac", kind: .ssh)?.id, b.id)
+        XCTAssertEqual(store.find("OMARCHY IMAC")?.id, a.id, "without a kind the first match wins")
+        XCTAssertEqual(store.find("192.168.0.61", kind: .ssh)?.id, b.id, "the host works too")
+        XCTAssertEqual(store.find(b.id.uuidString)?.id, b.id)
+        XCTAssertNil(store.find("nothing")); XCTAssertNil(store.find(""))
+    }
+    func testImportReadsTheViewersMachinesAndSecrets() throws {
+        let json = #"[{"name":"imac","type":"vnc","host":"192.168.0.61","port":5900,"username":"viktor","quality":"best"},"# +
+                   #"{"name":"build box","type":"ssh","host":"10.0.0.5","port":"2222","username":"root","keyFile":"~/.ssh/id","tmux":"main"},"# +
+                   #"{"name":"old","host":"old.local","port":5901},{"name":"no host"}]"#
+        let list = try RemoteImport.parse(Data(json.utf8))
+        XCTAssertEqual(list.map(\.name), ["imac", "build box", "old"], "an entry without a host is skipped")
+        XCTAssertEqual(list[0].kind, .vnc); XCTAssertEqual(list[0].quality, "best"); XCTAssertEqual(list[0].username, "viktor")
+        XCTAssertEqual(list[1].kind, .ssh); XCTAssertEqual(list[1].port, 2222, "a port written as text"); XCTAssertEqual(list[1].tmux, "main"); XCTAssertEqual(list[1].keyboard, .mac)
+        XCTAssertEqual(list[2].kind, .vnc, "older files have no type"); XCTAssertEqual(list[2].keyboard, .optionSuper)
+        XCTAssertEqual(RemoteImport.secretKey(name: "build box", kind: .ssh), "SSH_BUILD_BOX_PASSWORD")
+        XCTAssertEqual(RemoteImport.secretKey(name: "--Omarchy iMac!", kind: .vnc), "VNC_OMARCHY_IMAC_PASSWORD")
+        XCTAssertEqual(RemoteImport.secretKey(name: "", kind: .vnc), "VNC_DEFAULT_PASSWORD")
+        let env = RemoteImport.passwords("# comment\nVNC_IMAC_PASSWORD=secret\nSSH_BUILD_BOX_PASSWORD='it'\\''s'\nexport X=\"q\"\nbroken\n")
+        XCTAssertEqual(env["VNC_IMAC_PASSWORD"], "secret"); XCTAssertEqual(env["SSH_BUILD_BOX_PASSWORD"], "it's"); XCTAssertEqual(env["X"], "q")
+        // the files as the guest lays them out: vnc/machines.json with secrets.env one folder up
+        let dir = try tempDir(); try FileManager.default.createDirectory(at: dir.appendingPathComponent("vnc"), withIntermediateDirectories: true)
+        try Data(json.utf8).write(to: dir.appendingPathComponent("vnc/machines.json"))
+        try "VNC_IMAC_PASSWORD=secret\n".write(to: dir.appendingPathComponent("secrets.env"), atomically: true, encoding: .utf8)
+        let entries = try RemoteImport.load(dir.appendingPathComponent("vnc/machines.json"))
+        XCTAssertEqual(entries.map(\.password), ["secret", nil, nil])
+    }
+    func testMergingKeepsExistingProfilesAndTheirIds() throws {
+        let store = RemoteStore(file: try tempDir().appendingPathComponent("remote.json"))
+        var existing = RemoteProfile(kind: .vnc); existing.name = "iMac"; existing.host = "old"; existing.keyboard = .all
+        store.profiles = [existing]
+        var new = RemoteProfile(kind: .vnc); new.name = "imac"; new.host = "192.168.0.61"
+        var other = RemoteProfile(kind: .ssh); other.name = "imac"; other.host = "192.168.0.61"
+        var saved: [String] = []
+        let r = store.merge([.init(profile: new, password: "pw"), .init(profile: other, password: nil)], savePassword: { pw, p in saved.append(pw + " for " + p.name); return true })
+        XCTAssertEqual(r.added, 1); XCTAssertEqual(r.updated, 1)
+        XCTAssertEqual(store.profiles.count, 2)
+        XCTAssertEqual(store.profiles[0].id, existing.id, "the same name and kind updates in place")
+        XCTAssertEqual(store.profiles[0].host, "192.168.0.61"); XCTAssertEqual(store.profiles[0].keyboard, .all, "the keyboard mode is the user's, not the file's")
+        XCTAssertTrue(store.profiles[0].hasPassword); XCTAssertEqual(saved, ["pw for iMac"])
+        XCTAssertEqual(store.profiles[1].kind, .ssh)
+        XCTAssertEqual(store.merge([.init(profile: new, password: nil)], savePassword: { _, _ in false }).updated, 0, "nothing changed: not counted")
+    }
+    func testQuickConnectListsAndFilters() {
+        var vm = Profile(name: "Work", appsDisk: "/x/apps.img", shareDir: "/x/share"); vm.name = "Work"
+        var a = RemoteProfile(kind: .vnc); a.name = "Omarchy iMac"; a.host = "192.168.0.61"
+        var b = RemoteProfile(kind: .ssh); b.host = "build.local"; b.username = "root"
+        let items = QuickConnect.items(remote: [a, b], machines: [vm])
+        XCTAssertEqual(items.map(\.title), ["Work", "Omarchy iMac", "build.local"], "machines first, then remote; a nameless profile shows its host")
+        XCTAssertEqual(QuickConnect.filter(items, "").count, 3)
+        XCTAssertEqual(QuickConnect.filter(items, "imac").map(\.title), ["Omarchy iMac"])
+        XCTAssertEqual(QuickConnect.filter(items, "ssh root").map(\.title), ["build.local"], "every word must match, in the title or the subtitle")
+        XCTAssertEqual(QuickConnect.filter(items, "192 vnc").map(\.title), ["Omarchy iMac"])
+        XCTAssertEqual(QuickConnect.filter(items, "nothing").count, 0)
     }
 }
 

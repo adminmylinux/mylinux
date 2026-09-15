@@ -33,6 +33,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         let machines = NSMenuItem(title: "Machines…", action: #selector(showMachines), keyEquivalent: ""); machines.target = self
         menu.addItem(machines)
+        let quick = NSMenuItem(title: "Quick Connect…", action: #selector(quickConnect), keyEquivalent: ""); quick.target = self
+        menu.addItem(quick)
         let remotes = NSMenu()
         for p in RemoteStore.shared.profiles {
             let mi = NSMenuItem(title: p.title, action: #selector(openRemote(_:)), keyEquivalent: ""); mi.target = self; mi.representedObject = p.id
@@ -66,6 +68,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func releaseKeyboard() { KeyboardGrab.shared.release() }
+    @objc private func quickConnect() { QuickConnect.shared.show() }
 
     /// Brings the machines window forward, reopening it when it was closed (as a click on the Dock icon would).
     @objc private func showMachines() {

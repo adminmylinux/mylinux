@@ -86,8 +86,30 @@ struct ContentView: View {
                 Button { selection = remote.add(.ssh).id } label: { Label("Add SSH", systemImage: "terminal") }
             }
             .buttonStyle(.link)
+            Button { importMachines() } label: { Label("Import from machines.json…", systemImage: "square.and.arrow.down") }
+                .buttonStyle(.link).font(.caption)
+                .help("The myLinux viewer's saved machines (~/.config/mylinux/vnc/machines.json in the guest; copy it to the share first). A secrets.env next to it brings the passwords.")
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
+    }
+
+    /// The guest's machines.json, picked with a panel that starts in the selected machine's share folder.
+    private func importMachines() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.message = "Pick the viewer's machines.json (in the guest: ~/.config/mylinux/vnc/, copy it to the share)."
+        if let share = (selected ?? store.profiles.first)?.shareDir, !share.isEmpty { panel.directoryURL = URL(fileURLWithPath: share, isDirectory: true) }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let entries = try RemoteImport.load(url)
+            let r = remote.merge(entries)
+            let alert = NSAlert(); alert.messageText = "Imported \(entries.count) machine\(entries.count == 1 ? "" : "s")"
+            alert.informativeText = "\(r.added) added, \(r.updated) updated" + (entries.contains { $0.password != nil } ? "; passwords went to the Keychain." : ".")
+            alert.runModal()
+            if let first = entries.first, let p = remote.find(first.profile.name, kind: first.profile.kind) { selection = p.id }
+        } catch {
+            let alert = NSAlert(error: error); alert.messageText = "Could not import \(url.lastPathComponent)"; alert.runModal()
+        }
     }
 
     private func removeRemote(_ r: RemoteProfile) {

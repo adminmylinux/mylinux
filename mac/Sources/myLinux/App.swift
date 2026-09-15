@@ -20,6 +20,7 @@ struct MyLinuxApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Machine") { _ = store.add() }.keyboardShortcut("n")
+                Button("Quick Connect…") { QuickConnect.shared.show() }.keyboardShortcut("k")
             }
         }
         Settings {
@@ -38,20 +39,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = args.firstIndex(of: "--remote"), i + 1 < args.count, let id = UUID(uuidString: args[i + 1]),
            let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { RemoteWindowController.show(p) }
+        } else {
+            // the remote windows open when the launcher last quit or died come back (closed on purpose: none)
+            let again = RemoteSession.restore()
+            if !again.isEmpty { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { again.forEach { RemoteWindowController.show($0) } } }
         }
     }
 
     /// mylinux-launcher://start — sent by the myLinux app in the Dock (tools/make-app-bundle.sh) when it is clicked:
     /// bring the machine forward if it runs, otherwise start the machine used last (the first one before any start).
+    /// mylinux://vnc/<name>, mylinux://ssh/<name>, mylinux://remote/<name or id> open a remote machine (RemoteLink).
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "mylinux-launcher" {
-            if url.host == "start" { QuickStart.run() }
-            // mylinux-launcher://remote/<profile id>  opens a remote machine's window
-            if url.host == "remote", let id = UUID(uuidString: url.lastPathComponent), let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {
-                RemoteWindowController.show(p)
+        for url in urls {
+            switch RemoteLink.parse(url) {
+            case .start: QuickStart.run()
+            case .remote(let kind, let name):
+                if let p = RemoteStore.shared.find(name, kind: kind) { RemoteWindowController.show(p) }
+                else { NSApp.activate(ignoringOtherApps: true); NSLog("no remote machine named %@ for %@", name, url.absoluteString) }
+            case nil: break
             }
         }
     }
+
+    func applicationWillTerminate(_ n: Notification) { RemoteSession.quitting = true }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool {
         RunManager.shared.active.isEmpty
@@ -60,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Machines keep running when the launcher quits (they are their own QEMU processes), so say so and offer to
     /// shut them down first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        RemoteSession.quitting = true            // remote windows closing from here on are not closed on purpose
         let running = RunManager.shared.active
         guard !running.isEmpty else { return .terminateNow }
         let alert = NSAlert()
@@ -76,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .alertSecondButtonReturn:
             return .terminateNow
         default:
+            RemoteSession.quitting = false
             return .terminateCancel
         }
     }
@@ -99,6 +111,11 @@ enum QuickStart {
         guard let profile = store.profiles.first(where: { $0.id == last }) ?? store.profiles.first else {
             NSApp.activate(); return
         }
+        start(profile, runs: runs)
+    }
+
+    /// Starts a machine, or brings its window forward when it already runs (the Dock icon and ⌘K).
+    static func start(_ profile: Profile, runs: RunManager = .shared) {
         let runner = runs.runner(for: profile.id)
         if runner.isActive || Runner.diskInUse(profile.appsDisk) {
             // already running: its window is a "myLinux" app instance; bring one forward

@@ -83,7 +83,12 @@ keyboard back; needs Accessibility permission once) — plus a list of shortcuts
 the Mac's `ssh` in a SwiftTerm view: your keys and agent work as in Terminal, a saved password is handed to ssh
 through an askpass helper that reads the Keychain, and a tmux session name attaches on login. Connections open as
 native window tabs and can go fullscreen per display. Passwords live in the Keychain, profiles in
-`~/Library/Application Support/myLinux/remote.json`, certificate pins next to it.
+`~/Library/Application Support/myLinux/remote.json`, certificate pins next to it. The launcher's menu bar item is
+the way back when a remote window holds every key: *Release Keyboard to the Mac*. Remote windows open at quit come
+back at the next launch (close them yourself and they do not); ⌘K is a quick-connect field over any window;
+`open mylinux://vnc/<name>` or `mylinux://ssh/<name>` opens a machine from Shortcuts or a script; *Import from
+machines.json…* reads the guest viewer's saved machines (copy `~/.config/mylinux/vnc/machines.json` and, for the
+passwords, `~/.config/mylinux/secrets.env` to the share first).
 
 Without this checkout the app works on its own: it downloads the release image into
 `~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`. It
