@@ -114,6 +114,13 @@ final class RemoteTests: XCTestCase {
         XCTAssertTrue(p.problems.isEmpty)
         XCTAssertEqual(p.keyboard, .optionSuper, "VNC desktops default to Option as Super")
     }
+    func testPinRoundTrip() throws {
+        let pem = try String(contentsOfFile: NSTemporaryDirectory() + "mylinux-test-cert.pem", encoding: .utf8)
+        let first = try XCTUnwrap(CertPin.describe(pem))
+        let again = try XCTUnwrap(CertPin.describe(first.pem), "the PEM we write must read back")
+        XCTAssertEqual(again.fingerprint, first.fingerprint)
+        XCTAssertFalse(first.pem.contains("\r"))
+    }
     func testCertificateDescription() throws {
         // a self-signed certificate made for the test
         let pem = try String(contentsOfFile: NSTemporaryDirectory() + "mylinux-test-cert.pem", encoding: .utf8)

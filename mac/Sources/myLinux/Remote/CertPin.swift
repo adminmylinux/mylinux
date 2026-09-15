@@ -24,13 +24,13 @@ enum CertPin {
     }
 
     static func describe(_ pem: String) -> Info? {
-        let body = pem.components(separatedBy: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        let body = pem.components(separatedBy: .newlines).filter { !$0.hasPrefix("-----") }.joined().filter { !$0.isWhitespace }
         guard let der = Data(base64Encoded: body), let cert = SecCertificateCreateWithData(nil, der as CFData) else { return nil }
         return describe(cert)
     }
     static func describe(_ cert: SecCertificate) -> Info {
         let der = SecCertificateCopyData(cert) as Data
-        let pem = "-----BEGIN CERTIFICATE-----\n" + der.base64EncodedString(options: [.lineLength64Characters]) + "\n-----END CERTIFICATE-----\n"
+        let pem = "-----BEGIN CERTIFICATE-----\n" + der.base64EncodedString(options: [.lineLength64Characters, .endLineWithLineFeed]) + "\n-----END CERTIFICATE-----\n"
         var hash = [UInt8](repeating: 0, count: 32)
         der.withUnsafeBytes { _ = CC_SHA256($0.baseAddress, CC_LONG(der.count), &hash) }
         let fp = hash.map { String(format: "%02X", $0) }.joined(separator: ":")
