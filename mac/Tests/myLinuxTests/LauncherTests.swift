@@ -131,6 +131,26 @@ final class RemoteTests: XCTestCase {
 }
 
 /// Against a real VeNCrypt server: MYLINUX_TEST_VNC_HOST=192.168.0.61 swift test --filter CertProbe
+final class StatusMenuTests: XCTestCase {
+    func testTheMenuBarOffersTheWayOutOfAGrab() {
+        let menu = NSMenu()
+        StatusMenu.shared.makeMenu(into: menu)
+        let titles = menu.items.map(\.title)
+        XCTAssertEqual(titles.first, StatusMenu.releaseTitle, "the release is the first thing under the mouse")
+        XCTAssertTrue(titles.contains("Quit myLinux Launcher"))
+        let release = menu.items[0]
+        XCTAssertFalse(release.isEnabled, "nothing to release while no grab is on")
+        XCTAssertFalse(menu.autoenablesItems, "enablement is ours, not AppKit's responder-chain guess")
+    }
+    func testKeysPassThroughWhileTheMenuIsOpen() {
+        let menu = NSMenu()
+        StatusMenu.shared.menuWillOpen(menu)
+        XCTAssertTrue(KeyboardGrab.shared.passThrough)
+        StatusMenu.shared.menuDidClose(menu)
+        XCTAssertFalse(KeyboardGrab.shared.passThrough)
+    }
+}
+
 final class CertProbeTests: XCTestCase {
     func testFetchesTheServerCertificate() throws {
         guard let host = ProcessInfo.processInfo.environment["MYLINUX_TEST_VNC_HOST"] else { throw XCTSkip("MYLINUX_TEST_VNC_HOST not set") }

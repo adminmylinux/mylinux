@@ -31,6 +31,7 @@ struct MyLinuxApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         signal(SIGPIPE, SIG_IGN)                 // a closed serial socket must not end the app
+        StatusMenu.shared.install()              // the menu bar item: the way out of a full keyboard grab
         ImageManager.shared.refresh()
         // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
         let args = CommandLine.arguments
