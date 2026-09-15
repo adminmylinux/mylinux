@@ -105,3 +105,28 @@ comfort.
 
 The myLinux desktop and its own viewer stay unchanged. Replacing QEMU's window with a native display
 of the VM, or audio, are separate topics.
+
+## Spike result (2026-09-15)
+
+`mac/spike/` (SwiftPM, `swift build -c release`, needs Homebrew `libvncserver`): libvncclient on a thread decoding
+into an IOSurface, a CALayer showing it, mouse/keys, a HUD, and an HID-level event tap for the full grab. Run
+against the Omarchy iMac (wayvnc 0.10, VeNCrypt X509 with our pinned certificate; connecting by IP and verifying
+the certificate's own name works by opening the socket first and marking the client as `listenSpecified`).
+
+- **Decoding is not the bottleneck.** Dragging a window sent bursts of up to ~1000 rectangles/s; decoding cost at
+  most ~45 ms per second of wall time, the process stayed at 1–6 % CPU, memory flat. The IOSurface path costs
+  nothing; when the surface's row size differs from width×4 (it did for 1360 px), copying only the damaged
+  rectangles is just as cheap.
+- **Update rate is server-bound: 8–11 updates/s** even while dragging. libvncclient requests the next update as
+  soon as one arrives, so this is wayvnc's pace on the iMac (its `max_fps`, and how often Hyprland hands it
+  frames). Phase 1 should try RFB continuous updates and check the server settings before touching encodings.
+  H.264 (phase 5) would lower bandwidth, not raise this rate; it stays optional.
+- **Latency:** keystroke to changed picture typically 26–54 ms, average ~42 ms, with occasional 140–280 ms
+  outliers (server-side frame pacing, same cause as above).
+- **Full grab works on macOS 26:** the HID-level tap installs once Accessibility is granted, keys typed while
+  grabbed reach the remote, Ctrl+Option+G releases. (Whether ⌘Tab/⌘Space were swallowed is confirmed by the
+  user's test, see the session notes.)
+- **Retina 1:1** (F2) shows one remote pixel per Mac pixel; the layer's `contentsScale` handles it.
+
+Decision: proceed with phases 1–3 as planned; keep phase 5 (H.264) as an option after the server-side frame
+rate is understood.

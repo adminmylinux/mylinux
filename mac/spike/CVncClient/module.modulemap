@@ -1,0 +1,5 @@
+module CVncClient [system] {
+    header "shim.h"
+    link "vncclient"
+    export *
+}
