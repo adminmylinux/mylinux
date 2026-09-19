@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$W/tools/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -126,6 +126,46 @@ rm -f "$D/Image"
 out=$(cd / && DRYRUN=1 MYLINUX_OUT="$D" SHARE_DIR="$T/s" sh "$W/run.sh" 2>&1); rc=$?
 not_rc0 "MYLINUX_OUT: missing image in the data directory fails" $rc
 
+echo "accelerated QEMU runtime (tools/get-qemu-runtime.sh, tools/qemu-flavour.sh, run.sh)"
+out=$(cd "$W" && DRYRUN=1 sh run.sh 2>&1); has "without a runtime: Homebrew's QEMU" "$out" "QEMU=brew"
+has "without a runtime: the plain GPU device" "$out" "virtio-gpu-pci,xres="
+# a fake runtime archive: qemu is a script that answers the two questions the installer asks
+F="$T/fake runtime"; mkdir -p "$F/qemu-runtime/bin" "$F/qemu-runtime/lib"
+printf '#!/bin/sh\ncase "$*" in *"-device help"*) echo "name \"virtio-gpu-gl-pci\", bus PCI" ;; *) echo "QEMU emulator version fake" ;; esac\n' > "$F/qemu-runtime/bin/qemu-system-aarch64"
+chmod +x "$F/qemu-runtime/bin/qemu-system-aarch64"; echo fake-1 > "$F/qemu-runtime/RUNTIME-REVISION"
+A="$T/qemu-runtime-macos-arm64.tar.gz"
+(cd "$F" && tar -czf "$A" qemu-runtime) && (cd "$T" && shasum -a 256 qemu-runtime-macos-arm64.tar.gz > "$A.sha256")
+cp "$A" "$T/badsum.tar.gz"
+echo "0000000000000000000000000000000000000000000000000000000000000000  qemu-runtime-macos-arm64.tar.gz" > "$T/badsum.tar.gz.sha256"
+(cd "$W" && MYLINUX_RUNTIME_FILE="$T/badsum.tar.gz" sh tools/get-qemu-runtime.sh >/dev/null 2>&1); rc=$?
+not_rc0 "a runtime with the wrong checksum is refused" $rc
+file_absent "refused runtime: nothing installed" "$W/out/qemu-runtime"
+E="$T/evil"; mkdir -p "$E/qemu-runtime" "$E/elsewhere"; echo x > "$E/elsewhere/file"
+(cd "$E" && tar -czf "$T/evil.tar.gz" qemu-runtime elsewhere) && (cd "$T" && shasum -a 256 evil.tar.gz | sed 's/evil.tar.gz/qemu-runtime-macos-arm64.tar.gz/' > "$T/evil.tar.gz.sha256")
+(cd "$W" && MYLINUX_RUNTIME_FILE="$T/evil.tar.gz" sh tools/get-qemu-runtime.sh >/dev/null 2>&1); rc=$?
+not_rc0 "an archive with paths outside qemu-runtime/ is refused" $rc
+file_absent "refused archive: nothing unpacked beside it" "$W/out/elsewhere"
+(cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1); rc=$?
+is_rc "a good runtime installs" $rc 0
+file_is "installed runtime records its revision" "$W/out/qemu-runtime/RUNTIME-REVISION" "fake-1"
+file_absent "staging folder is gone" "$W/out/.staging-qemu-runtime"
+out=$(cd "$W" && DRYRUN=1 sh run.sh 2>&1); has "with a runtime: run.sh uses it" "$out" "QEMU=runtime"
+has "with a runtime: accelerated GPU device without a ROM file" "$out" "virtio-gpu-gl-pci,max_outputs=1,xres="
+has "with a runtime: every PCI device without a ROM file" "$out" "virtio-net-pci,netdev=n0,romfile="
+has "with a runtime: GICv3" "$out" "virt,gic-version=3"
+has "with a runtime: GL display" "$out" "cocoa,gl=es,"
+out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=brew sh run.sh 2>&1); has "MYLINUX_QEMU=brew insists on Homebrew's" "$out" "QEMU=brew"
+out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=nonsense sh run.sh 2>&1); rc=$?
+not_rc0 "unknown MYLINUX_QEMU is refused" $rc
+(cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1)
+file_exists "a second install keeps the previous runtime" "$W/out/qemu-runtime.prev"
+(cd "$W" && sh tools/get-qemu-runtime.sh --remove >/dev/null 2>&1); rc=$?
+is_rc "--remove" $rc 0
+file_absent "--remove: runtime gone" "$W/out/qemu-runtime"
+file_absent "--remove: previous runtime gone too" "$W/out/qemu-runtime.prev"
+out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=runtime sh run.sh 2>&1); rc=$?
+not_rc0 "MYLINUX_QEMU=runtime without a runtime is refused" $rc
+
 echo "tools/make-app-bundle.sh"
 # fake qemu, failing brand-qemu (python3), no-op codesign/sips: the bundle must still get an (unbranded) binary
 printf '#!/bin/sh\necho fake qemu\n' > "$W/bin/qemu-system-aarch64"; chmod +x "$W/bin/qemu-system-aarch64"
@@ -144,6 +184,16 @@ out=$(sh "$W/out/myLinux.app/Contents/MacOS/myLinux" -version 2>&1); has "entry 
 (cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/bundle dir" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
 is_rc "MYLINUX_OUT: bundle in another directory" $rc 0
 [ -x "$T/bundle dir/myLinux.app/Contents/MacOS/qemu-myLinux" ] && ok "MYLINUX_OUT: QEMU copy in the data directory" || ko "MYLINUX_OUT: no binary in the data directory bundle"
+
+mkdir -p "$T/rt out/qemu-runtime/bin" "$T/rt out/qemu-runtime/lib"; printf '#!/bin/sh\necho runtime qemu\n' > "$T/rt out/qemu-runtime/bin/qemu-system-aarch64"; chmod +x "$T/rt out/qemu-runtime/bin/qemu-system-aarch64"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/rt out" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
+is_rc "with a runtime: bundle prepared" $rc 0
+out=$("$T/rt out/myLinux.app/Contents/MacOS/qemu-myLinux" 2>&1); has "with a runtime: the bundle's QEMU is the runtime's" "$out" "runtime qemu"
+[ -d "$T/rt out/myLinux.app/Contents/lib/" ] && ok "with a runtime: Contents/lib points at its libraries" || ko "with a runtime: no Contents/lib"
+rm -rf "$T/rt out/qemu-runtime"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/rt out" sh tools/make-app-bundle.sh >/dev/null 2>&1)
+out=$("$T/rt out/myLinux.app/Contents/MacOS/qemu-myLinux" 2>&1); has "runtime removed: the bundle goes back to Homebrew's QEMU" "$out" "fake qemu"
+file_absent "runtime removed: no dangling Contents/lib" "$T/rt out/myLinux.app/Contents/lib"
 
 echo "tools/host-window.sh"
 out=$(sh "$REPO/tools/host-window.sh" bogus 2>&1); rc=$?

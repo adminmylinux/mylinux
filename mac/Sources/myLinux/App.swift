@@ -130,6 +130,7 @@ enum QuickStart {
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
     @StateObject private var images = ImageManager.shared
+    @StateObject private var runtime = RuntimeManager.shared
 
     var body: some View {
         Form {
@@ -144,6 +145,29 @@ struct SettingsView: View {
                     Button(images.present ? "Download the latest release" : "Download myLinux") { images.download(settings) }
                         .disabled(images.busy)
                 }
+            }
+            Section("QEMU") {
+                LabeledContent("In use") {
+                    Text(runtime.present ? "Accelerated runtime \((runtime.revision ?? "").replacingOccurrences(of: "qemu-runtime-", with: ""))" : (Paths.qemu() ?? "none — download below, or brew install qemu"))
+                        .foregroundStyle(settings.qemuAvailable ? Color.secondary : Color.orange)
+                        .lineLimit(1).truncationMode(.head)
+                }
+                if runtime.busy {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text(runtime.progress).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer()
+                        Button("Cancel") { runtime.cancel() }
+                    }
+                } else {
+                    HStack {
+                        Button(runtime.present ? "Check for a newer runtime" : "Download the accelerated QEMU") { runtime.download(settings) }
+                        if runtime.present { Button("Remove") { runtime.remove(settings) } }
+                    }
+                }
+                if let e = runtime.lastError { Banner(text: e, kind: .error) }
+                Text("myLinux's own QEMU with GPU support (VirGL, drawn through Metal): about 10 MB to download, no Homebrew needed. Machines use it from their next start; without it they start with Homebrew's QEMU. Its sources and licences are in the runtime's NOTICES.md.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Section("Developer") {
                 LabeledContent("myLinux checkout") {
@@ -165,19 +189,14 @@ struct SettingsView: View {
                 Text("macOS asks for permission to control System Events the first time, because moving another app's window goes through AppleScript. Without it the window opens wherever macOS puts it, which on a second display can be the wrong size.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Section("Requirements") {
-                LabeledContent("QEMU") {
-                    Text(Paths.qemu() ?? "not installed — brew install qemu")
-                        .foregroundStyle(Paths.qemu() == nil ? Color.orange : Color.secondary)
-                        .lineLimit(1).truncationMode(.head)
-                }
+            Section("Storage") {
                 LabeledContent("Machines folder") { Text(Paths.support.path).lineLimit(1).truncationMode(.head).foregroundStyle(.secondary) }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 430)
-        .onAppear { images.refresh(settings) }
-        .onChange(of: settings.repoPath) { _, _ in images.refresh(settings) }
+        .frame(width: 560, height: 560)
+        .onAppear { images.refresh(settings); runtime.refresh(settings) }
+        .onChange(of: settings.repoPath) { _, _ in images.refresh(settings); runtime.refresh(settings) }
     }
 
     private func chooseRepo() {

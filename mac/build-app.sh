@@ -3,8 +3,8 @@
 # Usage: mac/build-app.sh              -> "out/mac/myLinux Launcher.app"
 #        mac/build-app.sh --install    -> also copies it to /Applications
 # The app carries its own copy of run.sh and the helper scripts, so it works on a Mac without this checkout
-# (images are then downloaded into ~/Library/Application Support/myLinux). Needs Xcode's Swift and Homebrew QEMU
-# at run time. The bundle is signed ad hoc: on another Mac, Gatekeeper needs the usual right-click > Open.
+# (images are then downloaded into ~/Library/Application Support/myLinux). Needs Xcode's Swift to build; at run time
+# QEMU is either Homebrew's or the accelerated runtime the app downloads (Settings > QEMU). The bundle is signed ad hoc: on another Mac, Gatekeeper needs the usual right-click > Open.
 set -eu
 cd "$(dirname "$0")/.."
 REPO=$PWD
@@ -24,7 +24,7 @@ mkdir -p "$NEW/Contents/MacOS" "$NEW/Contents/Resources/runtime/tools"
 cp "$BIN" "$NEW/Contents/MacOS/myLinux Launcher"
 # the scripts the app runs: run.sh and everything it calls
 cp run.sh "$NEW/Contents/Resources/runtime/"
-for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh; do
+for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done
 # icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds
@@ -47,7 +47,7 @@ cat > "$NEW/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <!-- mylinux-launcher://start: what the myLinux app in the Dock sends when clicked;
-       mylinux://vnc/<name>, mylinux://ssh/<name>: open a remote machine (Shortcuts, scripts, `open`) -->
+       mylinux://vnc/<name>, mylinux://ssh/<name>: open a remote machine (Shortcuts, scripts, open(1)) -->
   <key>CFBundleURLTypes</key><array><dict>
     <key>CFBundleURLName</key><string>dev.mylinux.launcher</string>
     <key>CFBundleURLSchemes</key><array><string>mylinux-launcher</string><string>mylinux</string></array>

@@ -142,6 +142,24 @@ final class RemoteTests: XCTestCase {
 }
 
 /// Against a real VeNCrypt server: MYLINUX_TEST_VNC_HOST=192.168.0.61 swift test --filter CertProbe
+final class QemuRuntimeTests: XCTestCase {
+    func testTheRuntimeNeedsItsBinaryAndItsLibraries() throws {
+        let fm = FileManager.default
+        let out = fm.temporaryDirectory.appendingPathComponent("mylinux-runtime-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: out) }
+        XCTAssertNil(Paths.runtimeQemu(in: out), "nothing installed")
+        let bin = out.appendingPathComponent("qemu-runtime/bin/qemu-system-aarch64")
+        try fm.createDirectory(at: bin.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "#!/bin/sh\n".write(to: bin, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.path)
+        XCTAssertNil(Paths.runtimeQemu(in: out), "a binary without lib/ is half an install (tools/qemu-flavour.sh says the same)")
+        try fm.createDirectory(at: out.appendingPathComponent("qemu-runtime/lib"), withIntermediateDirectories: true)
+        XCTAssertEqual(Paths.runtimeQemu(in: out), bin.path)
+        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: bin.path)
+        XCTAssertNil(Paths.runtimeQemu(in: out), "not executable")
+    }
+}
+
 final class StatusMenuTests: XCTestCase {
     func testTheMenuBarOffersTheWayOutOfAGrab() {
         let menu = NSMenu()

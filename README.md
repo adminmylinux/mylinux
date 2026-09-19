@@ -40,6 +40,13 @@ tools/get-image.sh      # downloads Image + rootfs.cpio.gz of the latest release
 ./run.sh
 ```
 
+Homebrew's QEMU is optional: `tools/get-qemu-runtime.sh` installs myLinux's own QEMU into `out/qemu-runtime`
+(about 10 MB), and `run.sh` uses it whenever it is there. That runtime is QEMU 11.1 with VirGL, so a guest whose
+Mesa has the `virgl` driver renders on the Mac's GPU (virtio-gpu-gl, virglrenderer, ANGLE, Metal); the current image
+still renders in software on it. `MYLINUX_QEMU=brew ./run.sh` insists on Homebrew's, `tools/get-qemu-runtime.sh --remove`
+goes back for good. It is built by `tools/build-qemu-runtime.sh` from a pinned commit of
+[Try Omarchy](https://github.com/omacom/try-omarchy)'s runtime build; sources and licences travel inside it (`NOTICES.md`).
+
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
 size of the display under your mouse pointer; if the first start puts it on another display, give your
 terminal app Accessibility permission (System Settings › Privacy & Security) and it is moved automatically.
@@ -52,7 +59,7 @@ about 1.3 GB. Everything you install or save afterwards persists on that disk.
 Useful environment variables for `run.sh`: `RES=1600x1000` guest resolution (default is your
 screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,
 `MOUSE=tablet|relative` (relative: a click captures the Mac pointer for the guest, hidden and confined,
-until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `PLACER=0` (leave the
+until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `MYLINUX_QEMU=brew|runtime` (which QEMU, see above), `PLACER=0` (leave the
 window where macOS puts it), `MYLINUX_OUT=dir` (kernel, rootfs, apps disk and the QEMU wrapper elsewhere
 than `out/`).
 

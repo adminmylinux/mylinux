@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject var runs: RunManager
     @EnvironmentObject var remote: RemoteStore
     @StateObject private var images = ImageManager.shared
+    @StateObject private var runtime = RuntimeManager.shared      // observed so the QEMU warning goes when a download lands
     @State private var selection: UUID?
 
     private var selected: Profile? { store.profiles.first { $0.id == selection } }
@@ -61,7 +62,7 @@ struct ContentView: View {
         }
         .onAppear {
             if selection == nil { selection = store.profiles.first?.id }
-            images.refresh(settings)
+            images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
         }
         .frame(minWidth: 820, minHeight: 560)
@@ -70,7 +71,7 @@ struct ContentView: View {
     private var sidebarFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            if Paths.qemu() == nil { Banner(text: "QEMU is missing. In Terminal: brew install qemu", kind: .warning) }
+            if !settings.qemuAvailable { Banner(text: AppSettings.qemuMissingText, kind: .warning) }
             if settings.developerMode {
                 Label("Developer: \(URL(fileURLWithPath: settings.repoPath).lastPathComponent)", systemImage: "hammer")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)

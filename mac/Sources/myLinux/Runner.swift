@@ -38,7 +38,7 @@ final class Runner: ObservableObject {
     func start(_ p: Profile, settings: AppSettings = .shared) {
         guard !isActive else { return }
         if let problem = p.problems.first { state = .failed(problem); return }
-        guard Paths.qemu() != nil else { state = .failed("QEMU is not installed. In Terminal: brew install qemu"); return }
+        guard settings.qemuAvailable else { state = .failed(AppSettings.qemuMissingText); return }
         guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent("run.sh").path) else {
             state = .failed("run.sh was not found (developer checkout moved, or the app bundle is incomplete)."); return
         }

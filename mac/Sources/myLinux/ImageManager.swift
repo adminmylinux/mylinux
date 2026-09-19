@@ -1,34 +1,26 @@
 import Foundation
 
-/// The kernel + root filesystem pair. Standalone, this downloads a myLinux release into Application Support with
-/// tools/get-image.sh (one release resolved, checksummed, previous pair kept). In developer mode the checkout's
-/// own out/ is used and building is the checkout's business.
-final class ImageManager: ObservableObject {
-    static let shared = ImageManager()
-
+/// Runs one of the checkout's or the bundle's download scripts (tools/get-image.sh, tools/get-qemu-runtime.sh) with
+/// MYLINUX_OUT pointing at the right folder, and publishes its last line of output as the progress text.
+class ScriptDownloader: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var progress = ""
-    @Published private(set) var lastError: String?
-    @Published private(set) var revision: String?
-    @Published private(set) var present = false
-
+    @Published fileprivate(set) var lastError: String?
     private var process: Process?
 
-    func refresh(_ settings: AppSettings = .shared) {
-        revision = settings.imageRevision
-        present = settings.imagePresent
-    }
+    /// Called on the main thread when the script has ended, whatever the outcome.
+    func finished() {}
 
-    func download(_ settings: AppSettings = .shared) {
+    func run(_ tool: String, arguments: [String] = [], starting: String, settings: AppSettings) {
         guard !busy, let scripts = settings.scriptsDir else { return }
-        let script = scripts.appendingPathComponent("tools/get-image.sh")
+        let script = scripts.appendingPathComponent(tool)
         guard FileManager.default.isReadableFile(atPath: script.path) else {
-            lastError = "tools/get-image.sh is missing from the app."; return
+            lastError = "\(tool) is missing from the app."; return
         }
-        busy = true; progress = "Looking up the latest release…"; lastError = nil
+        busy = true; progress = starting; lastError = nil
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = [script.path]
+        proc.arguments = [script.path] + arguments
         proc.currentDirectoryURL = scripts
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = Paths.toolPath
@@ -55,7 +47,7 @@ final class ImageManager: ObservableObject {
                     let lines = out.split(whereSeparator: \.isNewline).map(String.init).suffix(3)
                     self.lastError = lines.isEmpty ? "Download failed (status \(pr.terminationStatus))." : lines.joined(separator: "\n")
                 }
-                self.refresh()
+                self.finished()
             }
         }
         do { try proc.run(); process = proc } catch {
@@ -63,7 +55,51 @@ final class ImageManager: ObservableObject {
         }
     }
 
-    func cancel() {
-        process?.terminate()
+    func cancel() { process?.terminate() }
+}
+
+/// The kernel + root filesystem pair. Standalone, this downloads a myLinux release into Application Support with
+/// tools/get-image.sh (one release resolved, checksummed, previous pair kept). In developer mode the checkout's
+/// own out/ is used and building is the checkout's business.
+final class ImageManager: ScriptDownloader {
+    static let shared = ImageManager()
+
+    @Published private(set) var revision: String?
+    @Published private(set) var present = false
+
+    func refresh(_ settings: AppSettings = .shared) {
+        revision = settings.imageRevision
+        present = settings.imagePresent
     }
+
+    func download(_ settings: AppSettings = .shared) {
+        run("tools/get-image.sh", starting: "Looking up the latest release…", settings: settings)
+    }
+
+    override func finished() { refresh() }
+}
+
+/// The accelerated QEMU (tools/get-qemu-runtime.sh): QEMU with VirGL in <out>/qemu-runtime, self-contained, so a Mac
+/// without Homebrew's QEMU can start machines, and a guest with the virgl Mesa driver renders on the Mac's GPU.
+/// run.sh uses it whenever it is installed; removing it goes back to Homebrew's.
+final class RuntimeManager: ScriptDownloader {
+    static let shared = RuntimeManager()
+
+    @Published private(set) var revision: String?
+    @Published private(set) var present = false
+
+    func refresh(_ settings: AppSettings = .shared) {
+        present = settings.runtimePresent
+        revision = settings.runtimeRevision
+    }
+
+    func download(_ settings: AppSettings = .shared) {
+        run("tools/get-qemu-runtime.sh", starting: "Downloading the accelerated QEMU…", settings: settings)
+    }
+
+    func remove(_ settings: AppSettings = .shared) {
+        run("tools/get-qemu-runtime.sh", arguments: ["--remove"], starting: "Removing…", settings: settings)
+    }
+
+    override func finished() { refresh() }
 }
