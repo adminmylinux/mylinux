@@ -32,6 +32,9 @@ final class Runner: ObservableObject {
 
     /// Short socket path: unix socket paths are limited to 104 bytes, Application Support paths are long.
     var serialSocket: String { "/tmp/mylinux-\(getuid())-\(profileID.uuidString.prefix(8).lowercased()).serial" }
+    /// QEMU's control socket for an Omarchy machine: its console is a login prompt, not a root shell, so Stop is a
+    /// press of the virtual power button there instead of "poweroff" typed into the console.
+    var qmpSocket: String { "/tmp/mylinux-\(getuid())-\(profileID.uuidString.prefix(8).lowercased()).qmp" }
     var logFile: URL { Paths.logs.appendingPathComponent("\(profileID.uuidString).log") }
 
     // ---- start ----------------------------------------------------------------------------------------------
@@ -39,36 +42,44 @@ final class Runner: ObservableObject {
         guard !isActive else { return }
         if let problem = p.problems.first { state = .failed(problem); return }
         guard settings.qemuAvailable else { state = .failed(AppSettings.qemuMissingText); return }
-        guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent("run.sh").path) else {
-            state = .failed("run.sh was not found (developer checkout moved, or the app bundle is incomplete)."); return
+        guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent(p.script).path) else {
+            state = .failed("\(p.script) was not found (developer checkout moved, or the app bundle is incomplete)."); return
         }
-        guard settings.imagePresent else {
-            state = .failed(settings.developerMode ? "No image in \(settings.outDir.path): run ./build.sh or tools/get-image.sh in the checkout."
-                                                   : "The myLinux image is not downloaded yet (Download in the sidebar).")
-            return
+        if p.kind == .omarchy {
+            guard settings.runtimePresent else { state = .failed("Omarchy needs the accelerated QEMU (Settings › QEMU › Download)."); return }
+            // an existing machine has its own disk and boot files; only a new one needs the downloaded guest
+            let machine = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
+            let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: machine.appendingPathComponent("boot/vmlinuz-linux").path)
+            guard created || settings.omarchyPresent else { state = .failed("Omarchy is not downloaded yet (Download on this page)."); return }
+        } else {
+            guard settings.imagePresent else {
+                state = .failed(settings.developerMode ? "No image in \(settings.outDir.path): run ./build.sh or tools/get-image.sh in the checkout."
+                                                       : "The myLinux image is not downloaded yet (Download in the sidebar).")
+                return
+            }
         }
         if Runner.diskInUse(p.appsDisk) { state = .inUseElsewhere; return }
 
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent(), withIntermediateDirectories: true)
-            try fm.createDirectory(atPath: p.shareDir, withIntermediateDirectories: true)
+            if !p.shareDir.isEmpty { try fm.createDirectory(atPath: p.shareDir, withIntermediateDirectories: true) }
             try fm.createDirectory(at: settings.outDir, withIntermediateDirectories: true)
             try fm.createDirectory(at: Paths.logs, withIntermediateDirectories: true)
         } catch {
             state = .failed("Could not create folders: \(error.localizedDescription)"); return
         }
-        unlink(serialSocket)
+        unlink(serialSocket); unlink(qmpSocket)
         fm.createFile(atPath: logFile.path, contents: nil)
         console = ""
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = [scripts.appendingPathComponent("run.sh").path]
+        proc.arguments = [scripts.appendingPathComponent(p.script).path]
         proc.currentDirectoryURL = scripts
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = Paths.toolPath
-        for (k, v) in p.environment(outDir: settings.outDir, serialSocket: serialSocket) { env[k] = v }
+        for (k, v) in p.environment(outDir: settings.outDir, serialSocket: serialSocket, qmpSocket: qmpSocket) { env[k] = v }
         env["PLACER"] = settings.placeWindow ? "1" : "0"
         proc.environment = env
         // straight into the log file, not a pipe: a machine outlives the launcher, and writing to the pipe of a
@@ -85,7 +96,7 @@ final class Runner: ObservableObject {
         do {
             try proc.run()
         } catch {
-            state = .failed("Could not start run.sh: \(error.localizedDescription)"); return
+            state = .failed("Could not start \(p.script): \(error.localizedDescription)"); return
         }
         process = proc; profile = p
         state = .starting
@@ -105,7 +116,7 @@ final class Runner: ObservableObject {
         try? logHandle?.close(); logHandle = nil
         let wasStopping = state == .stopping
         process = nil; stoppingSince = nil
-        unlink(serialSocket)
+        unlink(serialSocket); unlink(qmpSocket)
         if wasStopping || status == 0 {
             state = .stopped
         } else {
@@ -197,6 +208,15 @@ final class Runner: ObservableObject {
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
         guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) else { return }
+        if profile?.kind == .omarchy {
+            state = .stopping; stoppingSince = Date()
+            let path = qmpSocket
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let ok = Runner.qmp(path, execute: "system_powerdown")
+                if !ok { DispatchQueue.main.async { self?.forceQuit() } }
+            }
+            return
+        }
         guard consoleConnected else { forceQuit(); return }
         state = .stopping; stoppingSince = Date()
         send("\u{03}")                       // interrupt whatever the console shell is running
@@ -246,6 +266,28 @@ final class Runner: ObservableObject {
         }
         if r != 0 { close(fd); return -1 }
         return fd
+    }
+
+    /// One QMP command on QEMU's control socket: read the greeting, negotiate, send, and wait for the reply.
+    static func qmp(_ path: String, execute command: String) -> Bool {
+        let fd = connectUnix(path)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var tv = timeval(tv_sec: 3, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        func readLine() -> String? {
+            var line = [UInt8](); var b: UInt8 = 0
+            while Darwin.read(fd, &b, 1) == 1 { if b == 0x0A { return String(decoding: line, as: UTF8.self) }; line.append(b) }
+            return nil
+        }
+        func send(_ text: String) -> Bool { text.withCString { Darwin.write(fd, $0, strlen($0)) } > 0 }
+        /// the reply to a command, skipping the events QEMU interleaves
+        func reply() -> Bool {
+            for _ in 0..<20 { guard let l = readLine() else { return false }; if l.contains("\"return\"") { return true }; if l.contains("\"error\"") { return false } }
+            return false
+        }
+        guard readLine() != nil, send("{\"execute\":\"qmp_capabilities\"}\n"), reply() else { return false }
+        return send("{\"execute\":\"\(command)\"}\n") && reply()
     }
 
     static func readLoop(fd: Int32, _ deliver: (String) -> Void) {

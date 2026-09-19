@@ -23,8 +23,8 @@ rm -rf "$NEW"
 mkdir -p "$NEW/Contents/MacOS" "$NEW/Contents/Resources/runtime/tools"
 cp "$BIN" "$NEW/Contents/MacOS/myLinux Launcher"
 # the scripts the app runs: run.sh and everything it calls
-cp run.sh "$NEW/Contents/Resources/runtime/"
-for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh qemu-flavour.sh qemu-runtime.version; do
+cp run.sh run-omarchy.sh "$NEW/Contents/Resources/runtime/"
+for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done
 # icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds

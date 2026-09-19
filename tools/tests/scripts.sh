@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -160,6 +160,30 @@ out=$(cd "$W" && DRYRUN=1 RENDER=fast sh run.sh 2>&1); rc=$?
 not_rc0 "unknown RENDER is refused" $rc
 out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=nonsense sh run.sh 2>&1); rc=$?
 not_rc0 "unknown MYLINUX_QEMU is refused" $rc
+echo "run-omarchy.sh (DRYRUN, with the fake runtime)"
+out=$(cd / && DRYRUN=1 RES=1600x1000 DISK="$T/om/omarchy.ext4" SHARE_DIR="$T/om/Mac Files" NAME="Omarchy test" sh "$W/run-omarchy.sh" -qmp none 2>&1); rc=$?
+is_rc "dry run works from another directory" $rc 0
+has "root disk path is passed intact" "$out" "file=$T/om/omarchy.ext4,format=raw"
+has "the kernel comes from the machine's own boot folder" "$out" "$T/om/boot/vmlinuz-linux"
+has "accelerated GPU at the asked size, no ROM" "$out" "virtio-gpu-gl-pci,max_outputs=1,xres=1600,yres=1000,romfile="
+has "window fixed to the guest size" "$out" "zoom-to-fit=off"
+has "share exported for the guest's first user" "$out" "path=$T/om/Mac Files,security_model=none,multidevs=remap,guest_owner_uid=1000"
+has "share name travels as URL-safe base64" "$out" "omarchy.shared_folder_name=TWFjIEZpbGVz"
+has "extra QEMU arguments pass through" "$out" "none"
+file_absent "a dry run creates no disk" "$T/om/omarchy.ext4"
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); case "$out" in *shared_folder_name*) ko "no share: nothing about one on the command line" ;; *) ok "no share: nothing about one on the command line" ;; esac
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 QMP="$T/q.sock" sh run-omarchy.sh 2>&1); has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 SHARE_DIR="$HOME" sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "sharing the whole home folder is refused" $rc
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 DISK_SIZE_GB=4 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "a disk smaller than the factory image is refused" $rc
+out=$(cd "$W" && RES=1600x1000 DISK="$T/om2/omarchy.ext4" sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "a new machine without the downloaded guest fails" $rc
+has "and says how to get it" "$out" "get-omarchy.sh"
+file_absent "and leaves no half-made disk" "$T/om2/omarchy.ext4"
+out=$(cd "$W" && MYLINUX_QEMU=brew DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); has "Omarchy always uses the runtime" "$out" "virtio-gpu-gl-pci"
+(cd "$W" && sh tools/get-omarchy.sh --remove >/dev/null 2>&1); rc=$?
+is_rc "get-omarchy.sh --remove" $rc 0
 (cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1)
 file_exists "a second install keeps the previous runtime" "$W/out/qemu-runtime.prev"
 (cd "$W" && sh tools/get-qemu-runtime.sh --remove >/dev/null 2>&1); rc=$?
@@ -168,6 +192,9 @@ file_absent "--remove: runtime gone" "$W/out/qemu-runtime"
 file_absent "--remove: previous runtime gone too" "$W/out/qemu-runtime.prev"
 out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=runtime sh run.sh 2>&1); rc=$?
 not_rc0 "MYLINUX_QEMU=runtime without a runtime is refused" $rc
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "run-omarchy.sh without the runtime is refused" $rc
+has "and names the fix" "$out" "get-qemu-runtime.sh"
 
 echo "tools/make-app-bundle.sh"
 # fake qemu, failing brand-qemu (python3), no-op codesign/sips: the bundle must still get an (unbranded) binary

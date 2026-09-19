@@ -142,6 +142,37 @@ final class RemoteTests: XCTestCase {
 }
 
 /// Against a real VeNCrypt server: MYLINUX_TEST_VNC_HOST=192.168.0.61 swift test --filter CertProbe
+final class OmarchyProfileTests: XCTestCase {
+    func testAnOmarchyMachineMapsOntoRunOmarchySh() {
+        var p = ProfileStore.newProfile(named: "Omarchy", kind: .omarchy, folder: URL(fileURLWithPath: "/tmp/m/omarchy"))
+        XCTAssertEqual(p.script, "run-omarchy.sh")
+        XCTAssertEqual(p.windowName, "Omarchy", "no myLinux prefix on the window")
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        let env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s.sock", qmpSocket: "/tmp/q.sock")
+        XCTAssertEqual(env["DISK"], "/tmp/m/omarchy/omarchy.ext4")
+        XCTAssertEqual(env["DISK_SIZE_GB"], "32")
+        XCTAssertEqual(env["MEM"], "8G")
+        XCTAssertEqual(env["QMP"], "/tmp/q.sock", "Stop presses the power button there")
+        XCTAssertEqual(env["SHARE_DIR"], "/tmp/m/omarchy/Mac")
+        XCTAssertNil(env["APPS_IMG"]); XCTAssertNil(env["MOUSE"]); XCTAssertNil(env["CLIPBOARD"])
+        p.shareDir = ""
+        XCTAssertTrue(p.problems.isEmpty, "the share is optional for Omarchy")
+        XCTAssertNil(p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s.sock").keys.first { $0 == "SHARE_DIR" })
+        p.appsSizeGB = 4
+        XCTAssertFalse(p.problems.isEmpty, "the factory disk alone is 6 GB")
+    }
+    func testProfilesFromBeforeKindsAreMyLinux() throws {
+        let old = #"{"name":"Work","appsDisk":"/x/apps.img","shareDir":"/x/share"}"#
+        let p = try JSONDecoder().decode(Profile.self, from: Data(old.utf8))
+        XCTAssertEqual(p.kind, .mylinux); XCTAssertEqual(p.script, "run.sh")
+        let newer = #"{"name":"X","kind":"something-new","appsDisk":"/x/a","shareDir":"/x/s"}"#
+        XCTAssertEqual(try JSONDecoder().decode(Profile.self, from: Data(newer.utf8)).kind, .mylinux, "an unknown kind must not drop the file")
+        var o = ProfileStore.newProfile(named: "O", kind: .omarchy); o.name = "O"
+        let round = try JSONDecoder().decode(Profile.self, from: JSONEncoder().encode(o))
+        XCTAssertEqual(round.kind, .omarchy)
+    }
+}
+
 final class QemuRuntimeTests: XCTestCase {
     func testTheRuntimeNeedsItsBinaryAndItsLibraries() throws {
         let fm = FileManager.default

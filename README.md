@@ -48,6 +48,18 @@ and a half cores for a repainting terminal. `RENDER=soft ./run.sh` keeps the gue
 goes back for good. It is built by `tools/build-qemu-runtime.sh` from a pinned commit of
 [Try Omarchy](https://github.com/omacom/try-omarchy)'s runtime build; sources and licences travel inside it (`NOTICES.md`).
 
+### Omarchy machines
+
+The same runtime also starts real [Omarchy](https://omarchy.org) (Arch Linux with Hyprland) as a second kind of
+machine: `tools/get-omarchy.sh` downloads the ARM64 guest that the [Try Omarchy](https://github.com/omacom/try-omarchy)
+project publishes (1.4 GB, one pinned release, checked against a pinned SHA-256, the publisher's signature and the
+guest's own checksums; nothing from it is run on the Mac), and `./run-omarchy.sh` boots it with Hyprland drawn by the
+Mac's GPU. A machine is a folder holding its root disk (unpacked on first start, `DISK_SIZE_GB=32`, grown by the guest)
+and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up inside as `~/Work`; `GRAB`, `MEM`, `RES`
+work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. In the
+launcher it is **Add Omarchy**. Not there (they need Try Omarchy's own helper app): clipboard, camera and Touch ID
+bridges; sound plays through the Mac's default output.
+
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
 size of the display under your mouse pointer; if the first start puts it on another display, give your
 terminal app Accessibility permission (System Settings › Privacy & Security) and it is moved automatically.

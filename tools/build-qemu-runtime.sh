@@ -44,6 +44,7 @@ STAGE=$(mktemp -d "${TMPDIR:-/tmp}/qemu-runtime.XXXXXX"); trap 'rm -rf "$STAGE"'
 R="$STAGE/qemu-runtime"
 mkdir -p "$R/bin" "$R/source/patches"
 cp "$BUILT/bin/qemu-system-aarch64" "$R/bin/"
+cp "$BUILT/bin/zstd" "$R/bin/"          # run-omarchy.sh unpacks the Omarchy root disk with it (no Homebrew needed)
 cp -R "$BUILT/lib" "$R/lib"
 printf '%s\n' "$VERSION" > "$R/RUNTIME-REVISION"
 # what QEMU's GPL asks of whoever passes the binary on: the exact source. The patches travel with it, the pinned

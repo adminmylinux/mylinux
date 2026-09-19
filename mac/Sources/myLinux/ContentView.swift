@@ -78,8 +78,14 @@ struct ContentView: View {
                     .help(settings.repoPath + " — run.sh, tools/ and out/ come from this checkout")
             }
             ImageStatusView(images: images)
-            Button { selection = store.add(copying: selected).id } label: {
-                Label("Add machine", systemImage: "plus")
+            HStack(spacing: 12) {
+                Button { selection = store.add(copying: selected?.kind == .mylinux ? selected : nil, kind: .mylinux).id } label: {
+                    Label("Add myLinux", systemImage: "plus")
+                }
+                Button { selection = store.add(copying: selected?.kind == .omarchy ? selected : nil, kind: .omarchy).id } label: {
+                    Label("Add Omarchy", systemImage: "plus")
+                }
+                .help("A machine running Omarchy (Arch Linux with Hyprland), from the Try Omarchy project's release. Needs the accelerated QEMU.")
             }
             .buttonStyle(.link)
             HStack(spacing: 12) {

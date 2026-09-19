@@ -103,3 +103,23 @@ final class RuntimeManager: ScriptDownloader {
 
     override func finished() { refresh() }
 }
+
+/// The Omarchy guest (tools/get-omarchy.sh): downloaded once (1.4 GB) from the Try Omarchy project's signed release,
+/// checked, and kept in <out>/omarchy; every Omarchy machine's disk is unpacked from it on its first start.
+final class OmarchyManager: ScriptDownloader {
+    static let shared = OmarchyManager()
+
+    @Published private(set) var revision: String?
+    @Published private(set) var present = false
+
+    func refresh(_ settings: AppSettings = .shared) {
+        present = settings.omarchyPresent
+        revision = settings.omarchyRevision
+    }
+
+    func download(_ settings: AppSettings = .shared) {
+        run("tools/get-omarchy.sh", starting: "Downloading Omarchy (1.4 GB)…", settings: settings)
+    }
+
+    override func finished() { refresh() }
+}

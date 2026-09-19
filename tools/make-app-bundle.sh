@@ -7,7 +7,14 @@
 set -eu
 cd "$(dirname "$0")/.."
 OUT="${MYLINUX_OUT:-out}"
-APP="$OUT/myLinux.app"
+# Two bundles from the same recipe. myLinux.app is 1x on purpose (see NSHighResolutionCapable below). run-omarchy.sh
+# asks for the other one (MYLINUX_BUNDLE=omarchy): the runtime's Cocoa display tells that guest the window's size in
+# backing pixels and scales the picture by the backing factor, which only adds up in a Retina-capable app.
+case "${MYLINUX_BUNDLE:-mylinux}" in
+  mylinux) APP="$OUT/myLinux.app"; HIDPI=false; BUNDLE_ID=dev.mylinux.vm ;;
+  omarchy) APP="$OUT/myLinux-omarchy.app"; HIDPI=true; BUNDLE_ID=dev.mylinux.vm.omarchy ;;
+  *) echo "MYLINUX_BUNDLE must be mylinux or omarchy" >&2; exit 1 ;;
+esac
 # Which QEMU: the accelerated runtime in $OUT/qemu-runtime (tools/get-qemu-runtime.sh: VirGL, self-contained, no
 # Homebrew needed) when it is there, else Homebrew's. MYLINUX_QEMU=brew insists on Homebrew's. run.sh asks the same
 # question (tools/qemu-flavour.sh) because the two take different machine arguments.
@@ -55,20 +62,20 @@ if [ "$FLAVOUR" = runtime ]; then
 else
   ln -sfn "$(dirname "$(dirname "$QEMU")")/share" "$APP/Contents/share"
 fi
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>myLinux</string>
   <key>CFBundleDisplayName</key><string>myLinux</string>
   <key>CFBundleExecutable</key><string>myLinux</string>
-  <key>CFBundleIdentifier</key><string>dev.mylinux.vm</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleIconFile</key><string>myLinux</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <!-- 1x backing store on purpose: QEMU sizes a non-resizable window in device pixels, so with a 1x
        window one guest pixel is one point and the desktop appears at the size run.sh asked for. -->
-  <key>NSHighResolutionCapable</key><false/>
+  <key>NSHighResolutionCapable</key><$HIDPI/>
 </dict></plist>
 PLIST
 # icon: tools/icons/myLinux.icns (drawn by tools/icons/make-icons.sh, committed), refreshed whenever it changes so an

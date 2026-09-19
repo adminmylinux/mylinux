@@ -98,6 +98,17 @@ final class AppSettings: ObservableObject {
         return (try? String(contentsOf: outDir.appendingPathComponent("qemu-runtime/RUNTIME-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    /// The Omarchy guest (tools/get-omarchy.sh): kernel, initramfs and the compressed factory disk.
+    var omarchyPresent: Bool {
+        let dir = outDir.appendingPathComponent("omarchy", isDirectory: true)
+        return ["vmlinuz-linux", "initramfs-linux.img", "rootfs.ext4.zst"].allSatisfy {
+            ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
+        }
+    }
+    var omarchyRevision: String? {
+        (try? String(contentsOf: outDir.appendingPathComponent("omarchy/OMARCHY-REVISION"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     /// Some QEMU can start a machine: the runtime, or Homebrew's.
     var qemuAvailable: Bool { runtimePresent || Paths.qemu() != nil }
     static let qemuMissingText = "QEMU is missing. Download the accelerated QEMU in Settings, or in Terminal: brew install qemu"
