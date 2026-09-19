@@ -17,7 +17,7 @@ separate "apps disk" image that the system sets itself up on first boot.
 |---|---|
 | Build system | [Buildroot](https://buildroot.org) 2026.08, this repo is the `BR2_EXTERNAL` tree |
 | Target | arm64, Linux 6.18, glibc, busybox init, initramfs only (~110 MB kernel + rootfs) |
-| Graphics | virtio-gpu, Mesa llvmpipe, Qt 6.11 `eglfs_kms` |
+| Graphics | virtio-gpu, Qt 6.11 `eglfs_kms`; Mesa virgl on the accelerated QEMU runtime (the Mac's GPU through Metal), Mesa llvmpipe on Homebrew's QEMU |
 | Desktop | `shell/`: QML Qt Wayland Compositor ("myshell"), foot terminal, Inter font |
 | Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, Remmina (VNC/RDP), btop, git, Claude Code, Codex, wl-clipboard |
 | Host | QEMU 11 (Homebrew), HVF acceleration, 9p shared folder, macOS app bundle `myLinux.app` |
@@ -42,8 +42,9 @@ tools/get-image.sh      # downloads Image + rootfs.cpio.gz of the latest release
 
 Homebrew's QEMU is optional: `tools/get-qemu-runtime.sh` installs myLinux's own QEMU into `out/qemu-runtime`
 (about 10 MB), and `run.sh` uses it whenever it is there. That runtime is QEMU 11.1 with VirGL, so a guest whose
-Mesa has the `virgl` driver renders on the Mac's GPU (virtio-gpu-gl, virglrenderer, ANGLE, Metal); the current image
-still renders in software on it. `MYLINUX_QEMU=brew ./run.sh` insists on Homebrew's, `tools/get-qemu-runtime.sh --remove`
+Mesa has the `virgl` driver renders on the Mac's GPU (virtio-gpu-gl, virglrenderer, ANGLE, Metal): images built
+after 2026-09-19 do, and the desktop's compositor then costs a few percent of a core where software rendering took two
+and a half cores for a repainting terminal. `RENDER=soft ./run.sh` keeps the guest on software GL. `MYLINUX_QEMU=brew ./run.sh` insists on Homebrew's, `tools/get-qemu-runtime.sh --remove`
 goes back for good. It is built by `tools/build-qemu-runtime.sh` from a pinned commit of
 [Try Omarchy](https://github.com/omacom/try-omarchy)'s runtime build; sources and licences travel inside it (`NOTICES.md`).
 
@@ -59,7 +60,7 @@ about 1.3 GB. Everything you install or save afterwards persists on that disk.
 Useful environment variables for `run.sh`: `RES=1600x1000` guest resolution (default is your
 screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,
 `MOUSE=tablet|relative` (relative: a click captures the Mac pointer for the guest, hidden and confined,
-until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `MYLINUX_QEMU=brew|runtime` (which QEMU, see above), `PLACER=0` (leave the
+until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `MYLINUX_QEMU=brew|runtime` (which QEMU, see above), `RENDER=soft` (software GL in the guest), `PLACER=0` (leave the
 window where macOS puts it), `MYLINUX_OUT=dir` (kernel, rootfs, apps disk and the QEMU wrapper elsewhere
 than `out/`).
 

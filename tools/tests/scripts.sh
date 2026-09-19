@@ -155,6 +155,9 @@ has "with a runtime: every PCI device without a ROM file" "$out" "virtio-net-pci
 has "with a runtime: GICv3" "$out" "virt,gic-version=3"
 has "with a runtime: GL display" "$out" "cocoa,gl=es,"
 out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=brew sh run.sh 2>&1); has "MYLINUX_QEMU=brew insists on Homebrew's" "$out" "QEMU=brew"
+out=$(cd "$W" && DRYRUN=1 RENDER=soft sh run.sh 2>&1); has "RENDER=soft asks the guest for software GL" "$out" "mylinux.gl=soft"
+out=$(cd "$W" && DRYRUN=1 RENDER=fast sh run.sh 2>&1); rc=$?
+not_rc0 "unknown RENDER is refused" $rc
 out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=nonsense sh run.sh 2>&1); rc=$?
 not_rc0 "unknown MYLINUX_QEMU is refused" $rc
 (cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1)

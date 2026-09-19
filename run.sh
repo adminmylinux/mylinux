@@ -6,6 +6,7 @@
 #              GRAB=opt|full|none, MOUSE=tablet|relative, CLIPBOARD=0, DRYRUN=1 (print the QEMU command and exit),
 #              PLACER=0 (do not move the window onto the current display; no Automation permission needed),
 #              FORWARD=host:guest[,host:guest...] (TCP ports on 127.0.0.1 forwarded into the guest, for tests),
+#              RENDER=soft (software GL in the guest even on the accelerated runtime),
 #              MYLINUX_QEMU=brew|runtime (default: the accelerated runtime in $MYLINUX_OUT/qemu-runtime when
 #              tools/get-qemu-runtime.sh installed one, else Homebrew's QEMU),
 #              MYLINUX_OUT=dir holding Image, rootfs.cpio.gz, the default apps.img and the myLinux.app wrapper
@@ -100,12 +101,15 @@ else
   MACHINE="virt"; ROM=""; GPU="virtio-gpu-pci"; GL=""
 fi
 
+# RENDER=soft keeps the guest on software GL even when the runtime offers 3D (the way back if virgl misbehaves).
+case "${RENDER:-auto}" in auto) GLARG="" ;; soft) GLARG=" mylinux.gl=soft" ;; *) die "RENDER must be auto or soft" ;; esac
+
 # ---- the QEMU command, built as a proper argument list (no word splitting of paths) ---------------
 QEMU="$OUT/myLinux.app/Contents/MacOS/qemu-myLinux"
 set -- \
   -name "$NAME" -M "$MACHINE" -accel hvf -cpu host -smp 4 -m "$MEM" \
   -kernel "$OUT/Image" -initrd "$OUT/rootfs.cpio.gz" \
-  -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60" \
+  -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60$GLARG" \
   -device "$GPU,xres=$XRES,yres=$YRES$ROM" \
   -device "virtio-keyboard-pci$ROM" -device "$POINTER$ROM" \
   -netdev "$NETDEV" -device "virtio-net-pci,netdev=n0$ROM" \
