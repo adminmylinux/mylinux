@@ -19,7 +19,8 @@ struct MyLinuxApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Machine") { _ = store.add() }.keyboardShortcut("n")
+                Button("New myLinux Machine") { _ = store.add(kind: .mylinux) }.keyboardShortcut("n")
+                Button("New Omarchy Machine") { _ = store.add(kind: .omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("Quick Connect…") { QuickConnect.shared.show() }.keyboardShortcut("k")
             }
         }

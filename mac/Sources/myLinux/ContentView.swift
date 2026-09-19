@@ -49,6 +49,8 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 210, ideal: 230)
             .safeAreaInset(edge: .bottom) { sidebarFooter }
+            // in the sidebar's toolbar, not the section header: a click anywhere in a sidebar header folds the section
+            .toolbar { ToolbarItem(placement: .automatic) { addMenu } }
         } detail: {
             if let p = selected {
                 MachineView(profile: p, runner: runs.runner(for: p.id))
@@ -68,6 +70,29 @@ struct ContentView: View {
         .frame(minWidth: 820, minHeight: 560)
     }
 
+    /// Everything that can be added, behind one + above the list: the two kinds of machine, the two kinds of remote
+    /// connection, and the import of the guest viewer's saved machines.
+    private var addMenu: some View {
+        Menu {
+            Button { selection = store.add(copying: selected?.kind == .mylinux ? selected : nil, kind: .mylinux).id } label: {
+                Label("myLinux Machine", systemImage: "desktopcomputer")
+            }
+            Button { selection = store.add(copying: selected?.kind == .omarchy ? selected : nil, kind: .omarchy).id } label: {
+                Label("Omarchy Machine", systemImage: "cube")
+            }
+            Divider()
+            Button { selection = remote.add(.vnc).id } label: { Label("VNC Desktop", systemImage: "display") }
+            Button { selection = remote.add(.ssh).id } label: { Label("SSH Terminal", systemImage: "terminal") }
+            Divider()
+            Button { importMachines() } label: { Label("Import from machines.json…", systemImage: "square.and.arrow.down") }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .help("Add a machine or a remote connection")
+        .accessibilityLabel("Add")
+    }
+
     private var sidebarFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
@@ -78,24 +103,6 @@ struct ContentView: View {
                     .help(settings.repoPath + " — run.sh, tools/ and out/ come from this checkout")
             }
             ImageStatusView(images: images)
-            HStack(spacing: 12) {
-                Button { selection = store.add(copying: selected?.kind == .mylinux ? selected : nil, kind: .mylinux).id } label: {
-                    Label("Add myLinux", systemImage: "plus")
-                }
-                Button { selection = store.add(copying: selected?.kind == .omarchy ? selected : nil, kind: .omarchy).id } label: {
-                    Label("Add Omarchy", systemImage: "plus")
-                }
-                .help("A machine running Omarchy (Arch Linux with Hyprland), from the Try Omarchy project's release. Needs the accelerated QEMU.")
-            }
-            .buttonStyle(.link)
-            HStack(spacing: 12) {
-                Button { selection = remote.add(.vnc).id } label: { Label("Add VNC", systemImage: "display") }
-                Button { selection = remote.add(.ssh).id } label: { Label("Add SSH", systemImage: "terminal") }
-            }
-            .buttonStyle(.link)
-            Button { importMachines() } label: { Label("Import from machines.json…", systemImage: "square.and.arrow.down") }
-                .buttonStyle(.link).font(.caption)
-                .help("The myLinux viewer's saved machines (~/.config/mylinux/vnc/machines.json in the guest; copy it to the share first). A secrets.env next to it brings the passwords.")
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
     }
