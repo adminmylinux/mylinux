@@ -106,8 +106,11 @@ if [ -n "$SHARE_DIR" ]; then
   SHARE_NAME=$(printf '%s' "$(basename "$SHARE_DIR")" | base64 | tr '+/' '-_' | tr -d '=\n')
   APPEND="$APPEND omarchy.shared_folder_name=$SHARE_NAME"
   # tools for inside Omarchy travel in the share: session save/restore (sh ~/<share>/mylinux/install-session.sh once)
-  if [ "${DRYRUN:-0}" != 1 ]; then mkdir -p "$SHARE_DIR/mylinux" && cp -f omarchy/session/* "$SHARE_DIR/mylinux/" 2>/dev/null || true; fi
+  if [ "${DRYRUN:-0}" != 1 ]; then mkdir -p "$SHARE_DIR/mylinux/control" && cp -f omarchy/session/* "$SHARE_DIR/mylinux/" 2>/dev/null || true; fi
+  # the Session menu in the window's title bar: QEMU runs this to drop commands for the agent, and reads the status
+  export MYLINUX_SESSION_CMD="$REPO/tools/omarchy-session-mac.sh '$SHARE_DIR'" MYLINUX_SESSION_STATUS="$SHARE_DIR/mylinux/control/status.json"
 fi
+export MYLINUX_SIZE_BUTTONS=1     # the window's size and full screen buttons are for Omarchy (the guest follows the window)
 
 # ---- first start of this machine: unpack the factory disk, grow it, keep the matching kernel beside it ----------
 if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then

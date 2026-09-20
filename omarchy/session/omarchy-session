@@ -4,6 +4,10 @@
     omarchy-session save       write the current layout (also done every minute and at logout by the units)
     omarchy-session restore    open what the saved layout has and this session lacks (done at login by the units)
     omarchy-session status     show the saved layout
+    omarchy-session interval <minutes>|off   how often the timer saves (off stops it; the login restore stays)
+    omarchy-session agent      run by a user unit: takes commands the Mac window drops into the share folder
+                               (/mnt/mac/mylinux/control/*.cmd: save, restore, interval N) and keeps status.json
+                               there for the window's Session menu
     omarchy-session enable | disable      the units (install.sh enables them)
 
 Each window is remembered with the command line of its process (/proc/<pid>/cmdline), so it is reopened the way
@@ -89,6 +93,7 @@ def save():
     s = snapshot()
     tmp = STATE.with_suffix(".tmp"); tmp.write_text(json.dumps(s, indent=1)); tmp.replace(STATE)
     print(f"saved {len(s['windows'])} windows to {STATE}")
+    write_status()
 
 def lua_string(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -120,6 +125,62 @@ def status():
     print(f"saved {s['saved']}, active workspace {s['active_workspace']}")
     for w in s["windows"]: print(f"  workspace {w['workspace']}: {w['class']}  {launch_command(w)}")
 
+CONTROL = Path("/mnt/mac/mylinux/control")
+TIMER_DROPIN = Path.home() / ".config/systemd/user/omarchy-session-save.timer.d/interval.conf"
+
+def parse_interval(dropin_text):
+    """Minutes from the timer drop-in: the last OnUnitActiveSec= wins (an empty one first resets the unit's own)."""
+    minutes = 1
+    for line in dropin_text.splitlines():
+        if line.startswith("OnUnitActiveSec=") and line.split("=", 1)[1].strip():
+            minutes = int(line.split("=", 1)[1].strip().rstrip("min") or 1)
+    return minutes
+
+def current_interval():
+    """Minutes between timer saves, 0 when the timer is off."""
+    r = subprocess.run(["systemctl", "--user", "is-active", "omarchy-session-save.timer"], capture_output=True, text=True)
+    if r.stdout.strip() != "active": return 0
+    return parse_interval(TIMER_DROPIN.read_text()) if TIMER_DROPIN.exists() else 1
+
+def interval(value):
+    if value in ("off", "0"):
+        subprocess.run(["systemctl", "--user", "stop", "omarchy-session-save.timer"], check=False)
+        print("timer saves off (the login restore and the save at logout stay)"); return
+    minutes = max(1, int(value))
+    TIMER_DROPIN.parent.mkdir(parents=True, exist_ok=True)
+    TIMER_DROPIN.write_text(f"[Timer]\nOnActiveSec=\nOnActiveSec={minutes}min\nOnUnitActiveSec=\nOnUnitActiveSec={minutes}min\n")
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "--user", "restart", "omarchy-session-save.timer"], check=False)
+    print(f"saving every {minutes} min")
+
+def write_status():
+    try:
+        saved = json.loads(STATE.read_text()) if STATE.exists() else {}
+        CONTROL.mkdir(parents=True, exist_ok=True)
+        tmp = CONTROL / "status.json.tmp"
+        tmp.write_text(json.dumps({"last_saved": saved.get("saved"), "windows": len(saved.get("windows", [])), "interval_minutes": current_interval()}))
+        tmp.replace(CONTROL / "status.json")
+    except OSError:
+        pass
+
+def agent():
+    """Poll the share for command files from the Mac window; the share is only there when one is configured."""
+    last_status = 0
+    while True:
+        try:
+            for f in sorted(CONTROL.glob("*.cmd")):
+                try: words = f.read_text().split(); f.unlink()
+                except OSError: continue
+                if not words: continue
+                if words[0] == "save": save()
+                elif words[0] == "restore": restore()
+                elif words[0] == "interval" and len(words) > 1: interval(words[1])
+                write_status()
+        except OSError:
+            pass
+        if time.monotonic() - last_status > 30: write_status(); last_status = time.monotonic()
+        time.sleep(1)
+
 def units(action):
     subprocess.run(["systemctl", "--user", action, "omarchy-session-restore.service", "omarchy-session-save.timer"], check=False)
 
@@ -134,9 +195,12 @@ def selftest():
     assert launch_command(saved["windows"][1]) == "chromium --app=https://a.example"
     assert plan(saved, [{"class": "Alacritty", "workspace": {"id": 3}}])[0]["class"] == "Alacritty", "same class on another workspace does not count"
     assert lua_string('[workspace 2 silent] foot -e sh -c "echo \\"hi\\""') == '"[workspace 2 silent] foot -e sh -c \\"echo \\\\\\"hi\\\\\\"\\""', "quotes and backslashes escaped for Lua"
+    assert parse_interval("[Timer]\nOnActiveSec=\nOnActiveSec=5min\nOnUnitActiveSec=\nOnUnitActiveSec=5min\n") == 5, "the reset line must not win"
+    assert parse_interval("") == 1
     print("omarchy-session selftest ok")
 
 if __name__ == "__main__":
     a = sys.argv[1] if len(sys.argv) > 1 else "status"
     {"save": save, "restore": restore, "status": status, "enable": lambda: units("enable"), "disable": lambda: units("disable"),
+     "interval": lambda: interval(sys.argv[2] if len(sys.argv) > 2 else "1"), "agent": agent,
      "--selftest": selftest}.get(a, lambda: print(__doc__))()

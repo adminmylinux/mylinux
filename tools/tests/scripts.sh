@@ -182,6 +182,13 @@ case "$out" in *audiodev*) ok "sound device by default" ;; *) ko "sound device b
 has "clipboard port for Omarchy's agent by default" "$out" "name=dev.tryomarchy.clipboard"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 CLIPBOARD=0 sh run-omarchy.sh 2>&1)
 case "$out" in *tryomarchy.clipboard*) ko "CLIPBOARD=0 leaves the port out" ;; *) ok "CLIPBOARD=0 leaves the port out" ;; esac
+out=$(cd "$W" && DRYRUN=1 SCALE=1 RES=1600x1000 SHARE_DIR="$T/om/Mac Files" sh run-omarchy.sh 2>&1); has "dry run: no session tools copied into the share" "$out" "DISK="
+file_absent "dry run leaves the share alone" "$T/om/Mac Files/mylinux"
+(sh "$REPO/tools/omarchy-session-mac.sh" "$T/om/Mac Files" interval 5 >/dev/null 2>&1); rc=$?
+is_rc "omarchy-session-mac.sh drops a command file into the share" $rc 0
+c=$(cat "$T/om/Mac Files/mylinux/control/"*.cmd 2>/dev/null); [ "$c" = "interval 5" ] && ok "the command file holds the words" || ko "the command file holds '$c'"
+(sh "$REPO/tools/omarchy-session-mac.sh" "$T/om/Mac Files" reboot >/dev/null 2>&1); rc=$?
+not_rc0 "unknown session commands are refused" $rc
 (python3 "$REPO/omarchy/session/omarchy-session" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-session selftest (restore planning, terminal working directory)" $rc 0
 (python3 "$REPO/tools/omarchy-clipboard.py" --selftest >/dev/null 2>&1); rc=$?

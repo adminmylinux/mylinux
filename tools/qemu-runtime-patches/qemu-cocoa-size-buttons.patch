@@ -17,7 +17,14 @@
  
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-@@ -1416,6 +1426,10 @@
+@@ -1410,12 +1420,20 @@
+  ------------------------------------------------------
+ */
+ @interface QemuCocoaAppController : NSObject
+-                                       <NSWindowDelegate, NSApplicationDelegate>
++                                       <NSWindowDelegate, NSApplicationDelegate, NSToolbarDelegate, NSMenuDelegate>
+ {
+ }
  - (void)doToggleFullScreen:(id)sender;
  - (void)showQEMUDoc:(id)sender;
  - (void)zoomToFit:(id) sender;
@@ -25,10 +32,14 @@
 +- (void)sizeButtonLarger:(id)sender;
 +- (void)sizeButtonBase:(id)sender;
 +- (void)showFullScreenPanel;
++- (NSMenu *)sessionMenuForPanel:(BOOL)panel;
++- (void)sessionSave:(id)sender;
++- (void)sessionRestore:(id)sender;
++- (void)sessionInterval:(id)sender;
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1491,6 +1505,7 @@
+@@ -1491,6 +1509,7 @@
          [window makeKeyAndOrderFront:self];
          [window center];
          [window setDelegate: self];
@@ -36,7 +47,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1563,18 +1578,29 @@
+@@ -1563,18 +1582,29 @@
      [cocoaView updateUIInfo];
  }
  
@@ -67,67 +78,228 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1675,6 +1701,135 @@
+@@ -1675,6 +1705,298 @@
  }
  
  /* Stretches video to fit host monitor size */
 +/*
-+ * myLinux: three buttons in the window's title bar, at the right. Minus puts the window back to the content size it
-+ * came up with, plus makes it 10% larger, the third is full screen. The first two turn Zoom To Fit on (the window
-+ * becomes resizable and the picture scales to it); with a guest that follows the window's size, that is how the
-+ * desktop gets more room. The window is kept inside its screen.
++ * myLinux: the window's own controls, in a toolbar. At the right: minus (back to the content size the window came up
++ * with), plus (10% larger) and full screen; the first two turn Zoom To Fit on (the window becomes resizable and the
++ * picture scales to it), and a guest that follows the window's size gets more room that way. Centred: a Session
++ * menu, when MYLINUX_SESSION_CMD names a command that hands "save", "restore" or "interval N" to the guest (through
++ * the share folder; MYLINUX_SESSION_STATUS is the status file the guest keeps for the menu). The size buttons are
++ * only there with MYLINUX_SIZE_BUTTONS set (run-omarchy.sh); a window without either keeps its plain title bar.
++ * In full screen, where the title bar is hidden, a small floating box carries the Session menu and an exit button.
 + */
 +static NSSize size_button_base;
-+/* myLinux: a small floating button in the top right corner while in full screen, since the title bar and its
-+ * buttons are hidden there; Control+Command+F does the same from the keyboard. */
 +static NSPanel *fullscreen_panel;
 +static bool fullscreen_panel_placed;
-+/* the content size before full screen, restored on the way out (the guest sits at the display's resolution then, and
-+ * without this the fixed window would take that size and fill the screen) */
 +static NSSize prefullscreen_size;
++static NSMenu *session_menu, *session_panel_menu;
++
++static const char *mylinux_env(const char *name)
++{
++    const char *v = getenv(name);
++    return v && *v ? v : NULL;
++}
++static bool mylinux_size_buttons(void) { return mylinux_env("MYLINUX_SIZE_BUTTONS") != NULL; }
++static bool mylinux_session(void) { return mylinux_env("MYLINUX_SESSION_CMD") != NULL; }
 +
 +- (void)installSizeButtons
 +{
-+    NSView *strip = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 104, 26)];
-+    NSArray *specs = @[
-+        @[@"minus", @"Back to the starting size", @"sizeButtonBase:"],
-+        @[@"plus", @"Larger window (+10%)", @"sizeButtonLarger:"],
-+        @[@"arrow.up.left.and.arrow.down.right", @"Full screen", @"doToggleFullScreen:"],
-+    ];
-+    CGFloat x = 0;
-+    for (NSArray *spec in specs) {
-+        NSImage *image = [NSImage imageWithSystemSymbolName:spec[0] accessibilityDescription:spec[1]];
-+        NSButton *button = [NSButton buttonWithImage:image target:self action:NSSelectorFromString(spec[2])];
-+        [button setBezelStyle:NSBezelStyleToolbar];
-+        [button setToolTip:spec[1]];
-+        [button setFrame:NSMakeRect(x, 1, 30, 24)];
-+        [strip addSubview:button];
-+        x += 34;
++    if (!mylinux_size_buttons() && !mylinux_session()) {
++        return;
 +    }
-+    [strip setFrame:NSMakeRect(0, 0, x + 6, 26)];
-+    NSTitlebarAccessoryViewController *accessory = [[NSTitlebarAccessoryViewController alloc] init];
-+    [accessory setView:strip];
-+    [accessory setLayoutAttribute:NSLayoutAttributeRight];
-+    [[cocoaView window] addTitlebarAccessoryViewController:accessory];
++    NSToolbar *toolbar = [[NSToolbar alloc] initWithIdentifier:@"mylinux-window"];
++    [toolbar setDelegate:self];
++    [toolbar setDisplayMode:NSToolbarDisplayModeIconOnly];
++    [toolbar setAllowsUserCustomization:NO];
++    if (mylinux_session()) {
++        [toolbar setCenteredItemIdentifier:@"mylinux.session"];
++    }
++    [[cocoaView window] setToolbarStyle:NSWindowToolbarStyleUnifiedCompact];
++    [[cocoaView window] setToolbar:toolbar];
++}
++
++- (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar
++{
++    NSMutableArray *ids = [NSMutableArray arrayWithObject:NSToolbarFlexibleSpaceItemIdentifier];
++    if (mylinux_session()) {
++        [ids addObject:@"mylinux.session"];
++        [ids addObject:NSToolbarFlexibleSpaceItemIdentifier];
++    }
++    if (mylinux_size_buttons()) {
++        [ids addObjectsFromArray:@[@"mylinux.smaller", @"mylinux.larger", @"mylinux.fullscreen"]];
++    }
++    return ids;
++}
++
++- (NSArray<NSToolbarItemIdentifier> *)toolbarAllowedItemIdentifiers:(NSToolbar *)toolbar
++{
++    return [self toolbarDefaultItemIdentifiers:toolbar];
++}
++
++- (NSToolbarItem *)toolbar:(NSToolbar *)toolbar itemForItemIdentifier:(NSToolbarItemIdentifier)identifier
++    willBeInsertedIntoToolbar:(BOOL)flag
++{
++    NSString *symbol = nil, *tip = nil;
++    SEL action = NULL;
++    if ([identifier isEqualToString:@"mylinux.session"]) {
++        NSMenuToolbarItem *item = [[NSMenuToolbarItem alloc] initWithItemIdentifier:identifier];
++        [item setImage:[NSImage imageWithSystemSymbolName:@"clock.arrow.circlepath" accessibilityDescription:@"Session"]];
++        [item setLabel:@"Session"];
++        [item setToolTip:@"Save and restore the Omarchy session, and how often it is saved"];
++        [item setShowsIndicator:YES];
++        [item setMenu:[self sessionMenuForPanel:NO]];
++        return item;
++    } else if ([identifier isEqualToString:@"mylinux.smaller"]) {
++        symbol = @"minus"; tip = @"Back to the starting size"; action = @selector(sizeButtonBase:);
++    } else if ([identifier isEqualToString:@"mylinux.larger"]) {
++        symbol = @"plus"; tip = @"Larger window (+10%)"; action = @selector(sizeButtonLarger:);
++    } else if ([identifier isEqualToString:@"mylinux.fullscreen"]) {
++        symbol = @"arrow.up.left.and.arrow.down.right"; tip = @"Full screen"; action = @selector(doToggleFullScreen:);
++    } else {
++        return nil;
++    }
++    NSToolbarItem *item = [[NSToolbarItem alloc] initWithItemIdentifier:identifier];
++    [item setImage:[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:tip]];
++    [item setLabel:tip];
++    [item setToolTip:tip];
++    [item setBordered:YES];
++    [item setTarget:self];
++    [item setAction:action];
++    return item;
++}
++
++/* the Session menu: rebuilt from the guest's status file each time it opens */
++- (NSMenu *)sessionMenuForPanel:(BOOL)panel
++{
++    NSMenu **slot = panel ? &session_panel_menu : &session_menu;
++    if (!*slot) {
++        *slot = [[NSMenu alloc] initWithTitle:@"Session"];
++        [*slot setDelegate:self];
++        [*slot setAutoenablesItems:NO];
++    }
++    return *slot;
++}
++
++- (NSDictionary *)sessionStatus
++{
++    const char *path = mylinux_env("MYLINUX_SESSION_STATUS");
++    if (!path) {
++        return nil;
++    }
++    NSData *data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:path]];
++    if (!data) {
++        return nil;
++    }
++    id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
++    return [object isKindOfClass:[NSDictionary class]] ? object : nil;
++}
++
++- (void)menuNeedsUpdate:(NSMenu *)menu
++{
++    if (menu != session_menu && menu != session_panel_menu) {
++        return;
++    }
++    [menu removeAllItems];
++    if (menu == session_panel_menu) {
++        /* a pull-down button shows its first item as its face */
++        NSMenuItem *face = [[[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""] autorelease];
++        [face setImage:[NSImage imageWithSystemSymbolName:@"clock.arrow.circlepath" accessibilityDescription:@"Session"]];
++        [menu addItem:face];
++    }
++    NSMenuItem *item;
++    item = [menu addItemWithTitle:@"Save Session Now" action:@selector(sessionSave:) keyEquivalent:@""];
++    [item setTarget:self];
++    item = [menu addItemWithTitle:@"Restore Session" action:@selector(sessionRestore:) keyEquivalent:@""];
++    [item setTarget:self];
++    [menu addItem:[NSMenuItem separatorItem]];
++    NSDictionary *status = [self sessionStatus];
++    NSString *info = status ? @"Nothing saved yet" : @"Session tool not installed in Omarchy yet";
++    long minutes = 1;
++    if (status) {
++        id last = status[@"last_saved"], windows = status[@"windows"];
++        if ([last isKindOfClass:[NSString class]] && [last length] >= 16) {
++            long n = [windows respondsToSelector:@selector(longValue)] ? [windows longValue] : 0;
++            info = [NSString stringWithFormat:@"Last saved %@, %ld window%@",
++                    [last substringWithRange:NSMakeRange(11, 5)], n, n == 1 ? @"" : @"s"];
++        }
++        if ([status[@"interval_minutes"] respondsToSelector:@selector(longValue)]) {
++            minutes = [status[@"interval_minutes"] longValue];
++        }
++    }
++    item = [menu addItemWithTitle:info action:nil keyEquivalent:@""];
++    [item setEnabled:NO];
++    [menu addItem:[NSMenuItem separatorItem]];
++    NSMenu *every = [[[NSMenu alloc] initWithTitle:@"Save Every"] autorelease];
++    [every setAutoenablesItems:NO];
++    long choices[] = { 0, 1, 2, 5, 15 };
++    for (size_t i = 0; i < sizeof(choices) / sizeof(choices[0]); i++) {
++        NSString *title = choices[i] == 0 ? @"Off"
++            : [NSString stringWithFormat:@"%ld minute%@", choices[i], choices[i] == 1 ? @"" : @"s"];
++        NSMenuItem *choice = [every addItemWithTitle:title action:@selector(sessionInterval:) keyEquivalent:@""];
++        [choice setTarget:self];
++        [choice setTag:choices[i]];
++        [choice setState:minutes == choices[i] ? NSControlStateValueOn : NSControlStateValueOff];
++    }
++    item = [menu addItemWithTitle:@"Save Every" action:nil keyEquivalent:@""];
++    [menu setSubmenu:every forItem:item];
++}
++
++- (void)sessionCommand:(NSString *)arguments
++{
++    const char *command = mylinux_env("MYLINUX_SESSION_CMD");
++    if (!command) {
++        return;
++    }
++    NSString *line = [NSString stringWithFormat:@"%s %@", command, arguments];
++    [NSTask launchedTaskWithExecutableURL:[NSURL fileURLWithPath:@"/bin/sh"] arguments:@[@"-c", line]
++                                    error:NULL terminationHandler:nil];
++}
++
++- (void)sessionSave:(id)sender { [self sessionCommand:@"save"]; }
++- (void)sessionRestore:(id)sender { [self sessionCommand:@"restore"]; }
++- (void)sessionInterval:(id)sender
++{
++    long minutes = [sender tag];
++    [self sessionCommand:minutes ? [NSString stringWithFormat:@"interval %ld", minutes] : @"interval off"];
 +}
 +
 +- (void)showFullScreenPanel
 +{
++    if (!mylinux_size_buttons() && !mylinux_session()) {
++        return;
++    }
 +    if (!fullscreen_panel) {
++        CGFloat x = 24;
++        NSMutableArray *views = [NSMutableArray array];
++        NSTextField *grip = [NSTextField labelWithString:@"⋮"];
++        [grip setFont:[NSFont systemFontOfSize:13]];
++        [grip setTextColor:[NSColor colorWithWhite:1 alpha:0.6]];
++        [grip setFrame:NSMakeRect(6, 8, 14, 22)];
++        [grip setToolTip:@"Drag to move"];
++        [views addObject:grip];
++        if (mylinux_session()) {
++            NSPopUpButton *session = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(x, 6, 48, 26) pullsDown:YES];
++            [session setBezelStyle:NSBezelStyleToolbar];
++            [session setMenu:[self sessionMenuForPanel:YES]];
++            [self menuNeedsUpdate:[self sessionMenuForPanel:YES]];   /* the face (item 0) exists before the first click */
++            [session setToolTip:@"Session: save, restore, how often it is saved"];
++            [[session cell] setArrowPosition:NSPopUpArrowAtBottom];
++            [[session cell] setImagePosition:NSImageOnly];
++            [views addObject:session];
++            x += 52;
++        }
 +        NSImage *image = [NSImage imageWithSystemSymbolName:@"arrow.down.right.and.arrow.up.left"
 +                                   accessibilityDescription:@"Exit full screen"];
 +        NSButton *button = [NSButton buttonWithImage:image target:self action:@selector(doToggleFullScreen:)];
 +        [button setBezelStyle:NSBezelStyleToolbar];
 +        [button setToolTip:@"Exit full screen (Control+Command+F)"];
-+        [button setFrame:NSMakeRect(24, 6, 32, 26)];
-+        /* a grip to the left of the button: the panel moves when dragged by its background, so it can be pulled
-+         * out of the way (three dots mark the grip) */
-+        NSTextField *grip = [NSTextField labelWithString:@"\u22EE"];
-+        [grip setFont:[NSFont systemFontOfSize:13]];
-+        [grip setTextColor:[NSColor colorWithWhite:1 alpha:0.6]];
-+        [grip setFrame:NSMakeRect(6, 8, 14, 22)];
-+        [grip setToolTip:@"Drag to move"];
-+        fullscreen_panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 62, 38)
++        [button setFrame:NSMakeRect(x, 6, 32, 26)];
++        [views addObject:button];
++        x += 36;
++        fullscreen_panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, x + 2, 38)
 +            styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskUtilityWindow
 +            backing:NSBackingStoreBuffered defer:NO];
 +        [fullscreen_panel setMovableByWindowBackground:YES];
@@ -141,8 +313,9 @@
 +        [fullscreen_panel setFloatingPanel:YES];
 +        [[fullscreen_panel contentView] setWantsLayer:YES];
 +        [[[fullscreen_panel contentView] layer] setCornerRadius:8];
-+        [[fullscreen_panel contentView] addSubview:grip];
-+        [[fullscreen_panel contentView] addSubview:button];
++        for (NSView *view in views) {
++            [[fullscreen_panel contentView] addSubview:view];
++        }
 +    }
 +    /* top right corner, 24 points below the menu bar and 2 in from the edge; where the user dragged it last time
 +     * when that is still on this screen */
@@ -150,7 +323,8 @@
 +    NSRect frame = [screen frame];
 +    if (!fullscreen_panel_placed || !NSContainsRect(frame, [fullscreen_panel frame])) {
 +        CGFloat top = MIN(NSMaxY([screen visibleFrame]), NSMaxY(frame) - [screen safeAreaInsets].top);
-+        [fullscreen_panel setFrameOrigin:NSMakePoint(NSMaxX(frame) - 62 - 2, top - 38 - 24)];
++        CGFloat width = [fullscreen_panel frame].size.width;
++        [fullscreen_panel setFrameOrigin:NSMakePoint(NSMaxX(frame) - width - 2, top - 38 - 24)];
 +        fullscreen_panel_placed = true;
 +    }
 +    [fullscreen_panel orderFront:nil];
