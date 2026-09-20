@@ -47,13 +47,15 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1563,18 +1582,29 @@
+@@ -1563,18 +1582,32 @@
      [cocoaView updateUIInfo];
  }
  
 +- (void)windowWillEnterFullScreen:(NSNotification *)notification
 +{
 +    prefullscreen_size = [[[cocoaView window] contentView] frame].size;
++    /* the toolbar stays out of full screen; the floating box has its controls there */
++    [[[cocoaView window] toolbar] setVisible:NO];
 +}
 +
  - (void)windowDidEnterFullScreen:(NSNotification *)notification
@@ -70,6 +72,7 @@
      [fullScreenMenuItem setTitle:@"Enter Full Screen"];
 -    [cocoaView resizeWindow];
 +    [fullscreen_panel orderOut:nil];
++    [[[cocoaView window] toolbar] setVisible:YES];
 +    if (prefullscreen_size.width > 0) {
 +        [self sizeButtonSetContentSize:prefullscreen_size];
 +    } else {
@@ -78,7 +81,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1675,6 +1705,298 @@
+@@ -1675,6 +1708,298 @@
  }
  
  /* Stretches video to fit host monitor size */
