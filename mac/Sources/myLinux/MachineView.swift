@@ -101,10 +101,10 @@ struct MachineView: View {
         Form {
             if isOmarchy { omarchyDownloads }
             Section(isOmarchy ? "Keyboard" : "Keyboard and mouse") {
-                Picker("Mac keys", selection: $draft.grab) {
-                    Text(isOmarchy ? "Option is Super inside Omarchy" : "Option is ⌘ inside myLinux").tag("opt")
-                    Text("Send every key to \(guestName)").tag("full")
-                    Text("Leave Mac shortcuts alone").tag("none")
+                Picker(isOmarchy ? "Super key" : "Mac keys", selection: $draft.grab) {
+                    Text(isOmarchy ? "Option (macOS keeps its ⌘ shortcuts)" : "Option is ⌘ inside myLinux").tag("opt")
+                    Text(isOmarchy ? "Command (every key goes to Omarchy)" : "Send every key to myLinux").tag("full")
+                    Text(isOmarchy ? "None (Mac shortcuts untouched)" : "Leave Mac shortcuts alone").tag("none")
                 }
                 Text(grabHelp).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if !isOmarchy {
@@ -119,19 +119,28 @@ struct MachineView: View {
                 Picker("Memory", selection: $draft.memoryGB) {
                     ForEach(memoryChoices, id: \.self) { Text("\($0) GB").tag($0) }
                 }
-                Picker("Screen", selection: Binding(
-                    get: { draft.resolution.isEmpty },
-                    set: { draft.resolution = $0 ? "" : (draft.resolution.isEmpty ? "1600x1000" : draft.resolution) })) {
-                    Text("Fit the Mac screen").tag(true)
-                    Text("Fixed size").tag(false)
+                if isOmarchy {
+                    Picker("Processor cores", selection: $draft.cpus) {
+                        Text("Automatic").tag(0)
+                        ForEach(coreChoices, id: \.self) { Text("\($0)").tag($0) }
+                    }
                 }
-                if !draft.resolution.isEmpty {
+                Picker("Screen", selection: screenChoice) {
+                    Text("Fit the Mac screen").tag("")
+                    ForEach(MachineView.screenSizes, id: \.self) { Text($0.replacingOccurrences(of: "x", with: " × ")).tag($0) }
+                    Text("Custom size").tag("custom")
+                }
+                if screenChoice.wrappedValue == "custom" {
                     LabeledContent("Size") {
                         HStack {
                             TextField("", text: $draft.resolution).frame(width: 110).multilineTextAlignment(.trailing)
                             Text("pixels, for example 1920x1200").font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                }
+                if isOmarchy {
+                    Text("The window opens at exactly this size and is not resizable; the green button gives full screen. Sizes are in points: a Retina MacBook screen is about 1728 × 1084, not its pixel count.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 LabeledContent(isOmarchy ? "Disk size" : "Apps disk size") {
                     HStack {
@@ -140,6 +149,22 @@ struct MachineView: View {
                         }
                         .labelsHidden().frame(width: 110)
                         Text(diskNote).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if isOmarchy {
+                Section("Sound and network") {
+                    Toggle("Sound through the Mac", isOn: $draft.sound)
+                    Toggle("SSH from the Mac", isOn: Binding(get: { draft.sshPort != 0 }, set: { draft.sshPort = $0 ? 2222 : 0 }))
+                    if draft.sshPort != 0 {
+                        LabeledContent("Port on this Mac") {
+                            HStack {
+                                TextField("", value: $draft.sshPort, format: .number.grouping(.never)).frame(width: 80).multilineTextAlignment(.trailing)
+                                Text("ssh -p \(String(draft.sshPort)) <your Omarchy user>@127.0.0.1").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
+                        }
+                        Text("Reachable from this Mac only. Omarchy starts its SSH server for this boot; log in with the account you made in Omarchy.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -216,6 +241,17 @@ struct MachineView: View {
         case "none": return "macOS keeps all its shortcuts; myLinux only sees combinations macOS does not claim."
         default: return "The Option key acts as ⌘/Super inside myLinux (Option+Space opens the menu). macOS keeps its own ⌘ shortcuts, including ⌘Space for Spotlight."
         }
+    }
+
+    static let screenSizes = ["1280x800", "1440x900", "1600x1000", "1920x1080", "1920x1200", "2560x1440"]
+    /// "" fits the screen, a listed size is itself, anything else typed is "custom".
+    private var screenChoice: Binding<String> {
+        Binding(get: { draft.resolution.isEmpty ? "" : (MachineView.screenSizes.contains(draft.resolution.lowercased()) ? draft.resolution.lowercased() : "custom") },
+                set: { draft.resolution = $0 == "custom" ? "1700x1050" : $0 })
+    }
+    private var coreChoices: [Int] {
+        let n = ProcessInfo.processInfo.processorCount
+        return [2, 4, 6, 8, 10, 12, 16].filter { $0 <= n }
     }
 
     private var memoryChoices: [Int] {

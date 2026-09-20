@@ -161,6 +161,18 @@ final class OmarchyProfileTests: XCTestCase {
         p.appsSizeGB = 4
         XCTAssertFalse(p.problems.isEmpty, "the factory disk alone is 6 GB")
     }
+    func testOmarchySettingsReachTheScript() {
+        var p = ProfileStore.newProfile(named: "O", kind: .omarchy, folder: URL(fileURLWithPath: "/tmp/m/o"))
+        var env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s")
+        XCTAssertNil(env["CPUS"], "automatic: the script picks"); XCTAssertNil(env["AUDIO"]); XCTAssertNil(env["SSH"]); XCTAssertNil(env["FORWARD"])
+        p.cpus = 4; p.sound = false; p.sshPort = 2222; p.resolution = "1920X1200"
+        env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s")
+        XCTAssertEqual(env["CPUS"], "4"); XCTAssertEqual(env["AUDIO"], "0")
+        XCTAssertEqual(env["SSH"], "1"); XCTAssertEqual(env["FORWARD"], "2222:22"); XCTAssertEqual(env["RES"], "1920x1200")
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        p.sshPort = 80
+        XCTAssertFalse(p.problems.isEmpty, "privileged ports cannot be forwarded by a user process")
+    }
     func testProfilesFromBeforeKindsAreMyLinux() throws {
         let old = #"{"name":"Work","appsDisk":"/x/apps.img","shareDir":"/x/share"}"#
         let p = try JSONDecoder().decode(Profile.self, from: Data(old.utf8))

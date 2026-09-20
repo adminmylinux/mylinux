@@ -7,6 +7,7 @@
 # Environment: RES=WxH (default: fits the screen under the mouse pointer), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
 #              NAME=window title, MEM=8G, CPUS=6, SHARE_DIR=folder shown inside Omarchy as ~/<its name> (optional),
 #              GRAB=opt|full|none (as run.sh: Option acts as Super / every key to the guest / neither),
+#              AUDIO=0 leaves the sound device out,
 #              SERIAL=chardev for the guest console (default: file <machine>/console.log),
 #              QMP=unix socket path for control (a clean stop is {"execute":"system_powerdown"} there),
 #              FORWARD=host:guest[,...] TCP ports on 127.0.0.1 (FORWARD=2223:22 plus SSH=1 reaches the guest's sshd),
@@ -57,6 +58,7 @@ case "${GRAB:-opt}" in
   opt)  KEYS="swap-opt-cmd=on" ;;
   *) die "GRAB must be opt, full or none" ;;
 esac
+case "${AUDIO:-1}" in 0|1) ;; *) die "AUDIO must be 0 or 1" ;; esac
 NETDEV="user,id=n0"
 for fw in $(printf '%s' "${FORWARD:-}" | tr ',' ' '); do
   case "$fw" in [0-9]*:[0-9]*) NETDEV="$NETDEV,hostfwd=tcp:127.0.0.1:${fw%%:*}-:${fw##*:}" ;; *) die "FORWARD entries look like hostport:guestport (got '$fw')" ;; esac
@@ -105,12 +107,14 @@ set -- \
   -device "virtio-gpu-gl-pci,max_outputs=1,xres=$XRES,yres=$YRES,romfile=" \
   -device virtio-keyboard-pci,romfile= -device virtio-tablet-pci,romfile= \
   -netdev "$NETDEV" -device virtio-net-pci,netdev=n0,romfile= \
-  -audiodev sdl,id=audio -device intel-hda,id=hda,romfile= -device hda-micro,bus=hda.0,audiodev=audio \
   -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-pci,rng=rng0,romfile= \
   -device virtio-balloon-pci,romfile= \
   -device virtio-serial-pci,id=ser,romfile= -chardev "$CONSOLE" -device virtconsole,bus=ser.0,nr=0,chardev=hvc0 \
   -display "cocoa,gl=es,show-cursor=on,zoom-to-fit=off,$KEYS" \
   "$@"
+if [ "${AUDIO:-1}" = 1 ]; then
+  set -- "$@" -audiodev sdl,id=audio -device intel-hda,id=hda,romfile= -device hda-micro,bus=hda.0,audiodev=audio
+fi
 if [ -n "$SHARE_DIR" ]; then
   set -- "$@" -fsdev "local,id=share,path=$SHARE_DIR,security_model=none,multidevs=remap,guest_owner_uid=1000,guest_owner_gid=1000" \
     -device "virtio-9p-pci,fsdev=share,mount_tag=mac,romfile="

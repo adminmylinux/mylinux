@@ -19,6 +19,10 @@ struct Profile: Codable, Identifiable, Hashable {
     var appsSizeGB = 16         // APPS_SIZE_GB, used when the disk is created
     var appsDisk = ""           // APPS_IMG
     var shareDir = ""           // SHARE_DIR
+    // Omarchy machines only (run-omarchy.sh)
+    var cpus = 0                // CPUS: 0 lets the script choose from the Mac's core count
+    var sound = true            // AUDIO
+    var sshPort = 0             // SSH=1 and FORWARD=<port>:22 when not 0: ssh -p <port> <user>@127.0.0.1 from the Mac
 
     init(name: String, appsDisk: String, shareDir: String) {
         self.name = name; self.appsDisk = appsDisk; self.shareDir = shareDir
@@ -38,6 +42,9 @@ struct Profile: Codable, Identifiable, Hashable {
         appsSizeGB = try c.decodeIfPresent(Int.self, forKey: .appsSizeGB) ?? 16
         appsDisk = try c.decodeIfPresent(String.self, forKey: .appsDisk) ?? ""
         shareDir = try c.decodeIfPresent(String.self, forKey: .shareDir) ?? ""
+        cpus = try c.decodeIfPresent(Int.self, forKey: .cpus) ?? 0
+        sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? true
+        sshPort = try c.decodeIfPresent(Int.self, forKey: .sshPort) ?? 0
     }
 
     /// The QEMU window title and run.sh instance name. The first profile keeps the plain name.
@@ -62,6 +69,8 @@ struct Profile: Codable, Identifiable, Hashable {
             if appsDisk.isEmpty { p.append("Choose where the machine's disk lives.") }
             if !(8...2000).contains(appsSizeGB) { p.append("Disk size must be 8–2000 GB.") }
             if shareDir.contains(",") { p.append("The share folder's path must not contain a comma.") }
+            if sshPort != 0 && !(1024...65535).contains(sshPort) { p.append("The SSH port must be 1024–65535.") }
+            if cpus < 0 || cpus > ProcessInfo.processInfo.processorCount { p.append("This Mac has \(ProcessInfo.processInfo.processorCount) processor cores.") }
             return p                                 // the share folder is optional for Omarchy
         }
         if appsDisk.isEmpty { p.append("Choose where the apps disk lives.") }
@@ -85,6 +94,9 @@ struct Profile: Codable, Identifiable, Hashable {
             if !shareDir.isEmpty { env["SHARE_DIR"] = shareDir }
             if !qmpSocket.isEmpty { env["QMP"] = qmpSocket }
             if !resolution.isEmpty { env["RES"] = resolution.lowercased() }
+            if cpus > 0 { env["CPUS"] = String(cpus) }
+            if !sound { env["AUDIO"] = "0" }
+            if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
             return env
         }
         var env: [String: String] = [
@@ -165,6 +177,7 @@ final class ProfileStore: ObservableObject {
         if let t = template {
             p.grab = t.grab; p.mouse = t.mouse; p.clipboard = t.clipboard
             p.memoryGB = t.memoryGB; p.resolution = t.resolution; p.appsSizeGB = t.appsSizeGB
+            p.cpus = t.cpus; p.sound = t.sound      // not the SSH port: two machines cannot listen on one
         }
         // a slug already used by another profile's folder gets a suffix
         var folder = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()

@@ -173,6 +173,12 @@ has "extra QEMU arguments pass through" "$out" "none"
 file_absent "a dry run creates no disk" "$T/om/omarchy.ext4"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); case "$out" in *shared_folder_name*) ko "no share: nothing about one on the command line" ;; *) ok "no share: nothing about one on the command line" ;; esac
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 QMP="$T/q.sock" sh run-omarchy.sh 2>&1); has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
+case "$out" in *audiodev*) ok "sound device by default" ;; *) ko "sound device by default" ;; esac
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 AUDIO=0 CPUS=2 SSH=1 FORWARD=2222:22 sh run-omarchy.sh 2>&1)
+case "$out" in *audiodev*) ko "AUDIO=0 leaves the sound device out" ;; *) ok "AUDIO=0 leaves the sound device out" ;; esac
+has "SSH=1 asks the guest for its SSH server" "$out" "tryomarchy.ssh_access=1"
+has "and the port is forwarded on the loopback only" "$out" "hostfwd=tcp:127.0.0.1:2222-:22"
+has "CPUS reaches QEMU" "$out" "CPUS=2"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 SHARE_DIR="$HOME" sh run-omarchy.sh 2>&1); rc=$?
 not_rc0 "sharing the whole home folder is refused" $rc
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 SHARE_DIR="$HOME/Library/Preferences" sh run-omarchy.sh 2>&1); rc=$?
