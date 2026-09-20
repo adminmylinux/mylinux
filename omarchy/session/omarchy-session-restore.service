@@ -1,0 +1,15 @@
+[Unit]
+Description=Reopen the apps of the last Omarchy session, and save the layout at logout
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# let Omarchy's own autostart go first, so what it opens is counted and not opened twice
+ExecStartPre=/bin/sleep 5
+ExecStart=%h/.local/bin/omarchy-session restore
+ExecStop=%h/.local/bin/omarchy-session save
+
+[Install]
+WantedBy=graphical-session.target

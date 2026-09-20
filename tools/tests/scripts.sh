@@ -182,6 +182,8 @@ case "$out" in *audiodev*) ok "sound device by default" ;; *) ko "sound device b
 has "clipboard port for Omarchy's agent by default" "$out" "name=dev.tryomarchy.clipboard"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 CLIPBOARD=0 sh run-omarchy.sh 2>&1)
 case "$out" in *tryomarchy.clipboard*) ko "CLIPBOARD=0 leaves the port out" ;; *) ok "CLIPBOARD=0 leaves the port out" ;; esac
+(python3 "$REPO/omarchy/session/omarchy-session" --selftest >/dev/null 2>&1); rc=$?
+is_rc "omarchy-session selftest (restore planning, terminal working directory)" $rc 0
 (python3 "$REPO/tools/omarchy-clipboard.py" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-clipboard.py selftest (protocol, echo filtering)" $rc 0
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 AUDIO=0 CPUS=2 SSH=1 FORWARD=2222:22 sh run-omarchy.sh 2>&1)

@@ -59,7 +59,12 @@ and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up ins
 work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. The window's
 title bar has three buttons: back to the starting size, 10% larger (Omarchy follows with a higher resolution), and
 full screen; they come from `tools/qemu-runtime-patches/`, myLinux's own patch on the runtime. In the
-launcher it is **Add Omarchy**. The clipboard is shared both ways, text and PNG images, through
+launcher it is **Add Omarchy**. Open windows come back after a restart once `omarchy/session` is installed in
+the account: run `sh ~/Mac/mylinux/install-session.sh` inside Omarchy once (run-omarchy.sh puts the files in the
+share folder as `mylinux/`); the layout, each window's command line and a terminal's working directory, is saved
+every minute and at logout and reopened on the same workspaces at login. Apps that restore their own state come
+back complete, terminals come back empty in the right folder. `omarchy-session status|save|restore|disable`, and
+`install-session.sh --remove` takes it out. The clipboard is shared both ways, text and PNG images, through
 Omarchy's own clipboard agent and `tools/omarchy-clipboard.py` on the Mac (`CLIPBOARD=0` turns it off). Not there
 (they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output.
 

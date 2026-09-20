@@ -24,6 +24,7 @@ mkdir -p "$NEW/Contents/MacOS" "$NEW/Contents/Resources/runtime/tools"
 cp "$BIN" "$NEW/Contents/MacOS/myLinux Launcher"
 # the scripts the app runs: run.sh and everything it calls
 cp run.sh run-omarchy.sh "$NEW/Contents/Resources/runtime/"
+mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session "$NEW/Contents/Resources/runtime/omarchy/"
 for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh omarchy-clipboard.py qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done

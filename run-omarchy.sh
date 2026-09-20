@@ -105,6 +105,8 @@ if [ -n "$SHARE_DIR" ]; then
   esac
   SHARE_NAME=$(printf '%s' "$(basename "$SHARE_DIR")" | base64 | tr '+/' '-_' | tr -d '=\n')
   APPEND="$APPEND omarchy.shared_folder_name=$SHARE_NAME"
+  # tools for inside Omarchy travel in the share: session save/restore (sh ~/<share>/mylinux/install-session.sh once)
+  if [ "${DRYRUN:-0}" != 1 ]; then mkdir -p "$SHARE_DIR/mylinux" && cp -f omarchy/session/* "$SHARE_DIR/mylinux/" 2>/dev/null || true; fi
 fi
 
 # ---- first start of this machine: unpack the factory disk, grow it, keep the matching kernel beside it ----------
