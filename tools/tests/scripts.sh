@@ -175,6 +175,11 @@ out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); case "$out" in 
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 QMP="$T/q.sock" sh run-omarchy.sh 2>&1); has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 SHARE_DIR="$HOME" sh run-omarchy.sh 2>&1); rc=$?
 not_rc0 "sharing the whole home folder is refused" $rc
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 SHARE_DIR="$HOME/Library/Preferences" sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "sharing a Library folder is refused" $rc
+# the launcher's default: <Application Support>/myLinux/machines/<machine>/Mac (HOME is the scratch folder here, so nothing real is made)
+out=$(cd "$W" && HOME="$T/home" DRYRUN=1 RES=1600x1000 SHARE_DIR="$T/home/Library/Application Support/myLinux/machines/omarchy/Mac" sh run-omarchy.sh 2>&1); rc=$?
+is_rc "the launcher's machine folder under Application Support is shareable" $rc 0
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 DISK_SIZE_GB=4 sh run-omarchy.sh 2>&1); rc=$?
 not_rc0 "a disk smaller than the factory image is refused" $rc
 out=$(cd "$W" && RES=1600x1000 DISK="$T/om2/omarchy.ext4" sh run-omarchy.sh 2>&1); rc=$?

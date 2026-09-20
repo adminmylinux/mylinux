@@ -84,7 +84,8 @@ struct MachineView: View {
             if case .failed(let message) = runner.state {
                 HStack(alignment: .top) {
                     Banner(text: message, kind: .error)
-                    Spacer()
+                        .lineLimit(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     Button("Show Log") { NSWorkspace.shared.open(runner.logFile) }.buttonStyle(.link).font(.caption)
                 }
             }

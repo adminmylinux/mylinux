@@ -69,7 +69,12 @@ SHARE_DIR="${SHARE_DIR:+$(abs "$SHARE_DIR")}"
 if [ -n "$SHARE_DIR" ]; then
   mkdir -p "$SHARE_DIR"; SHARE_DIR=$(cd "$SHARE_DIR" && pwd -P)
   case "$SHARE_DIR" in *,*) die "the share folder's path must not contain a comma: $SHARE_DIR" ;; esac
-  case "$SHARE_DIR" in /|/Users|/private|/tmp|/private/tmp|/System|/Library|/Applications|/Volumes|"$HOME"|"$HOME/Library"|"$HOME/Library"/*) die "refusing to share $SHARE_DIR" ;; esac
+  # never a system folder, the whole home folder or the user's Library; the launcher's own machine folders live in
+  # ~/Library/Application Support/myLinux/machines and are the one exception
+  case "$SHARE_DIR" in
+    "$HOME/Library/Application Support/myLinux/machines"/?*) ;;
+    /|/Users|/private|/tmp|/private/tmp|/System|/Library|/Applications|/Volumes|"$HOME"|"$HOME/Library"|"$HOME/Library"/*) die "refusing to share $SHARE_DIR (a system folder, the home folder or the Library)" ;;
+  esac
   SHARE_NAME=$(printf '%s' "$(basename "$SHARE_DIR")" | base64 | tr '+/' '-_' | tr -d '=\n')
   APPEND="$APPEND omarchy.shared_folder_name=$SHARE_NAME"
 fi
