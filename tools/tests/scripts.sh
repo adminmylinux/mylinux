@@ -161,12 +161,17 @@ not_rc0 "unknown RENDER is refused" $rc
 out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=nonsense sh run.sh 2>&1); rc=$?
 not_rc0 "unknown MYLINUX_QEMU is refused" $rc
 echo "run-omarchy.sh (DRYRUN, with the fake runtime)"
-out=$(cd / && DRYRUN=1 RES=1600x1000 DISK="$T/om/omarchy.ext4" SHARE_DIR="$T/om/Mac Files" NAME="Omarchy test" sh "$W/run-omarchy.sh" -qmp none 2>&1); rc=$?
+out=$(cd / && DRYRUN=1 SCALE=1 RES=1600x1000 DISK="$T/om/omarchy.ext4" SHARE_DIR="$T/om/Mac Files" NAME="Omarchy test" sh "$W/run-omarchy.sh" -qmp none 2>&1); rc=$?
 is_rc "dry run works from another directory" $rc 0
 has "root disk path is passed intact" "$out" "file=$T/om/omarchy.ext4,format=raw"
 has "the kernel comes from the machine's own boot folder" "$out" "$T/om/boot/vmlinuz-linux"
 has "accelerated GPU at the asked size, no ROM" "$out" "virtio-gpu-gl-pci,max_outputs=1,xres=1600,yres=1000,romfile="
 has "window fixed to the guest size" "$out" "zoom-to-fit=off"
+o2=$(cd "$W" && DRYRUN=1 SCALE=2 RES=1600x1000 sh run-omarchy.sh 2>&1); has "Retina: the guest gets twice the points" "$o2" "xres=3200,yres=2000,romfile="
+o2=$(cd "$W" && DRYRUN=1 SCALE=2 RES=5000x3000 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "Retina: a size whose doubled guest mode is too large is refused" $rc
+o2=$(cd "$W" && DRYRUN=1 SCALE=3 RES=1600x1000 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "unknown SCALE is refused" $rc
 has "share exported for the guest's first user" "$out" "path=$T/om/Mac Files,security_model=none,multidevs=remap,guest_owner_uid=1000"
 has "share name travels as URL-safe base64" "$out" "omarchy.shared_folder_name=TWFjIEZpbGVz"
 has "extra QEMU arguments pass through" "$out" "none"

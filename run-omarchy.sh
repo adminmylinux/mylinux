@@ -4,7 +4,8 @@
 # A machine is a folder: its root disk (a raw ext4 image unpacked from the downloaded factory disk on first start,
 # grown to DISK_SIZE_GB; the guest enlarges its filesystem on boot) and boot/, the kernel and initramfs that disk
 # was created with (they must match the modules on the disk, so a newer download never replaces them).
-# Environment: RES=WxH (default: fits the screen under the mouse pointer), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
+# Environment: RES=WxH window size in points (default: fits the display the window opens on, the frontmost app's; a
+#              Retina display gives the guest twice that in pixels, SCALE=1|2 overrides), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
 #              NAME=window title, MEM=8G, CPUS=6, SHARE_DIR=folder shown inside Omarchy as ~/<its name> (optional),
 #              GRAB=opt|full|none (as run.sh: Option acts as Super / every key to the guest / neither),
 #              AUDIO=0 leaves the sound device out,
@@ -24,22 +25,44 @@ G="$OUT/omarchy"
 
 [ "$(MYLINUX_QEMU=auto sh tools/qemu-flavour.sh "$OUT")" = runtime ] || die "Omarchy needs the accelerated QEMU runtime: run tools/get-qemu-runtime.sh"
 export MYLINUX_QEMU=runtime
-# ---- guest resolution: as run.sh, the display under the mouse pointer in points, minus window margins ----------
-# The window is not resizable (zoom-to-fit=off) and is exactly the guest's size: the runtime's Cocoa display scales a
-# text console wrongly whenever window and guest mode differ, which would garble Omarchy's first-boot setup screen.
+# ---- window size and guest resolution -----------------------------------------------------------------------
+# RES is the window's size in points (default: the display where the window will open, minus margins: Cocoa puts a
+# new app's window on the display of the frontmost app's window, the launcher's or the terminal's). That display's
+# backing scale decides the guest's pixels:
+# the display maps guest pixels onto backing pixels, so on a Retina display (two per point) the guest gets twice RES
+# and Hyprland scales by two: a sharp picture in a window of the size that was asked for. SCALE=1|2 overrides.
+# The window starts fixed (zoom-to-fit=off) at exactly the guest's size, because the display code scales a text
+# console wrongly whenever window and guest mode differ, which would garble Omarchy's first-boot setup screen; the
+# launcher's menu bar item turns Zoom To Fit on and resizes it later, and the guest then follows the window.
+SCREEN=$(osascript -l JavaScript -e '
+  ObjC.import("AppKit"); ObjC.import("CoreGraphics");
+  // the display of the frontmost app'"'"'s front window (the launcher, or the terminal this runs from): where Cocoa
+  // opens a new app'"'"'s window; the primary display when that cannot be told
+  const all = $.NSScreen.screens; let s = all.objectAtIndex(0);
+  try {
+    const pid = $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+    const wins = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)));
+    const w = wins.filter(x => x.kCGWindowOwnerPID == pid && x.kCGWindowLayer == 0 && x.kCGWindowBounds.Height > 100)[0];
+    if (w) {
+      const mainH = all.objectAtIndex(0).frame.size.height;
+      const cx = w.kCGWindowBounds.X + w.kCGWindowBounds.Width / 2, cy = mainH - (w.kCGWindowBounds.Y + w.kCGWindowBounds.Height / 2);
+      for (let i = 0; i < all.count; i++) { const f = all.objectAtIndex(i).frame;
+        if (cx >= f.origin.x && cx < f.origin.x + f.size.width && cy >= f.origin.y && cy < f.origin.y + f.size.height) s = all.objectAtIndex(i); }
+    }
+  } catch (e) {}
+  const v = s.visibleFrame;
+  [Math.round(v.size.width), Math.round(v.size.height), Math.round(s.backingScaleFactor)].join(" ")' 2>/dev/null || true)
+SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; DETECTED=${REST#* }
+case "$SW$SH$DETECTED" in ''|*[!0-9]*) SW=""; SH=""; DETECTED=1 ;; esac
+SCALE="${SCALE:-$DETECTED}"
+case "$SCALE" in 1|2) ;; *) die "SCALE must be 1 or 2" ;; esac
 if [ -z "${RES:-}" ]; then
-  SCREEN=$(osascript -l JavaScript -e '
-    ObjC.import("AppKit");
-    const m = $.NSEvent.mouseLocation, all = $.NSScreen.screens;
-    let s = $.NSScreen.mainScreen;
-    for (let i = 0; i < all.count; i++) { const f = all.objectAtIndex(i).frame;
-      if (m.x >= f.origin.x && m.x < f.origin.x + f.size.width && m.y >= f.origin.y && m.y < f.origin.y + f.size.height) s = all.objectAtIndex(i); }
-    const v = s.visibleFrame; [Math.round(v.size.width), Math.round(v.size.height)].join(" ")' 2>/dev/null || true)
-  SW=${SCREEN%% *}; SH=${SCREEN#* }
-  case "$SW$SH" in ''|*[!0-9]*) RES=1600x1000 ;; *) if [ "$SW" -gt 800 ]; then RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - 28) / 8 * 8 ))"; else RES=1600x1000; fi ;; esac
+  if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - 28) / 8 * 8 ))"; else RES=1600x1000; fi
 fi
 case "$RES" in [0-9]*x[0-9]*) XRES="${RES%x*}"; YRES="${RES#*x}" ;; *) die "RES must look like 1920x1200 (got '$RES')" ;; esac
 [ "$XRES" -ge 640 ] && [ "$XRES" -le 8192 ] && [ "$YRES" -ge 480 ] && [ "$YRES" -le 8192 ] || die "RES out of range: $RES"
+GX=$(( XRES * SCALE )); GY=$(( YRES * SCALE ))
+[ "$GX" -le 8192 ] && [ "$GY" -le 8192 ] || die "RES $RES is too large for a Retina display (the guest would need ${GX}x${GY})"
 
 NAME="${NAME:-Omarchy}"
 MEM="${MEM:-8G}"
@@ -104,7 +127,7 @@ set -- \
   -name "$NAME" -M virt,gic-version=3 -accel hvf -cpu host,pmu=off -smp "$CPUS" -m "$MEM" \
   -kernel "$MACHINE/boot/vmlinuz-linux" -initrd "$MACHINE/boot/initramfs-linux.img" -append "$APPEND" \
   -drive "if=none,id=root,file=$DISK,format=raw,media=disk,cache=writeback" -device "virtio-blk-pci,drive=root,serial=omarchy-root,romfile=" \
-  -device "virtio-gpu-gl-pci,max_outputs=1,xres=$XRES,yres=$YRES,romfile=" \
+  -device "virtio-gpu-gl-pci,max_outputs=1,xres=$GX,yres=$GY,romfile=" \
   -device virtio-keyboard-pci,romfile= -device virtio-tablet-pci,romfile= \
   -netdev "$NETDEV" -device virtio-net-pci,netdev=n0,romfile= \
   -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-pci,rng=rng0,romfile= \
@@ -121,7 +144,7 @@ if [ -n "$SHARE_DIR" ]; then
 fi
 [ -z "${QMP:-}" ] || set -- "$@" -qmp "unix:$QMP,server=on,wait=off"
 if [ "${DRYRUN:-0}" = 1 ]; then
-  echo "RES=$RES DISK=$DISK SHARE_DIR=$SHARE_DIR NAME=$NAME CPUS=$CPUS MEM=$MEM"
+  echo "RES=$RES SCALE=$SCALE DISK=$DISK SHARE_DIR=$SHARE_DIR NAME=$NAME CPUS=$CPUS MEM=$MEM"
   for a in "$@"; do printf '%s\n' "$a"; done
   exit 0
 fi
