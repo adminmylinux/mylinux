@@ -6,5 +6,5 @@ set -eu
 SHARE=${1:?share dir}; shift
 [ $# -ge 1 ] || { echo "usage: omarchy-session-mac.sh <share dir> save|restore|interval <minutes|off>" >&2; exit 64; }
 case "$1" in save|restore|interval) ;; *) echo "unknown session command: $1" >&2; exit 64 ;; esac
-D="$SHARE/mylinux/control"; mkdir -p "$D"
+D="$SHARE/mylinux-tools/control"; mkdir -p "$D"
 printf '%s\n' "$*" > "$D/.cmd.$$" && mv "$D/.cmd.$$" "$D/$(date +%s)-$$.cmd"

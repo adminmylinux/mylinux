@@ -6,7 +6,7 @@
     omarchy-session status     show the saved layout
     omarchy-session interval <minutes>|off   how often the timer saves (off stops it; the login restore stays)
     omarchy-session agent      run by a user unit: takes commands the Mac window drops into the share folder
-                               (/mnt/mac/mylinux/control/*.cmd: save, restore, interval N) and keeps status.json
+                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N) and keeps status.json
                                there for the window's Session menu
     omarchy-session enable | disable      the units (install.sh enables them)
 
@@ -125,7 +125,7 @@ def status():
     print(f"saved {s['saved']}, active workspace {s['active_workspace']}")
     for w in s["windows"]: print(f"  workspace {w['workspace']}: {w['class']}  {launch_command(w)}")
 
-CONTROL = Path("/mnt/mac/mylinux/control")
+CONTROL = Path("/mnt/mac/mylinux-tools/control")
 TIMER_DROPIN = Path.home() / ".config/systemd/user/omarchy-session-save.timer.d/interval.conf"
 
 def parse_interval(dropin_text):

@@ -63,8 +63,8 @@ resolution), and full screen; Control+Command+F toggles full screen in every key
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
 patch on the runtime. In the
 launcher it is **Add Omarchy**. Open windows come back after a restart once `omarchy/session` is installed in
-the account: run `sh ~/Mac/mylinux/install-session.sh` inside Omarchy once (run-omarchy.sh puts the files in the
-share folder as `mylinux/`); the layout, each window's command line and a terminal's working directory, is saved
+the account: run `sh ~/Mac/mylinux-tools/install-session.sh` inside Omarchy once (run-omarchy.sh puts the files in the
+share folder as `mylinux-tools/`); the layout, each window's command line and a terminal's working directory, is saved
 every minute and at logout and reopened on the same workspaces at login. Apps that restore their own state come
 back complete, terminals come back empty in the right folder. `omarchy-session status|save|restore|interval|disable`, and
 `install-session.sh --remove` takes it out. The Session menu in the middle of the window's title bar (and in the

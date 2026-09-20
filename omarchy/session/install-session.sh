@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install the session save/restore into this Omarchy account: run inside Omarchy, from the folder these files are in
-# (run-omarchy.sh puts them in the shared folder as mylinux/):  sh ~/Mac/mylinux/install-session.sh
+# (run-omarchy.sh puts them in the shared folder as mylinux-tools/):  sh ~/Mac/mylinux-tools/install-session.sh
 # Afterwards the layout is saved every minute and at logout, and reopened at login. To remove: install-session.sh --remove
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
