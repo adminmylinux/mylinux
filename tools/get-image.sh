@@ -1,5 +1,6 @@
 #!/bin/sh
-# Download the prebuilt kernel + root filesystem of a myLinux release into out/ and verify the checksums.
+# Download the prebuilt kernel + root filesystem of a myLinux release (github.com/adminmylinux/mylinux-releases) into
+# out/ and verify the checksums.
 # Usage: tools/get-image.sh [tag]     (default: the latest release)
 #        MYLINUX_OUT=dir tools/get-image.sh   downloads into dir instead of out/ (the Mac launcher app does this)
 # One release is resolved first (so the three files always belong together), everything is downloaded
@@ -7,7 +8,7 @@
 # kept as out/*.prev. An interrupted or failed download leaves the current images untouched.
 set -eu
 cd "$(dirname "$0")/.."
-REPO=adminmylinux/mylinux
+REPO=adminmylinux/mylinux-releases      # release assets only; the source repository is private
 TAG="${1:-latest}"
 if [ "$TAG" = latest ]; then
   # the redirect target of /releases/latest names the tag; no API token needed

@@ -8,7 +8,7 @@
 # a failed or interrupted download leaves the current runtime untouched.
 set -eu
 cd "$(dirname "$0")/.."
-REPO=adminmylinux/mylinux
+REPO=adminmylinux/mylinux-releases      # release assets only; the source repository is private
 OUT="${MYLINUX_OUT:-out}"
 DEST="$OUT/qemu-runtime"
 NAME=qemu-runtime-macos-arm64.tar.gz

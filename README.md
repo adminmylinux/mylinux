@@ -28,7 +28,8 @@ separate "apps disk" image that the system sets itself up on first boot.
 - [Homebrew](https://brew.sh) with `brew install qemu`.
 - To build the image: [OrbStack](https://orbstack.dev) with a Debian machine named `debian`
   (Buildroot needs a case-sensitive filesystem; the build tree lives inside Debian at `~/br`).
-  Prebuilt images are attached to the GitHub releases, so building is optional.
+  Prebuilt images are attached to the releases of the public
+  [mylinux-releases](https://github.com/adminmylinux/mylinux-releases) repository, so building is optional.
 
 ## Install and run (prebuilt image)
 

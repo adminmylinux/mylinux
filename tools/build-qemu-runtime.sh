@@ -6,8 +6,10 @@
 # Usage: tools/build-qemu-runtime.sh [--from <try-omarchy checkout>] [--install]
 #   --from     use an existing checkout at the pinned commit (its built runtime is reused when current)
 #   --install  also install the result into $MYLINUX_OUT/qemu-runtime (default out/), as get-qemu-runtime.sh would
-# Result: out/qemu-runtime-macos-arm64.tar.gz + .sha256, to attach to the GitHub release named in
-# tools/qemu-runtime.version (gh release create "$(cat tools/qemu-runtime.version)" out/qemu-runtime-macos-arm64.tar.gz*).
+# Result: out/qemu-runtime-macos-arm64.tar.gz + .sha256, to attach to a release of the public assets repository
+# named in tools/qemu-runtime.version:
+#   gh release create "$(cat tools/qemu-runtime.version)" --repo adminmylinux/mylinux-releases --latest=false out/qemu-runtime-macos-arm64.tar.gz*
+# (--latest=false: get-image.sh takes the repository's "latest" release for the image, which must stay a v* release)
 # Needs Xcode's command line tools, python3, and what `make doctor` in that checkout asks for.
 set -eu
 cd "$(dirname "$0")/.."
