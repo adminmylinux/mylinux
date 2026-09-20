@@ -56,7 +56,9 @@ project publishes (1.4 GB, one pinned release, checked against a pinned SHA-256,
 guest's own checksums; nothing from it is run on the Mac), and `./run-omarchy.sh` boots it with Hyprland drawn by the
 Mac's GPU. A machine is a folder holding its root disk (unpacked on first start, `DISK_SIZE_GB=32`, grown by the guest)
 and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up inside as `~/Work`; `GRAB`, `MEM`, `RES`
-work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. In the
+work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. The window's
+title bar has three buttons: back to the starting size, 10% larger (Omarchy follows with a higher resolution), and
+full screen; they come from `tools/qemu-runtime-patches/`, myLinux's own patch on the runtime. In the
 launcher it is **Add Omarchy**. Not there (they need Try Omarchy's own helper app): clipboard, camera and Touch ID
 bridges; sound plays through the Mac's default output.
 

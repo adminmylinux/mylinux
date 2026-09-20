@@ -36,11 +36,32 @@ HEAD=$(git -C "$FROM" rev-parse HEAD)
 [ "$HEAD" = "$COMMIT" ] || { echo "$FROM is at $HEAD, not the pinned $COMMIT" >&2; exit 1; }
 # local edits outside macos/ (a guest experiment, say) do not reach the runtime; edits to its inputs would
 [ -z "$(git -C "$FROM" status --porcelain -- macos scripts Makefile)" ] || { echo "$FROM has local changes to the runtime's inputs" >&2; exit 1; }
+# Our own patches (tools/qemu-runtime-patches/*.patch, applied after theirs) ride along for the build: copied into
+# their patches folder, where the build cache sees them, and applied by one extra line in their script. Both are
+# undone afterwards, so the checkout is back at the pinned commit.
+THEIRS="$FROM/macos/build-qemu-gpu-runtime.sh"
+restore() { git -C "$FROM" checkout -q -- macos/build-qemu-gpu-runtime.sh; rm -f "$FROM"/macos/patches/mylinux-*.patch; }
+trap restore EXIT
+for P in "$REPO"/tools/qemu-runtime-patches/*.patch; do
+  [ -f "$P" ] || continue
+  NAME="mylinux-$(basename "$P")"
+  cp "$P" "$FROM/macos/patches/$NAME"
+  python3 - "$THEIRS" "$NAME" <<'PY'
+import sys
+p, name = sys.argv[1], sys.argv[2]
+s = open(p).read()
+anchor = 'patch -d "$source_dir" -p1 -f -i "$pinch_patch"\n'
+assert anchor in s, "their build script no longer applies the pinch patch where expected"
+line = 'patch -d "$source_dir" -p1 -f -i "$native_dir/patches/%s"\n' % name
+if line not in s: s = s.replace(anchor, anchor + line, 1)
+open(p, 'w').write(s)
+PY
+done
 make -C "$FROM" runtime
 BUILT="$FROM/macos/.build/qemu-gpu-runtime"
 [ -x "$BUILT/bin/qemu-system-aarch64" ] || { echo "the build left no runtime in $BUILT" >&2; exit 1; }
 
-STAGE=$(mktemp -d "${TMPDIR:-/tmp}/qemu-runtime.XXXXXX"); trap 'rm -rf "$STAGE"' EXIT
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/qemu-runtime.XXXXXX"); trap 'rm -rf "$STAGE"; restore' EXIT
 R="$STAGE/qemu-runtime"
 mkdir -p "$R/bin" "$R/source/patches"
 cp "$BUILT/bin/qemu-system-aarch64" "$R/bin/"
@@ -49,7 +70,7 @@ cp -R "$BUILT/lib" "$R/lib"
 printf '%s\n' "$VERSION" > "$R/RUNTIME-REVISION"
 # what QEMU's GPL asks of whoever passes the binary on: the exact source. The patches travel with it, the pinned
 # upstream archives are named with their checksums (the build script is the authority on those).
-cp "$FROM"/macos/patches/*.patch "$R/source/patches/"
+cp "$FROM"/macos/patches/*.patch "$R/source/patches/"     # theirs and ours (mylinux-*.patch, still in place here)
 cp "$FROM/macos/build-qemu-gpu-runtime.sh" "$FROM/macos/prepare-qemu-gpu-runtime.sh" "$FROM/macos/pinned-runtime-bottles.sh" "$R/source/"
 cp "$FROM/LICENSE" "$R/source/LICENSE.try-omarchy"
 cp "$FROM/THIRD_PARTY_NOTICES.md" "$R/source/THIRD_PARTY_NOTICES.try-omarchy.md"
@@ -60,8 +81,10 @@ cp "$FROM/THIRD_PARTY_NOTICES.md" "$R/source/THIRD_PARTY_NOTICES.try-omarchy.md"
   echo "libslirp (BSD-3-Clause), SDL (zlib), pixman (MIT), GLib (LGPL-2.1-or-later, linked dynamically), PCRE2 (BSD),"
   echo "gettext's libintl (LGPL), lz4 (BSD-2-Clause), xz's liblzma (0BSD), zstd (BSD-3-Clause)."
   echo
-  echo "Built with Try Omarchy's runtime build, $UPSTREAM at commit $COMMIT (MIT), unmodified:"
-  echo "source/build-qemu-gpu-runtime.sh is the recipe, source/patches/ are the changes applied to QEMU and libslirp."
+  echo "Built with Try Omarchy's runtime build, $UPSTREAM at commit $COMMIT (MIT):"
+  echo "source/build-qemu-gpu-runtime.sh is the recipe, source/patches/ are the changes applied to QEMU and libslirp;"
+  echo "the mylinux-*.patch files among them are myLinux's own, applied after theirs (the recipe line for each is"
+  echo "inserted after the pinch-zoom patch)."
   echo "The upstream sources it downloads, by checksum:"
   echo
   grep -E '^(qemu_commit|qemu_url|qemu_sha256|slirp_url|slirp_sha256|virgl_url|virgl_sha256|angle_url|angle_sha256|epoxy_url|epoxy_sha256)=' "$FROM/macos/build-qemu-gpu-runtime.sh" | sed 's/^/    /'

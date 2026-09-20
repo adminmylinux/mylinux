@@ -1,0 +1,190 @@
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -1126,6 +1126,16 @@
+         case NSEventTypeKeyDown:
+             keycode = cocoa_keycode_to_linux([event keyCode]);
+ 
++            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
++            // (macOS never sees the chord then, so the window handles it itself).
++            if ([event keyCode] == 3 /* f */ &&
++                ([event modifierFlags] & (NSEventModifierFlagControl | NSEventModifierFlagCommand |
++                                          NSEventModifierFlagOption | NSEventModifierFlagShift)) ==
++                (NSEventModifierFlagControl | NSEventModifierFlagCommand)) {
++                dispatch_async(dispatch_get_main_queue(), ^{ [[self window] toggleFullScreen:nil]; });
++                return true;
++            }
++
+             // Keep Command chords with the host unless the focused guest
+             // captured the keyboard.
+             if (![self isKeyboardCaptured] &&
+@@ -1416,6 +1426,10 @@
+ - (void)doToggleFullScreen:(id)sender;
+ - (void)showQEMUDoc:(id)sender;
+ - (void)zoomToFit:(id) sender;
++- (void)installSizeButtons;
++- (void)sizeButtonLarger:(id)sender;
++- (void)sizeButtonBase:(id)sender;
++- (void)showFullScreenPanel;
+ - (void)displayConsole:(id)sender;
+ - (void)pauseQEMU:(id)sender;
+ - (void)resumeQEMU:(id)sender;
+@@ -1491,6 +1505,7 @@
+         [window makeKeyAndOrderFront:self];
+         [window center];
+         [window setDelegate: self];
++        [self installSizeButtons];
+ 
+         /* Used for displaying pause on the screen */
+         pauseLabel = [NSTextField new];
+@@ -1563,18 +1578,29 @@
+     [cocoaView updateUIInfo];
+ }
+ 
++- (void)windowWillEnterFullScreen:(NSNotification *)notification
++{
++    prefullscreen_size = [[[cocoaView window] contentView] frame].size;
++}
++
+ - (void)windowDidEnterFullScreen:(NSNotification *)notification
+ {
+     [fullScreenMenuItem setTitle:@"Exit Full Screen"];
+     [cocoaView updateScale];
+     [cocoaView updateUIInfo];
+     [cocoaView grabMouse];
++    [self showFullScreenPanel];
+ }
+ 
+ - (void)windowDidExitFullScreen:(NSNotification *)notification
+ {
+     [fullScreenMenuItem setTitle:@"Enter Full Screen"];
+-    [cocoaView resizeWindow];
++    [fullscreen_panel orderOut:nil];
++    if (prefullscreen_size.width > 0) {
++        [self sizeButtonSetContentSize:prefullscreen_size];
++    } else {
++        [cocoaView resizeWindow];
++    }
+     [cocoaView updateScale];
+     [cocoaView updateUIInfo];
+     [cocoaView ungrabMouse];
+@@ -1675,6 +1701,120 @@
+ }
+ 
+ /* Stretches video to fit host monitor size */
++/*
++ * myLinux: three buttons in the window's title bar, at the right. Minus puts the window back to the content size it
++ * came up with, plus makes it 10% larger, the third is full screen. The first two turn Zoom To Fit on (the window
++ * becomes resizable and the picture scales to it); with a guest that follows the window's size, that is how the
++ * desktop gets more room. The window is kept inside its screen.
++ */
++static NSSize size_button_base;
++/* myLinux: a small floating button in the top right corner while in full screen, since the title bar and its
++ * buttons are hidden there; Control+Command+F does the same from the keyboard. */
++static NSPanel *fullscreen_panel;
++/* the content size before full screen, restored on the way out (the guest sits at the display's resolution then, and
++ * without this the fixed window would take that size and fill the screen) */
++static NSSize prefullscreen_size;
++
++- (void)installSizeButtons
++{
++    NSView *strip = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 104, 26)];
++    NSArray *specs = @[
++        @[@"minus", @"Back to the starting size", @"sizeButtonBase:"],
++        @[@"plus", @"Larger window (+10%)", @"sizeButtonLarger:"],
++        @[@"arrow.up.left.and.arrow.down.right", @"Full screen", @"doToggleFullScreen:"],
++    ];
++    CGFloat x = 0;
++    for (NSArray *spec in specs) {
++        NSImage *image = [NSImage imageWithSystemSymbolName:spec[0] accessibilityDescription:spec[1]];
++        NSButton *button = [NSButton buttonWithImage:image target:self action:NSSelectorFromString(spec[2])];
++        [button setBezelStyle:NSBezelStyleToolbar];
++        [button setToolTip:spec[1]];
++        [button setFrame:NSMakeRect(x, 1, 30, 24)];
++        [strip addSubview:button];
++        x += 34;
++    }
++    [strip setFrame:NSMakeRect(0, 0, x + 6, 26)];
++    NSTitlebarAccessoryViewController *accessory = [[NSTitlebarAccessoryViewController alloc] init];
++    [accessory setView:strip];
++    [accessory setLayoutAttribute:NSLayoutAttributeRight];
++    [[cocoaView window] addTitlebarAccessoryViewController:accessory];
++}
++
++- (void)showFullScreenPanel
++{
++    if (!fullscreen_panel) {
++        NSImage *image = [NSImage imageWithSystemSymbolName:@"arrow.down.right.and.arrow.up.left"
++                                   accessibilityDescription:@"Exit full screen"];
++        NSButton *button = [NSButton buttonWithImage:image target:self action:@selector(doToggleFullScreen:)];
++        [button setBezelStyle:NSBezelStyleToolbar];
++        [button setToolTip:@"Exit full screen (Control+Command+F)"];
++        [button setFrame:NSMakeRect(6, 6, 32, 26)];
++        fullscreen_panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 44, 38)
++            styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskUtilityWindow
++            backing:NSBackingStoreBuffered defer:NO];
++        [fullscreen_panel setLevel:NSStatusWindowLevel];
++        [fullscreen_panel setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
++                                                NSWindowCollectionBehaviorFullScreenAuxiliary |
++                                                NSWindowCollectionBehaviorStationary];
++        [fullscreen_panel setOpaque:NO];
++        [fullscreen_panel setBackgroundColor:[NSColor colorWithWhite:0.15 alpha:0.8]];
++        [fullscreen_panel setHidesOnDeactivate:NO];
++        [fullscreen_panel setFloatingPanel:YES];
++        [[fullscreen_panel contentView] setWantsLayer:YES];
++        [[[fullscreen_panel contentView] layer] setCornerRadius:8];
++        [[fullscreen_panel contentView] addSubview:button];
++    }
++    NSScreen *screen = [[cocoaView window] screen];
++    NSRect frame = [screen frame];
++    CGFloat top = MIN(NSMaxY([screen visibleFrame]), NSMaxY(frame) - [screen safeAreaInsets].top);
++    [fullscreen_panel setFrameOrigin:NSMakePoint(NSMaxX(frame) - 44 - 12, top - 38 - 12)];
++    [fullscreen_panel orderFront:nil];
++}
++
++- (void)sizeButtonRememberBase
++{
++    if (size_button_base.width == 0) {
++        size_button_base = [[[cocoaView window] contentView] frame].size;
++    }
++}
++
++- (void)sizeButtonSetContentSize:(NSSize)size
++{
++    NSWindow *window = [cocoaView window];
++    if ([window styleMask] & NSWindowStyleMaskFullScreen) {
++        [window toggleFullScreen:nil];
++        return;
++    }
++    if (!([window styleMask] & NSWindowStyleMaskResizable)) {
++        [window setStyleMask:[window styleMask] | NSWindowStyleMaskResizable];
++    }
++    NSRect visible = [[window screen] visibleFrame];
++    NSRect frame = [window frame];
++    CGFloat chrome = frame.size.height - [[window contentView] frame].size.height;
++    size.width = MIN(size.width, visible.size.width);
++    size.height = MIN(size.height, visible.size.height - chrome);
++    [window setContentSize:size];
++    frame = [window frame];
++    if (NSMaxX(frame) > NSMaxX(visible)) frame.origin.x = NSMaxX(visible) - frame.size.width;
++    if (NSMaxY(frame) > NSMaxY(visible)) frame.origin.y = NSMaxY(visible) - frame.size.height;
++    if (frame.origin.x < visible.origin.x) frame.origin.x = visible.origin.x;
++    if (frame.origin.y < visible.origin.y) frame.origin.y = visible.origin.y;
++    [window setFrameOrigin:frame.origin];
++}
++
++- (void)sizeButtonLarger:(id)sender
++{
++    [self sizeButtonRememberBase];
++    NSSize size = [[[cocoaView window] contentView] frame].size;
++    [self sizeButtonSetContentSize:NSMakeSize(round(size.width * 1.1), round(size.height * 1.1))];
++}
++
++- (void)sizeButtonBase:(id)sender
++{
++    [self sizeButtonRememberBase];
++    [self sizeButtonSetContentSize:size_button_base];
++}
++
+ - (void)zoomToFit:(id) sender
+ {
+     NSWindowStyleMask styleMask = [[cocoaView window] styleMask] ^ NSWindowStyleMaskResizable;
