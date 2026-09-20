@@ -96,6 +96,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !resolution.isEmpty { env["RES"] = resolution.lowercased() }
             if cpus > 0 { env["CPUS"] = String(cpus) }
             if !sound { env["AUDIO"] = "0" }
+            if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
             return env
         }

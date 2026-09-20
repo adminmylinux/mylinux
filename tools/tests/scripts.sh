@@ -179,6 +179,11 @@ file_absent "a dry run creates no disk" "$T/om/omarchy.ext4"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); case "$out" in *shared_folder_name*) ko "no share: nothing about one on the command line" ;; *) ok "no share: nothing about one on the command line" ;; esac
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 QMP="$T/q.sock" sh run-omarchy.sh 2>&1); has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
 case "$out" in *audiodev*) ok "sound device by default" ;; *) ko "sound device by default" ;; esac
+has "clipboard port for Omarchy's agent by default" "$out" "name=dev.tryomarchy.clipboard"
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 CLIPBOARD=0 sh run-omarchy.sh 2>&1)
+case "$out" in *tryomarchy.clipboard*) ko "CLIPBOARD=0 leaves the port out" ;; *) ok "CLIPBOARD=0 leaves the port out" ;; esac
+(python3 "$REPO/tools/omarchy-clipboard.py" --selftest >/dev/null 2>&1); rc=$?
+is_rc "omarchy-clipboard.py selftest (protocol, echo filtering)" $rc 0
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 AUDIO=0 CPUS=2 SSH=1 FORWARD=2222:22 sh run-omarchy.sh 2>&1)
 case "$out" in *audiodev*) ko "AUDIO=0 leaves the sound device out" ;; *) ok "AUDIO=0 leaves the sound device out" ;; esac
 has "SSH=1 asks the guest for its SSH server" "$out" "tryomarchy.ssh_access=1"

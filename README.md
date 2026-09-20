@@ -59,8 +59,9 @@ and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up ins
 work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. The window's
 title bar has three buttons: back to the starting size, 10% larger (Omarchy follows with a higher resolution), and
 full screen; they come from `tools/qemu-runtime-patches/`, myLinux's own patch on the runtime. In the
-launcher it is **Add Omarchy**. Not there (they need Try Omarchy's own helper app): clipboard, camera and Touch ID
-bridges; sound plays through the Mac's default output.
+launcher it is **Add Omarchy**. The clipboard is shared both ways, text and PNG images, through
+Omarchy's own clipboard agent and `tools/omarchy-clipboard.py` on the Mac (`CLIPBOARD=0` turns it off). Not there
+(they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output.
 
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
 size of the display under your mouse pointer; if the first start puts it on another display, give your

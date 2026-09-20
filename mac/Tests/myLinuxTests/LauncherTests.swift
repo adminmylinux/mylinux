@@ -154,7 +154,10 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(env["MEM"], "8G")
         XCTAssertEqual(env["QMP"], "/tmp/q.sock", "Stop presses the power button there")
         XCTAssertEqual(env["SHARE_DIR"], "/tmp/m/omarchy/Mac")
-        XCTAssertNil(env["APPS_IMG"]); XCTAssertNil(env["MOUSE"]); XCTAssertNil(env["CLIPBOARD"])
+        XCTAssertNil(env["APPS_IMG"]); XCTAssertNil(env["MOUSE"]); XCTAssertNil(env["CLIPBOARD"], "sharing is the default")
+        p.clipboard = false
+        XCTAssertEqual(p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s.sock")["CLIPBOARD"], "0")
+        p.clipboard = true
         p.shareDir = ""
         XCTAssertTrue(p.problems.isEmpty, "the share is optional for Omarchy")
         XCTAssertNil(p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s.sock").keys.first { $0 == "SHARE_DIR" })

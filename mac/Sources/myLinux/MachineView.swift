@@ -112,7 +112,10 @@ struct MachineView: View {
                         Text("Follows the Mac pointer").tag("tablet")
                         Text("Captured on click (Ctrl+Option+G frees it)").tag("relative")
                     }
-                    Toggle("Share the Mac clipboard", isOn: $draft.clipboard)
+                }
+                Toggle("Share the Mac clipboard", isOn: $draft.clipboard)
+                if isOmarchy {
+                    Text("Text and images, both ways, through Omarchy's own clipboard agent.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("Machine") {
