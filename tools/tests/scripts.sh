@@ -168,8 +168,9 @@ has "the kernel comes from the machine's own boot folder" "$out" "$T/om/boot/vml
 has "accelerated GPU at the asked size, no ROM" "$out" "virtio-gpu-gl-pci,max_outputs=1,xres=1600,yres=1000,romfile="
 has "window fixed to the guest size" "$out" "zoom-to-fit=off"
 o2=$(cd "$W" && DRYRUN=1 SCALE=2 RES=1600x1000 sh run-omarchy.sh 2>&1); has "Retina: the guest gets twice the points" "$o2" "xres=3200,yres=2000,romfile="
-o2=$(cd "$W" && DRYRUN=1 SCALE=2 RES=5000x3000 sh run-omarchy.sh 2>&1); rc=$?
-not_rc0 "Retina: a size whose doubled guest mode is too large is refused" $rc
+o2=$(cd "$W" && DRYRUN=1 SCALE=1 RES=9000x9000 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "a size beyond QEMU's range is refused" $rc
+o2=$(cd "$W" && DRYRUN=1 SCALE=1 RES=8000x6000 sh run-omarchy.sh 2>&1); has "a size larger than the display is shrunk to fit" "$o2" "does not fit the display"
 o2=$(cd "$W" && DRYRUN=1 SCALE=3 RES=1600x1000 sh run-omarchy.sh 2>&1); rc=$?
 not_rc0 "unknown SCALE is refused" $rc
 has "share exported for the guest's first user" "$out" "path=$T/om/Mac Files,security_model=none,multidevs=remap,guest_owner_uid=1000"

@@ -57,11 +57,19 @@ SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; DETECTED=${REST#* }
 case "$SW$SH$DETECTED" in ''|*[!0-9]*) SW=""; SH=""; DETECTED=1 ;; esac
 SCALE="${SCALE:-$DETECTED}"
 case "$SCALE" in 1|2) ;; *) die "SCALE must be 1 or 2" ;; esac
+# the title bar carries a toolbar (the Session menu and the size buttons): 52 points, not a plain title bar's 28
+TITLE=52
 if [ -z "${RES:-}" ]; then
-  if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - 28) / 8 * 8 ))"; else RES=1600x1000; fi
+  if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - TITLE) / 8 * 8 ))"; else RES=1600x1000; fi
 fi
 case "$RES" in [0-9]*x[0-9]*) XRES="${RES%x*}"; YRES="${RES#*x}" ;; *) die "RES must look like 1920x1200 (got '$RES')" ;; esac
 [ "$XRES" -ge 640 ] && [ "$XRES" -le 8192 ] && [ "$YRES" -ge 480 ] && [ "$YRES" -le 8192 ] || die "RES out of range: $RES"
+# a chosen size larger than the display would put the window's bottom off screen: keep it inside
+if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then
+  MAXW=$(( (SW - 16) / 8 * 8 )); MAXH=$(( (SH - 16 - TITLE) / 8 * 8 ))
+  [ "$XRES" -le "$MAXW" ] || XRES=$MAXW; [ "$YRES" -le "$MAXH" ] || YRES=$MAXH
+  [ "$RES" = "${XRES}x${YRES}" ] || { echo "run-omarchy.sh: $RES does not fit the display, using ${XRES}x${YRES}" >&2; RES="${XRES}x${YRES}"; }
+fi
 GX=$(( XRES * SCALE )); GY=$(( YRES * SCALE ))
 [ "$GX" -le 8192 ] && [ "$GY" -le 8192 ] || die "RES $RES is too large for a Retina display (the guest would need ${GX}x${GY})"
 
