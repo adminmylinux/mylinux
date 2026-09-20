@@ -13,7 +13,7 @@
   <nav class="menubar">
     <a class="brand" href="/"><img src="./logo.svg" alt="" /> myLinux</a>
     <a href="/docs" aria-current="page">Docs</a>
-    <a href="https://github.com/adminmylinux/mylinux">GitHub</a>
+    <a href="https://github.com/adminmylinux/mylinux-releases/releases">Releases</a>
     <span class="spacer"></span>
     <a href="/app">Sign in</a>
   </nav>
@@ -41,7 +41,7 @@
 <pre class="term"><span class="p">$ </span>brew install qemu
 <span class="p">$ </span>git clone https://github.com/adminmylinux/mylinux.git
 <span class="p">$ </span>cd mylinux
-<span class="p">$ </span>tools/get-image.sh      <span class="c"># Image + rootfs.cpio.gz of the latest release into out/, SHA-256 checked</span>
+<span class="p">$ </span>tools/get-image.sh      <span class="c"># Image + rootfs.cpio.gz of the latest release (github.com/adminmylinux/mylinux-releases) into out/, SHA-256 checked</span>
 <span class="p">$ </span>./run.sh</pre></div>
       <p><code>run.sh</code> wraps QEMU in <code>out/myLinux.app</code>, so the Mac shows it as "myLinux". The window opens at the size of the display under your mouse pointer. If the first start puts it on another display, give your terminal app Accessibility permission in System Settings › Privacy &amp; Security and it is moved automatically.</p>
       <p>Environment variables for <code>run.sh</code>:</p>
@@ -154,7 +154,7 @@ autostart=/usr/bin/claude-web,/usr/bin/chatgpt</pre></div>
   <footer>
     <div class="wrap">
       <span>myLinux is free software under GPL-3.0-or-later.</span>
-      <span><a href="https://github.com/adminmylinux/mylinux">Source on GitHub</a> · <a href="/">Home</a></span>
+      <span><a href="https://github.com/adminmylinux/mylinux-releases/releases">Releases on GitHub</a> · <a href="/">Home</a></span>
     </div>
   </footer>
 </body>

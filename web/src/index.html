@@ -16,7 +16,7 @@
   <nav class="menubar">
     <a class="brand" href="/"><img src="./logo.svg" alt="" /> myLinux</a>
     <a href="/docs">Docs</a>
-    <a href="https://github.com/adminmylinux/mylinux">GitHub</a>
+    <a href="https://github.com/adminmylinux/mylinux-releases/releases">Releases</a>
     <span class="spacer"></span>
     <span class="clock" id="clock"></span>
     <a href="/app">Sign in</a>
@@ -94,10 +94,10 @@
         <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>Terminal<span class="spacer"></span><button class="btn small" data-copy="cmds">Copy</button></div>
 <pre class="term" id="cmds"><span class="p">$ </span>brew install qemu
 <span class="p">$ </span>git clone https://github.com/adminmylinux/mylinux.git &amp;&amp; cd mylinux
-<span class="p">$ </span>tools/get-image.sh &amp;&amp; ./run.sh</pre>
+<span class="p">$ </span>tools/get-image.sh &amp;&amp; ./run.sh   <span class="c"># images from github.com/adminmylinux/mylinux-releases</span></pre>
       </div>
       <div class="steps">
-        <div class="panel"><h3>The image downloads</h3><p>get-image.sh fetches the kernel and root filesystem of the latest release into out/ and checks their SHA-256.</p></div>
+        <div class="panel"><h3>The image downloads</h3><p>get-image.sh fetches the kernel and root filesystem of the latest release from the <a href="https://github.com/adminmylinux/mylinux-releases/releases">releases repository</a> into out/ and checks their SHA-256.</p></div>
         <div class="panel"><h3>The window opens</h3><p>run.sh wraps QEMU in myLinux.app, sized to the display under your pointer. A few seconds later the desktop is up.</p></div>
         <div class="panel"><h3>First boot sets up the apps disk</h3><p>The welcome dialog formats out/apps.img, installs Debian's minimal rootfs, the desktop apps, Claude Code and Codex. About 1.3 GB, a few minutes, once.</p></div>
       </div>
@@ -136,7 +136,7 @@
   <footer>
     <div class="wrap">
       <span>myLinux is free software under GPL-3.0-or-later. Themes from Omarchy, font Inter.</span>
-      <span><a href="https://github.com/adminmylinux/mylinux">Source on GitHub</a> · <a href="/docs">Docs</a> · <a href="https://github.com/adminmylinux/mylinux/releases">Releases</a></span>
+      <span><a href="https://github.com/adminmylinux/mylinux-releases/releases">Releases on GitHub</a> · <a href="/docs">Docs</a></span>
     </div>
   </footer>
   <script type="module" src="./landing.ts"></script>
