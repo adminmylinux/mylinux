@@ -59,7 +59,7 @@ then starts the app detached. `apps-path` symlinks every chroot command the base
 wl_data_device_manager v3 (modern clients require them); keyboard events delivered to every
 `wl_keyboard` object of the focused client (Firefox binds the seat twice).
 
-**Website** (`web/`): mylinux.app, a Bun/TypeScript site deployed with Docker and Caddy.
+**Website**: mylinux.app lives in its own private repository, adminmylinux/mylinux-web (a Bun/TypeScript site deployed with Docker and Caddy).
 
 ## Notable design decisions and their reasons
 
