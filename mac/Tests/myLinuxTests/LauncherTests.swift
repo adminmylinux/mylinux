@@ -52,6 +52,25 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class RunnerDiskTests: XCTestCase {
+    func matches(_ line: String, _ disk: String) -> Bool {
+        let re = try! NSRegularExpression(pattern: Runner.diskPattern(disk))
+        return re.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+    }
+    func testBothScriptsDriveOptionsAreRecognised() {
+        let disk = "/Users/x/Library/Application Support/myLinux/machines/a.b/omarchy.ext4"
+        // run.sh
+        XCTAssertTrue(matches("qemu-system-aarch64 -drive file=\(disk),if=none,format=raw,id=apps -device virtio-blk-pci", disk))
+        // run-omarchy.sh
+        XCTAssertTrue(matches("qemu-system-aarch64 -drive if=none,id=root,file=\(disk),format=raw,media=disk -device virtio-blk-pci", disk))
+    }
+    func testAnotherMachinesDiskDoesNotMatch() {
+        XCTAssertFalse(matches("-drive if=none,id=root,file=/m/omarchy.ext4.bak,format=raw", "/m/omarchy.ext4"))
+        XCTAssertFalse(matches("-drive if=none,id=root,file=/m/old/omarchy.ext4,format=raw", "/m/omarchy.ext4"))
+        XCTAssertFalse(matches("-drive file=/m/a.img,if=none", "/m/a.im"))
+    }
+}
+
 final class RunnerTextTests: XCTestCase {
     func testColourCodesAndCarriageReturnsAreRemoved() {
         let raw = "\u{1B}[0;32mmyLinux\u{1B}[0m login:\r\nroot\r\n"

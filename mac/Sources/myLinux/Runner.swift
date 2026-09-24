@@ -321,14 +321,22 @@ final class Runner: ObservableObject {
             .map(String.init).joined()
     }
 
+    /// The command-line pattern of a QEMU that has this disk open. Both scripts pass the disk as a -drive option
+    /// ("file=<disk>,..."); run.sh puts file= first, run-omarchy.sh after if=none,id=root, so only the option's
+    /// own text is matched, not its neighbours.
+    static func diskPattern(_ disk: String) -> String {
+        "(^|[ ,])file=" + NSRegularExpression.escapedPattern(for: disk) + "(,|$)"
+    }
+
     /// Whether a QEMU process has this disk on its command line.
     static func diskInUse(_ disk: String) -> Bool {
         guard !disk.isEmpty else { return false }
-        return run("/usr/bin/pgrep", ["-f", "file=" + NSRegularExpression.escapedPattern(for: disk) + ",if=none"]) == 0
+        return run("/usr/bin/pgrep", ["-f", diskPattern(disk)]) == 0
     }
 
     static func killDiskUsers(_ disk: String) {
-        _ = run("/usr/bin/pkill", ["-f", "file=" + NSRegularExpression.escapedPattern(for: disk) + ",if=none"])
+        guard !disk.isEmpty else { return }
+        _ = run("/usr/bin/pkill", ["-f", diskPattern(disk)])
     }
 
     @discardableResult
