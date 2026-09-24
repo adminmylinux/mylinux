@@ -108,10 +108,17 @@ final class RuntimeManager: ScriptDownloader {
         guard let url = Paths.bundledRuntime?.appendingPathComponent("tools/qemu-runtime.version") else { return nil }
         return (try? String(contentsOf: url, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    /// Whether the bundled runtime should be installed: there is one, and what is installed is not that version.
+    /// Whether the bundled runtime should be installed: there is one, and nothing at least as new is installed.
+    /// Versions read "qemu-runtime-11.1.1-2"; a downloaded runtime newer than the app's stays.
     static func bundledInstallNeeded(installed: String?, bundled: String?, hasTarball: Bool) -> Bool {
         guard hasTarball, let bundled, !bundled.isEmpty else { return false }
-        return installed != bundled
+        guard let installed, !installed.isEmpty else { return true }
+        return runtimeOrder(installed).lexicographicallyPrecedes(runtimeOrder(bundled))
+    }
+    /// "qemu-runtime-11.1.1-2" -> [11, 1, 1, 2]; anything unparsable sorts lowest.
+    static func runtimeOrder(_ v: String) -> [Int] {
+        let tail = v.hasPrefix("qemu-runtime-") ? String(v.dropFirst("qemu-runtime-".count)) : v
+        return tail.split(whereSeparator: { $0 == "." || $0 == "-" }).map { Int($0) ?? -1 }
     }
 
     /// Installs the bundled runtime without a download when it is missing or older than the app's. Not in developer

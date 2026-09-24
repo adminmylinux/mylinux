@@ -52,11 +52,17 @@ final class ProfileTests: XCTestCase {
     }
 }
 
-final class BundledRuntimeTests: XCTestCase {
+
     func testInstalledWhenMissingOrAnotherVersion() {
         XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
         XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.1.1-1", bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
         XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.1.1-2", bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
+    }
+    func testANewerDownloadedRuntimeIsKept() {
+        XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.1.1-3", bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
+        XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.2.0-1", bundled: "qemu-runtime-11.1.1-9", hasTarball: true))
+        XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.1.1-9", bundled: "qemu-runtime-11.2.0-1", hasTarball: true))
+        XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: "garbage", bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
     }
     func testNothingWithoutABundledRuntime() {
         XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "qemu-runtime-11.1.1-2", hasTarball: false))
