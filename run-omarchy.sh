@@ -130,6 +130,8 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinu
   echo "creating $DISK ($DISK_SIZE_GB GB, sparse) from Omarchy $(cat "$G/OMARCHY-REVISION" 2>/dev/null) ..."
   "$OUT/qemu-runtime/bin/zstd" -d -q -f --sparse -o "$DISK.new" "$G/rootfs.ext4.zst" || { rm -f "$DISK.new"; die "could not unpack the root disk"; }
   python3 -c 'import sys,os; s=int(sys.argv[2])*2**30; f=open(sys.argv[1],"r+b"); s>os.path.getsize(sys.argv[1]) and f.truncate(s)' "$DISK.new" "$DISK_SIZE_GB"
+  # the session tool goes into the disk now (system-wide, enabled), so the Session menu works from the first login
+  tools/omarchy-bake-session.sh "$DISK.new" omarchy/session || echo "run-omarchy.sh: the session tool is not in the disk; inside Omarchy, sh ~/<share>/mylinux-tools/install-session.sh installs it" >&2
   cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/OMARCHY-REVISION" "$MACHINE/boot/OMARCHY-REVISION" 2>/dev/null || true
   mv "$DISK.new" "$DISK"
 fi

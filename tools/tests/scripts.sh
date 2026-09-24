@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -195,6 +195,23 @@ c=$(cat "$T/om/Mac Files/mylinux-tools/control/"*.cmd 2>/dev/null); [ "$c" = "in
 not_rc0 "unknown session commands are refused" $rc
 (python3 "$REPO/omarchy/session/omarchy-session" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-session selftest (restore planning, terminal working directory)" $rc 0
+
+echo "tools/omarchy-bake-session.sh"
+grep -q 'tools/omarchy-bake-session.sh "$DISK.new"' "$W/run-omarchy.sh" && rc=0 || rc=1
+is_rc "run-omarchy.sh bakes the session tool into a new disk" $rc 0
+gunzip -c "$REPO/tools/tests/fixtures/ext4-mini.img.gz" > "$T/mini.img"
+(cd "$W" && MYLINUX_DEBUGFS=/nonexistent/debugfs sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
+is_rc "without a debugfs it says so and exits 3 (the caller carries on)" $rc 3
+DEBUGFS=""; for c in "${MYLINUX_DEBUGFS:-}" "$REPO/out/qemu-runtime/bin/debugfs" /opt/homebrew/opt/e2fsprogs/sbin/debugfs; do [ -n "$c" ] && [ -x "$c" ] && { DEBUGFS=$c; break; }; done
+if [ -n "$DEBUGFS" ]; then
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
+  is_rc "bakes into an ext4 image" $rc 0
+  out=$("$DEBUGFS" -R "stat /usr/local/bin/omarchy-session" "$T/mini.img" 2>/dev/null); has "the script is a 0755 file" "$out" "Mode:  0755"
+  out=$("$DEBUGFS" -R "cat /etc/systemd/user/omarchy-session-restore.service" "$T/mini.img" 2>/dev/null); has "the units run the system-wide script" "$out" "ExecStart=/usr/local/bin/omarchy-session restore"
+  out=$("$DEBUGFS" -R "stat /etc/systemd/user/graphical-session.target.wants/omarchy-session-agent.service" "$T/mini.img" 2>/dev/null); has "the units are enabled for graphical sessions" "$out" "Type: symlink"
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
+  is_rc "baking again replaces the files" $rc 0
+else echo "  skip debugfs bake (no debugfs here: runtime not installed)"; fi
 (python3 "$REPO/tools/omarchy-clipboard.py" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-clipboard.py selftest (protocol, echo filtering)" $rc 0
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 AUDIO=0 CPUS=2 SSH=1 FORWARD=2222:22 sh run-omarchy.sh 2>&1)

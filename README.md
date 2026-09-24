@@ -62,12 +62,14 @@ title bar has three buttons at the right: back to the starting size, 10% larger 
 resolution), and full screen; Control+Command+F toggles full screen in every keyboard mode, and a small floating
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
 patch on the runtime. In the
-launcher it is **Add Omarchy**. Open windows come back after a restart once `omarchy/session` is installed in
-the account: run `sh ~/Mac/mylinux-tools/install-session.sh` inside Omarchy once (run-omarchy.sh puts the files in the
-share folder as `mylinux-tools/`); the layout, each window's command line and a terminal's working directory, is saved
-every minute and at logout and reopened on the same workspaces at login. Apps that restore their own state come
-back complete, terminals come back empty in the right folder. `omarchy-session status|save|restore|interval|disable`, and
-`install-session.sh --remove` takes it out. The Session menu in the middle of the window's title bar (and in the
+launcher it is **Add Omarchy**. Open windows come back after a restart: `omarchy/session` is written into a new
+machine's disk before its first boot (`tools/omarchy-bake-session.sh`, with the runtime's `debugfs`; nothing is mounted),
+system-wide and enabled for every account. The layout, each window's command line and a terminal's working directory, is
+saved every minute and at logout and reopened on the same workspaces at login. Apps that restore their own state come
+back complete, terminals come back empty in the right folder. `omarchy-session status|save|restore|interval|disable`
+inside Omarchy; on a machine made before this existed, `sh ~/<share>/mylinux-tools/install-session.sh` installs it into
+the account (run-omarchy.sh puts the files in the share folder as `mylinux-tools/`), and `install-session.sh --remove`
+takes it out. The Session menu in the middle of the window's title bar (and in the
 floating box in full screen) saves, restores and sets how often the layout is saved; it hands the command to the
 tool through the share folder. The clipboard is shared both ways, text and PNG images, through
 Omarchy's own clipboard agent and `tools/omarchy-clipboard.py` on the Mac (`CLIPBOARD=0` turns it off). Not there

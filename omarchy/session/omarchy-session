@@ -199,8 +199,17 @@ def agent():
         if time.monotonic() - last_status > 30: write_status(); last_status = time.monotonic()
         time.sleep(1)
 
+UNITS = ["omarchy-session-restore.service", "omarchy-session-save.timer", "omarchy-session-agent.service"]
+
 def units(action):
-    subprocess.run(["systemctl", "--user", action, "omarchy-session-restore.service", "omarchy-session-save.timer"], check=False)
+    """enable/disable for this account. The units may be system-wide (baked into the disk by run-omarchy.sh, enabled
+    in /etc/systemd/user), which a user cannot disable; masking them in the account has the same effect."""
+    if action == "disable":
+        subprocess.run(["systemctl", "--user", "disable", "--now", *UNITS], check=False)
+        subprocess.run(["systemctl", "--user", "mask", *UNITS], check=False)
+    else:
+        subprocess.run(["systemctl", "--user", "unmask", *UNITS], check=False)
+        subprocess.run(["systemctl", "--user", "enable", "--now", *UNITS], check=False)
 
 def selftest():
     saved = {"windows": [{"class": "Alacritty", "workspace": 1, "command": ["alacritty"], "cwd": "/home/x/prj"},
