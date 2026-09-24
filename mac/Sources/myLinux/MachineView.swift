@@ -173,15 +173,7 @@ struct MachineView: View {
 
     /// The SSH terminal to this machine: an unsaved remote profile keyed by the machine's id, so a second click
     /// brings the same window forward.
-    private func openTerminal() {
-        var p = RemoteProfile(kind: .ssh)
-        p.id = draft.id; p.name = "\(draft.name) terminal"; p.host = "127.0.0.1"; p.port = draft.sshPort; p.username = "debian"
-        p.keyFile = draft.machineFolder.appendingPathComponent("ssh_key").path
-        p.sshOptions = ["UserKnownHostsFile=\(draft.machineFolder.appendingPathComponent("known_hosts").path)", "ConnectTimeout=10"]
-        p.keyboard = .mac; p.launcherMachine = true
-        if !draft.shareDir.isEmpty { p.shareMacPath = draft.shareDir; p.shareGuestPath = "~/" + URL(fileURLWithPath: draft.shareDir).lastPathComponent }
-        RemoteWindowController.show(p)
-    }
+    private func openTerminal() { RemoteWindowController.show(draft.terminalProfile) }
 
     /// What a Debian machine needs before its first start.
     @ViewBuilder private var debianDownloads: some View {

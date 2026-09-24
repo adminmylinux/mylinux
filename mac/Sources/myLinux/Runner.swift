@@ -109,6 +109,7 @@ final class Runner: ObservableObject {
         state = .starting
         UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
         connectSerial()
+        if p.kind == .debian { openTerminalWhenReady(p) }
     }
 
     /// The last lines run.sh wrote, for the message on an unexpected exit.
@@ -208,6 +209,25 @@ final class Runner: ObservableObject {
                 let n = Darwin.write(serialFD, buf.baseAddress! + off, buf.count - off)
                 if n <= 0 { break }
                 off += n
+            }
+        }
+    }
+
+    /// A Debian machine is a terminal: once its sshd answers after a start, the terminal window opens on its own.
+    /// The forwarded port accepts connections before the guest listens, so a real ssh login is the test.
+    private func openTerminalWhenReady(_ p: Profile) {
+        let profile = p.terminalProfile
+        let args = SshTerminal.arguments(for: profile) + ["true"]
+        let startedAt = Date()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            while Date().timeIntervalSince(startedAt) < 240 {
+                guard let self, self.isActive, self.profileID == p.id else { return }
+                let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+                t.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=3"] + args
+                var env = ProcessInfo.processInfo.environment; env["PATH"] = Paths.toolPath; t.environment = env
+                t.standardInput = FileHandle.nullDevice; t.standardOutput = FileHandle.nullDevice; t.standardError = FileHandle.nullDevice
+                if (try? t.run()) != nil { t.waitUntilExit(); if t.terminationStatus == 0 { DispatchQueue.main.async { RemoteWindowController.show(profile) }; return } }
+                Thread.sleep(forTimeInterval: 3)
             }
         }
     }

@@ -88,8 +88,8 @@ cloud-init from a seed made on the Mac: the `debian` account with sudo, an SSH k
 name as its host name, and the share folder mounted at `/mnt/mac` and linked from the home folder. SSH is forwarded
 to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
 and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
-page has the settings, the Console tab the serial console, and the Terminal button opens an SSH terminal with the
-machine's key. That terminal window has a **myLinux** menu in the middle of its title bar; **Install Agents…** puts
+page has the settings, the Console tab the serial console, and Start opens an SSH terminal with the machine's key
+as soon as its sshd answers (the Terminal button opens it again). That terminal window has a **myLinux** menu in the middle of its title bar; **Install Agents…** puts
 coding agents into the machine: Claude Code (Anthropic's native installer) and Codex (OpenAI's prebuilt Linux
 binary), each with an alias you can edit (`cc` for `claude update && claude --dangerously-skip-permissions`, `cx`
 for `codex --full-auto`), plus git and tmux. The dialog turns the choice into one bash script, runs it over the

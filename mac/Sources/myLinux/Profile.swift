@@ -59,6 +59,17 @@ struct Profile: Codable, Identifiable, Hashable {
     var script: String { kind == .omarchy ? "run-omarchy.sh" : kind == .debian ? "run-debian.sh" : "run.sh" }
     /// The Debian machine's folder (its disk, SSH key, console password and seed live there).
     var machineFolder: URL { URL(fileURLWithPath: appsDisk).deletingLastPathComponent() }
+    /// The SSH terminal to a Debian machine: keyed by the machine's id, so a second request brings the same window
+    /// forward; the machine's own key and known_hosts; the share, for screenshots into it.
+    var terminalProfile: RemoteProfile {
+        var p = RemoteProfile(kind: .ssh)
+        p.id = id; p.name = "\(name) terminal"; p.host = "127.0.0.1"; p.port = sshPort; p.username = "debian"
+        p.keyFile = machineFolder.appendingPathComponent("ssh_key").path
+        p.sshOptions = ["UserKnownHostsFile=\(machineFolder.appendingPathComponent("known_hosts").path)", "ConnectTimeout=10"]
+        p.keyboard = .mac; p.launcherMachine = true
+        if !shareDir.isEmpty { p.shareMacPath = shareDir; p.shareGuestPath = "~/" + URL(fileURLWithPath: shareDir).lastPathComponent }
+        return p
+    }
 
     /// Problems that would make run.sh refuse to start, in words for the form.
     var problems: [String] {
