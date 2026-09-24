@@ -68,6 +68,22 @@ R="$STAGE/qemu-runtime"
 mkdir -p "$R/bin" "$R/source/patches"
 cp "$BUILT/bin/qemu-system-aarch64" "$R/bin/"
 cp "$BUILT/bin/zstd" "$R/bin/"          # run-omarchy.sh unpacks the Omarchy root disk with it (no Homebrew needed)
+# debugfs from e2fsprogs (GPL-2.0; libext2fs LGPL-2.0), built here from the pinned source and linked with nothing but
+# libSystem: tools/omarchy-bake-session.sh writes the session tool into a fresh Omarchy disk with it.
+E2FS_VERSION=1.47.4
+E2FS_URL="https://www.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v$E2FS_VERSION/e2fsprogs-$E2FS_VERSION.tar.xz"
+E2FS_SHA256=fd5bf388cbdbe006a3d3b318d983b2948382440acc85a87f1e7d108653e8db0b
+mkdir -p out/.cache; E2FS_TAR="out/.cache/e2fsprogs-$E2FS_VERSION.tar.xz"
+[ -f "$E2FS_TAR" ] || curl -fL --progress-bar -o "$E2FS_TAR.new" "$E2FS_URL" && { [ -f "$E2FS_TAR" ] || mv "$E2FS_TAR.new" "$E2FS_TAR"; }
+[ "$(shasum -a 256 "$E2FS_TAR" | cut -d' ' -f1)" = "$E2FS_SHA256" ] || { echo "e2fsprogs-$E2FS_VERSION.tar.xz does not match its pinned checksum" >&2; exit 1; }
+mkdir -p "$STAGE/e2fsprogs" && tar -xJf "$E2FS_TAR" -C "$STAGE/e2fsprogs" --strip-components=1
+( cd "$STAGE/e2fsprogs" && ./configure --disable-nls --disable-testio-debug --disable-uuidd --disable-fuse2fs > configure.log 2>&1 \
+  && make -j"$(sysctl -n hw.ncpu)" libs > make.log 2>&1 && make -j"$(sysctl -n hw.ncpu)" -C debugfs >> make.log 2>&1 ) \
+  || { echo "e2fsprogs did not build (see $STAGE/e2fsprogs/*.log)" >&2; trap - EXIT; restore; exit 1; }
+cp "$STAGE/e2fsprogs/debugfs/debugfs" "$R/bin/debugfs"
+otool -L "$R/bin/debugfs" | grep -q '/opt/homebrew' && { echo "debugfs links against Homebrew libraries" >&2; exit 1; }
+codesign --force -s - "$R/bin/debugfs" 2>/dev/null || true
+cp "$STAGE/e2fsprogs/NOTICE" "$R/source/NOTICE.e2fsprogs"
 cp -R "$BUILT/lib" "$R/lib"
 printf '%s\n' "$VERSION" > "$R/RUNTIME-REVISION"
 # what QEMU's GPL asks of whoever passes the binary on: the exact source. The patches travel with it, the pinned
@@ -82,6 +98,10 @@ cp "$FROM/THIRD_PARTY_NOTICES.md" "$R/source/THIRD_PARTY_NOTICES.try-omarchy.md"
   echo "QEMU (GPL-2.0 and other component licences) with virglrenderer (MIT), ANGLE (BSD-3-Clause), libepoxy (MIT),"
   echo "libslirp (BSD-3-Clause), SDL (zlib), pixman (MIT), GLib (LGPL-2.1-or-later, linked dynamically), PCRE2 (BSD),"
   echo "gettext's libintl (LGPL), lz4 (BSD-2-Clause), xz's liblzma (0BSD), zstd (BSD-3-Clause)."
+  echo "bin/debugfs is from e2fsprogs $E2FS_VERSION (GPL-2.0, libext2fs LGPL-2.0; source/NOTICE.e2fsprogs), built unchanged from"
+  echo "    $E2FS_URL"
+  echo "    sha256 $E2FS_SHA256"
+  echo "with: ./configure --disable-nls --disable-testio-debug --disable-uuidd --disable-fuse2fs && make libs && make -C debugfs"
   echo
   echo "Built with Try Omarchy's runtime build, $UPSTREAM at commit $COMMIT (MIT):"
   echo "source/build-qemu-gpu-runtime.sh is the recipe, source/patches/ are the changes applied to QEMU and libslirp;"
@@ -92,6 +112,7 @@ cp "$FROM/THIRD_PARTY_NOTICES.md" "$R/source/THIRD_PARTY_NOTICES.try-omarchy.md"
   grep -E '^(qemu_commit|qemu_url|qemu_sha256|slirp_url|slirp_sha256|virgl_url|virgl_sha256|angle_url|angle_sha256|epoxy_url|epoxy_sha256)=' "$FROM/macos/build-qemu-gpu-runtime.sh" | sed 's/^/    /'
 } > "$R/NOTICES.md"
 "$R/bin/qemu-system-aarch64" --version >/dev/null || { echo "the packed runtime does not run" >&2; exit 1; }
+"$R/bin/debugfs" -V >/dev/null 2>&1 || { echo "the packed debugfs does not run" >&2; exit 1; }
 
 mkdir -p out
 TAR="out/qemu-runtime-macos-arm64.tar.gz"
