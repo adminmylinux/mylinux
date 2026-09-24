@@ -35,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         signal(SIGPIPE, SIG_IGN)                 // a closed serial socket must not end the app
         StatusMenu.shared.install()              // the menu bar item: the way out of a full keyboard grab
         ImageManager.shared.refresh()
+        RuntimeManager.shared.refresh()
+        RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
         // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--remote"), i + 1 < args.count, let id = UUID(uuidString: args[i + 1]),
@@ -167,7 +169,9 @@ struct SettingsView: View {
                     }
                 }
                 if let e = runtime.lastError { Banner(text: e, kind: .error) }
-                Text("myLinux's own QEMU with GPU support (VirGL, drawn through Metal): about 10 MB to download, no Homebrew needed. Machines use it from their next start; without it they start with Homebrew's QEMU. Its sources and licences are in the runtime's NOTICES.md.")
+                Text(RuntimeManager.bundledTarball != nil
+                     ? "myLinux's own QEMU with GPU support (VirGL, drawn through Metal) came with the app and is installed on its first start; the button fetches a newer one if there is one. Its sources and licences are in the runtime's NOTICES.md."
+                     : "myLinux's own QEMU with GPU support (VirGL, drawn through Metal): about 10 MB to download, no Homebrew needed. Machines use it from their next start; without it they start with Homebrew's QEMU. Its sources and licences are in the runtime's NOTICES.md.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Section("Developer") {

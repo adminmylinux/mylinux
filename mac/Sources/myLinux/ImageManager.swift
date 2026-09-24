@@ -11,7 +11,7 @@ class ScriptDownloader: ObservableObject {
     /// Called on the main thread when the script has ended, whatever the outcome.
     func finished() {}
 
-    func run(_ tool: String, arguments: [String] = [], starting: String, settings: AppSettings) {
+    func run(_ tool: String, arguments: [String] = [], environment extra: [String: String] = [:], starting: String, settings: AppSettings) {
         guard !busy, let scripts = settings.scriptsDir else { return }
         let script = scripts.appendingPathComponent(tool)
         guard FileManager.default.isReadableFile(atPath: script.path) else {
@@ -25,6 +25,7 @@ class ScriptDownloader: ObservableObject {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = Paths.toolPath
         env["MYLINUX_OUT"] = settings.outDir.path
+        for (k, v) in extra { env[k] = v }
         proc.environment = env
         let pipe = Pipe()
         proc.standardOutput = pipe; proc.standardError = pipe
@@ -95,6 +96,30 @@ final class RuntimeManager: ScriptDownloader {
 
     func download(_ settings: AppSettings = .shared) {
         run("tools/get-qemu-runtime.sh", starting: "Downloading the accelerated QEMU…", settings: settings)
+    }
+
+    /// The runtime tarball a release build carries (mac/build-app.sh with MYLINUX_RELEASE=1), and its version.
+    static var bundledTarball: URL? {
+        guard let url = Paths.bundledRuntime?.appendingPathComponent("qemu-runtime-macos-arm64.tar.gz"),
+              FileManager.default.isReadableFile(atPath: url.path) else { return nil }
+        return url
+    }
+    static var bundledVersion: String? {
+        guard let url = Paths.bundledRuntime?.appendingPathComponent("tools/qemu-runtime.version") else { return nil }
+        return (try? String(contentsOf: url, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Whether the bundled runtime should be installed: there is one, and what is installed is not that version.
+    static func bundledInstallNeeded(installed: String?, bundled: String?, hasTarball: Bool) -> Bool {
+        guard hasTarball, let bundled, !bundled.isEmpty else { return false }
+        return installed != bundled
+    }
+
+    /// Installs the bundled runtime without a download when it is missing or older than the app's. Not in developer
+    /// mode: the checkout's out/ is the developer's business (tools/get-qemu-runtime.sh, tools/build-qemu-runtime.sh).
+    func installBundledIfNeeded(_ settings: AppSettings = .shared) {
+        guard !settings.developerMode, let tarball = Self.bundledTarball,
+              Self.bundledInstallNeeded(installed: settings.runtimeRevision, bundled: Self.bundledVersion, hasTarball: true) else { return }
+        run("tools/get-qemu-runtime.sh", environment: ["MYLINUX_RUNTIME_FILE": tarball.path], starting: "Installing the app's QEMU…", settings: settings)
     }
 
     func remove(_ settings: AppSettings = .shared) {

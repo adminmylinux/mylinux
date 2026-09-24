@@ -52,6 +52,19 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class BundledRuntimeTests: XCTestCase {
+    func testInstalledWhenMissingOrAnotherVersion() {
+        XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
+        XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.1.1-1", bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
+        XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.1.1-2", bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
+    }
+    func testNothingWithoutABundledRuntime() {
+        XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "qemu-runtime-11.1.1-2", hasTarball: false))
+        XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: nil, hasTarball: true))
+        XCTAssertFalse(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "", hasTarball: true))
+    }
+}
+
 final class RunnerDiskTests: XCTestCase {
     func matches(_ line: String, _ disk: String) -> Bool {
         let re = try! NSRegularExpression(pattern: Runner.diskPattern(disk))
