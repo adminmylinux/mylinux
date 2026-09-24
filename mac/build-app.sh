@@ -89,14 +89,50 @@ mkdir -p "$NEW/Contents/Resources/runtime/tools/icons"
 cp "tools/icons/myLinux Launcher.icns" "$NEW/Contents/Resources/myLinux Launcher.icns"
 cp tools/icons/myLinux.icns "$NEW/Contents/Resources/runtime/tools/icons/myLinux.icns"
 
-# a release build carries the QEMU runtime, installed into Application Support on the app's first start
+# Signed inside out: the libraries, then the app with its entitlements. MYLINUX_SIGN_IDENTITY, else the local
+# "myLinux Launcher (local signing)" certificate when the login keychain has one (a stable signature keeps the
+# Accessibility permission the full keyboard grab needs across rebuilds), else ad hoc. A Developer ID gets the
+# hardened runtime and a timestamp, which notarisation requires; the hardened runtime's library validation only
+# accepts libraries signed by the same team, so it is not used with a self-signed or ad hoc identity (no team).
+IDENTITY=${MYLINUX_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(myLinux Launcher (local signing)\)".*/\1/p' | head -1)}
+[ -n "$IDENTITY" ] || IDENTITY=-
+case "$IDENTITY" in "Developer ID Application:"*) HARDENED=1 ;; *) HARDENED=0 ;; esac
+sign() {
+  if [ "$HARDENED" = 1 ]; then codesign --force --sign "$IDENTITY" --options runtime --timestamp "$@"
+  else codesign --force --sign "$IDENTITY" "$@"; fi; }
+
+# a release build carries the QEMU runtime, installed into Application Support on the app's first start. Apple's
+# notary service looks inside the tarball, so with a Developer ID every Mach-O in it is re-signed with that identity
+# and the hardened runtime (QEMU keeps its entitlements: hypervisor, audio input), and the tarball is packed again.
 if [ "${MYLINUX_RELEASE:-0}" = 1 ]; then
-  TARBALL="out/qemu-runtime-macos-arm64.tar.gz"; WANT=$(cat tools/qemu-runtime.version)
+  TARBALL="out/qemu-runtime-macos-arm64.tar.gz"; TNAME=$(basename "$TARBALL"); WANT=$(cat tools/qemu-runtime.version)
   [ -f "$TARBALL" ] && [ -f "$TARBALL.sha256" ] || { echo "MYLINUX_RELEASE=1 needs $TARBALL and its .sha256 (tools/build-qemu-runtime.sh)" >&2; exit 1; }
   HAVE=$(tar -xzOf "$TARBALL" qemu-runtime/RUNTIME-REVISION 2>/dev/null | tr -d '\n')
   [ "$HAVE" = "$WANT" ] || { echo "$TARBALL is $HAVE, tools/qemu-runtime.version says $WANT: rebuild the runtime first" >&2; exit 1; }
-  cp "$TARBALL" "$TARBALL.sha256" "$NEW/Contents/Resources/runtime/"
-  echo "carrying the QEMU runtime $WANT"
+  RT="$NEW/Contents/Resources/runtime"
+  if [ "$HARDENED" = 1 ]; then
+    RS=$(mktemp -d "${TMPDIR:-/tmp}/mylinux-runtime-sign.XXXXXX")
+    tar -xzf "$TARBALL" -C "$RS"
+    find "$RS/qemu-runtime" -type f | while read -r f; do
+      file -b "$f" | grep -q 'Mach-O' || continue
+      case "$f" in
+        */bin/qemu-system-aarch64)
+          ENT="$RS/qemu.entitlements"; codesign -d --entitlements - --xml "$f" > "$ENT" 2>/dev/null
+          [ -s "$ENT" ] || { echo "QEMU in the runtime has no entitlements to carry over" >&2; exit 1; }
+          sign --entitlements "$ENT" "$f" >/dev/null 2>&1 || { echo "could not re-sign $(basename "$f")" >&2; exit 1; } ;;
+        *) sign "$f" >/dev/null 2>&1 || { echo "could not re-sign $(basename "$f")" >&2; exit 1; } ;;
+      esac
+    done || exit 1
+    "$RS/qemu-runtime/bin/qemu-system-aarch64" --version >/dev/null || { echo "the re-signed QEMU does not run" >&2; exit 1; }
+    codesign -dv "$RS/qemu-runtime/bin/qemu-system-aarch64" 2>&1 | grep -q 'flags=.*runtime' || { echo "the re-signed QEMU has no hardened runtime" >&2; exit 1; }
+    (cd "$RS" && COPYFILE_DISABLE=1 tar -czf "$RT/$TNAME" --uid 0 --gid 0 --no-xattrs qemu-runtime)
+    (cd "$RT" && shasum -a 256 "$TNAME" > "$TNAME.sha256")
+    rm -rf "$RS"
+    echo "carrying the QEMU runtime $WANT, re-signed with the Developer ID"
+  else
+    cp "$TARBALL" "$TARBALL.sha256" "$RT/"
+    echo "carrying the QEMU runtime $WANT"
+  fi
 fi
 
 # the launcher's version: from the v* tags (the runtime has tags of its own), without the v
@@ -126,17 +162,6 @@ $( [ "${MYLINUX_RELEASE:-0}" = 1 ] || printf '  <!-- the checkout this was built
 </dict></plist>
 PLIST
 
-# Signed inside out: the libraries, then the app with its entitlements. MYLINUX_SIGN_IDENTITY, else the local
-# "myLinux Launcher (local signing)" certificate when the login keychain has one (a stable signature keeps the
-# Accessibility permission the full keyboard grab needs across rebuilds), else ad hoc. A Developer ID gets the
-# hardened runtime and a timestamp, which notarisation requires; the hardened runtime's library validation only
-# accepts libraries signed by the same team, so it is not used with a self-signed or ad hoc identity (no team).
-IDENTITY=${MYLINUX_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(myLinux Launcher (local signing)\)".*/\1/p' | head -1)}
-[ -n "$IDENTITY" ] || IDENTITY=-
-case "$IDENTITY" in "Developer ID Application:"*) HARDENED=1 ;; *) HARDENED=0 ;; esac
-sign() {
-  if [ "$HARDENED" = 1 ]; then codesign --force --sign "$IDENTITY" --options runtime --timestamp "$@"
-  else codesign --force --sign "$IDENTITY" "$@"; fi; }
 for lib in "$NEW"/Contents/Frameworks/*.dylib; do sign "$lib" >/dev/null 2>&1 || echo "warning: could not sign $(basename "$lib")" >&2; done
 sign --entitlements mac/launcher.entitlements "$NEW" >/dev/null 2>&1 || echo "warning: could not sign the app" >&2
 codesign --verify --strict "$NEW" >/dev/null 2>&1 || echo "warning: the app's signature does not verify" >&2

@@ -30,13 +30,21 @@ ditto "$APP" "$W/root/$NAME.app"
 ln -s /Applications "$W/root/Applications"
 codesign --verify --strict --deep "$W/root/$NAME.app" || { echo "the app's signature does not verify: nothing packaged" >&2; exit 1; }
 
+# Apple's reasons for a rejection, one line each
+notary_log() {
+  ID=$(sed -n 's/^ *id: //p' "$1" | head -1); [ -n "$ID" ] || return 0
+  xcrun notarytool log "$ID" --keychain-profile "$PROFILE" 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for i in d.get("issues") or []: print("  " + i.get("severity", ""), i.get("path", ""), "-", i.get("message", ""))' >&2 || true
+}
 if [ -n "$PROFILE" ]; then
   # the app first: its own ticket is stapled into the bundle, so it verifies offline once dragged out of the DMG
   echo "notarising the app ..."
   ditto -c -k --keepParent "$W/root/$NAME.app" "$W/app.zip"
   xcrun notarytool submit "$W/app.zip" --keychain-profile "$PROFILE" --wait > "$W/notary-app.log" 2>&1 \
     || { cat "$W/notary-app.log" >&2; ID=$(sed -n 's/^ *id: //p' "$W/notary-app.log" | head -1); [ -z "$ID" ] || xcrun notarytool log "$ID" --keychain-profile "$PROFILE" >&2; echo "notarisation of the app failed" >&2; exit 1; }
-  grep -q 'status: Accepted' "$W/notary-app.log" || { cat "$W/notary-app.log" >&2; echo "the app was not accepted" >&2; exit 1; }
+  grep -q 'status: Accepted' "$W/notary-app.log" || { cat "$W/notary-app.log" >&2; notary_log "$W/notary-app.log"; echo "the app was not accepted" >&2; exit 1; }
   xcrun stapler staple -q "$W/root/$NAME.app"
 fi
 
@@ -50,7 +58,7 @@ if [ -n "$PROFILE" ]; then
   echo "notarising the disk image ..."
   xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait > "$W/notary-dmg.log" 2>&1 \
     || { cat "$W/notary-dmg.log" >&2; echo "notarisation of the disk image failed" >&2; exit 1; }
-  grep -q 'status: Accepted' "$W/notary-dmg.log" || { cat "$W/notary-dmg.log" >&2; echo "the disk image was not accepted" >&2; exit 1; }
+  grep -q 'status: Accepted' "$W/notary-dmg.log" || { cat "$W/notary-dmg.log" >&2; notary_log "$W/notary-dmg.log"; echo "the disk image was not accepted" >&2; exit 1; }
   xcrun stapler staple -q "$DMG"
   spctl -a -t open --context context:primary-signature -v "$DMG" 2>&1 | grep -q 'accepted' || { echo "Gatekeeper does not accept the stapled disk image" >&2; exit 1; }
 fi
