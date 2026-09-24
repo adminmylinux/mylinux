@@ -89,7 +89,11 @@ name as its host name, and the share folder mounted at `/mnt/mac` and linked fro
 to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
 and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
 page has the settings, the Console tab the serial console, and the Terminal button opens an SSH terminal with the
-machine's key. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
+machine's key. That terminal window has a **myLinux** menu in the middle of its title bar; **Install Agents…** puts
+coding agents into the machine: Claude Code (Anthropic's native installer) and Codex (OpenAI's prebuilt Linux
+binary), each with an alias you can edit (`cc` for `claude update && claude --dangerously-skip-permissions`, `cx`
+for `codex --full-auto`), plus git and tmux. The dialog turns the choice into one bash script, runs it over the
+machine's SSH connection with the output in view, and the terminal picks up the aliases straight away. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
 `SERIAL`, `QMP`, `DRYRUN=1`.
 
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the

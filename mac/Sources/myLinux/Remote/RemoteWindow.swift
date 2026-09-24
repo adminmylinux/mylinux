@@ -54,7 +54,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         overlay.textColor = .white; overlay.backgroundColor = NSColor.black.withAlphaComponent(0.7); overlay.drawsBackground = true
         overlay.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
         root.addSubview(overlay)
-        let toolbar = NSToolbar(identifier: "remote-\(profile.kind.rawValue)"); toolbar.delegate = self; toolbar.displayMode = .iconOnly
+        let toolbar = NSToolbar(identifier: "remote-\(profile.kind.rawValue)\(profile.launcherMachine ? "-machine" : "")"); toolbar.delegate = self; toolbar.displayMode = .iconOnly
+        if profile.launcherMachine { toolbar.centeredItemIdentifiers = [NSToolbarItem.Identifier(Item.mylinux.rawValue)] }
         w.toolbar = toolbar
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -188,16 +189,28 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     // ---- toolbar ----
-    private enum Item: String, CaseIterable { case fit, zoomOut, zoomIn, pixels, keyboard, grab }
+    private enum Item: String, CaseIterable { case fit, zoomOut, zoomIn, pixels, keyboard, grab, mylinux, flexibleSpace0 }
     func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(t) }
     func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] {
-        let items: [Item] = profile.kind == .vnc ? [.fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.keyboard]
-        return items.map { NSToolbarItem.Identifier($0.rawValue) } + [.flexibleSpace]
+        var items: [Item] = profile.kind == .vnc ? [.fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.keyboard]
+        // the launcher's own machines get the myLinux menu in the middle of the title bar
+        if profile.launcherMachine { items = [.flexibleSpace0] + [.mylinux] + [.flexibleSpace0] + items }
+        return items.map { $0 == .flexibleSpace0 ? .flexibleSpace : NSToolbarItem.Identifier($0.rawValue) } + [.flexibleSpace]
     }
     func toolbar(_ t: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar: Bool) -> NSToolbarItem? {
         guard let kind = Item(rawValue: id.rawValue) else { return nil }
         let item = NSToolbarItem(itemIdentifier: id); item.target = self
         switch kind {
+        case .mylinux:
+            // a pull-down with the product name as its face; the first item is what the menu is for
+            let pop = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 110, height: 24), pullsDown: true)
+            pop.bezelStyle = .texturedRounded
+            pop.addItem(withTitle: "myLinux")
+            let install = NSMenuItem(title: "Install Agents…", action: #selector(installAgents), keyEquivalent: ""); install.target = self
+            pop.menu?.addItem(install)
+            item.view = pop; item.label = "myLinux"; item.visibilityPriority = .high
+            return item
+        case .flexibleSpace0: return nil
         case .fit: item.label = "Fit"; item.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: "Fit"); item.action = #selector(fit)
         case .zoomOut: item.label = "Zoom out"; item.image = NSImage(systemSymbolName: "minus.magnifyingglass", accessibilityDescription: nil); item.action = #selector(zoomOut)
         case .zoomIn: item.label = "Zoom in"; item.image = NSImage(systemSymbolName: "plus.magnifyingglass", accessibilityDescription: nil); item.action = #selector(zoomIn)
@@ -224,4 +237,21 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         updateStatus()
     }
     @objc func validateToolbarItem(_ item: NSToolbarItem) -> Bool { true }
+
+    // ---- the myLinux menu: Install Agents… ----
+    private var sheetWindow: NSWindow?
+    @objc private func installAgents() {
+        guard let window, sheetWindow == nil else { return }
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: AgentsSheet(
+            profile: profile,
+            dismiss: { [weak self] in self?.endSheet() },
+            finished: { [weak self] in self?.ssh?.type(" source ~/.bashrc\n") })))
+        sheet.styleMask = [.titled]
+        sheetWindow = sheet
+        window.beginSheet(sheet) { _ in }
+    }
+    private func endSheet() {
+        guard let window, let sheet = sheetWindow else { return }
+        window.endSheet(sheet); sheetWindow = nil
+    }
 }

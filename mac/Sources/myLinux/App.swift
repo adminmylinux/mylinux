@@ -38,8 +38,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ImageManager.shared.refresh()
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
-        // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
         let args = CommandLine.arguments
+        // `myLinux --agent-script claude,codex,basics`: print the Install Agents script for that choice and quit
+        // (the end-to-end check runs it over ssh against a test machine)
+        if let i = args.firstIndex(of: "--agent-script") {
+            let picks = i + 1 < args.count ? args[i + 1].split(separator: ",").map(String.init) : []
+            var o = AgentInstallOptions(); o.claude = picks.contains("claude"); o.codex = picks.contains("codex"); o.basics = picks.contains("basics")
+            print(o.script); exit(o.problems.isEmpty ? 0 : 1)
+        }
+        // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
         if let i = args.firstIndex(of: "--remote"), i + 1 < args.count, let id = UUID(uuidString: args[i + 1]),
            let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { RemoteWindowController.show(p) }

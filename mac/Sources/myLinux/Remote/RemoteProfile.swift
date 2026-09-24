@@ -34,6 +34,8 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     /// Extra `-o` options for ssh, set by the launcher for its own machines (a per-machine known_hosts file);
     /// not saved.
     var sshOptions: [String] = []
+    /// The terminal of one of the launcher's own machines (a Debian server): its window carries the myLinux menu.
+    var launcherMachine = false
 
     init(kind: Kind = .vnc) { self.kind = kind; port = kind == .ssh ? 22 : 5900; keyboard = kind == .ssh ? .mac : .optionSuper }
 

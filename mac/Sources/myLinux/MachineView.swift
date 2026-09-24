@@ -178,7 +178,7 @@ struct MachineView: View {
         p.id = draft.id; p.name = "\(draft.name) terminal"; p.host = "127.0.0.1"; p.port = draft.sshPort; p.username = "debian"
         p.keyFile = draft.machineFolder.appendingPathComponent("ssh_key").path
         p.sshOptions = ["UserKnownHostsFile=\(draft.machineFolder.appendingPathComponent("known_hosts").path)", "ConnectTimeout=10"]
-        p.keyboard = .mac
+        p.keyboard = .mac; p.launcherMachine = true
         RemoteWindowController.show(p)
     }
 

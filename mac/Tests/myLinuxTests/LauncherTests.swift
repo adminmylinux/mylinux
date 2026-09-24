@@ -52,6 +52,37 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class AgentInstallTests: XCTestCase {
+    func testDefaultScriptInstallsClaudeWithItsAlias() {
+        let s = AgentInstallOptions().script
+        XCTAssertTrue(s.hasPrefix("#!/bin/bash\n"))
+        XCTAssertTrue(s.contains("set -euo pipefail"))
+        XCTAssertTrue(s.contains("curl -fsSL https://claude.ai/install.sh | bash"))
+        XCTAssertFalse(s.contains("codex"), "Codex is off by default")
+        XCTAssertTrue(s.contains("alias cc='claude update && claude --dangerously-skip-permissions'"))
+        XCTAssertTrue(s.contains("apt-get install -y -q curl ca-certificates git tmux"))
+        XCTAssertTrue(s.contains("# >>> myLinux agents >>>") && s.contains("# <<< myLinux agents <<<"), "the aliases live in one marked block")
+        XCTAssertTrue(s.contains("\"$HOME/.local/bin/claude\" --version"))
+    }
+    func testCodexAndQuoting() {
+        var o = AgentInstallOptions(); o.codex = true; o.codexAliasCommand = "codex --full-auto it's"; o.basics = false; o.claude = false
+        let s = o.script
+        XCTAssertTrue(s.contains(AgentInstallOptions.codexDownload))
+        XCTAssertTrue(s.contains("install -m 0755 /tmp/codex-aarch64-unknown-linux-musl \"$HOME/.local/bin/codex\""))
+        XCTAssertTrue(s.contains("alias cx='codex --full-auto it'\\''s'"), "a single quote inside the command is escaped for the shell")
+        XCTAssertTrue(s.contains("apt-get install -y -q curl ca-certificates\n"), "no git and tmux without basics")
+        XCTAssertFalse(s.contains("claude"))
+    }
+    func testProblems() {
+        var o = AgentInstallOptions()
+        XCTAssertTrue(o.problems.isEmpty)
+        o.claudeAliasName = "1x"; XCTAssertFalse(o.problems.isEmpty)
+        o.claudeAliasName = "cc"; o.claudeAliasCommand = " "; XCTAssertFalse(o.problems.isEmpty)
+        o.claudeAliasCommand = "claude"; o.claude = false; o.basics = false; XCTAssertFalse(o.problems.isEmpty, "nothing selected")
+        XCTAssertTrue(AgentInstallOptions.validAliasName("_ok2")); XCTAssertFalse(AgentInstallOptions.validAliasName("a-b")); XCTAssertFalse(AgentInstallOptions.validAliasName(""))
+    }
+}
+
 final class DebianProfileTests: XCTestCase {
     func testEnvironmentMapsOntoRunDebianSh() {
         var p = ProfileStore.newProfile(named: "Build box", kind: .debian, folder: URL(fileURLWithPath: "/m/build-box"))

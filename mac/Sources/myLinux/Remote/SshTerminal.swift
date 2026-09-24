@@ -41,14 +41,22 @@ final class SshTerminal: LocalProcessTerminalView {
         return url
     }
 
-    func start() {
+    /// ssh's arguments up to the destination: port, host-key policy, the profile's options and key.
+    static func arguments(for profile: RemoteProfile) -> [String] {
         var args = ["-p", String(profile.port), "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30"]
         for o in profile.sshOptions { args += ["-o", o] }
         if !profile.keyFile.isEmpty { args += ["-i", (profile.keyFile as NSString).expandingTildeInPath] }
-        let tmux = profile.tmux.trimmingCharacters(in: .whitespaces)
-        if !tmux.isEmpty { args.append("-t") }
         args.append(profile.username.isEmpty ? profile.host : "\(profile.username)@\(profile.host)")
-        if !tmux.isEmpty { args += ["tmux", "new-session", "-A", "-s", tmux] }
+        return args
+    }
+
+    /// Types text into the session, as if at the keyboard.
+    func type(_ text: String) { send(source: self, data: ArraySlice(Array(text.utf8))) }
+
+    func start() {
+        var args = SshTerminal.arguments(for: profile)
+        let tmux = profile.tmux.trimmingCharacters(in: .whitespaces)
+        if !tmux.isEmpty { args.insert("-t", at: args.count - 1); args += ["tmux", "new-session", "-A", "-s", tmux] }
         var env = Terminal.getEnvironmentVariables(termName: "xterm-256color")
         env.append("COLORTERM=truecolor")
         env.append("HOME=\(FileManager.default.homeDirectoryForCurrentUser.path)")
