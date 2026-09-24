@@ -100,8 +100,10 @@ forward opened on demand (`ssh -L`, since WebKit sends local addresses straight 
 localhost. ⌘-click a link in the terminal (the Claude login URL, say) and it opens there; **Open Last URL in
 Browser** finds the last address in the scrollback. **Screenshot Browser to Machine** and **Paste Screenshot
 Path** put a PNG of the page, or of the Mac clipboard, into the machine's share folder and type its path into the
-terminal, so an agent inside can look at it. The Omarchy keys work here too: ⌘↩ opens another terminal to the
-machine as a tab, ⇧⌘↩ the browser with its address bar ready. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
+terminal, so an agent inside can look at it. The Omarchy keys work here too: ⌘↩ splits the tab with one more
+terminal (side by side; under the others once the browser is on the right), ⇧⌘↩ shows the browser with its address
+bar ready, and ⌘T opens another tab to the machine. A terminal leaves the tab when its shell ends. So one tab can
+hold Claude in one terminal, Codex in another below it, and the result in the browser beside them. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
 `SERIAL`, `QMP`, `DRYRUN=1`.
 
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
