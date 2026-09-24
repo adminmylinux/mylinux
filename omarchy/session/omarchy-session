@@ -54,7 +54,9 @@ def cwd_of(pid):
     except OSError: return None
 
 def snapshot():
-    clients = hyprctl("clients") or []
+    """The open windows, or None when Hyprland does not answer (not running, or already gone at logout)."""
+    clients = hyprctl("clients")
+    if clients is None: return None
     active = hyprctl("activeworkspace") or {}
     windows = []
     for c in clients:
@@ -88,9 +90,25 @@ def plan(saved, current):
         out.append(w)
     return out
 
+def keep_previous(snap, previous):
+    """Why a snapshot must not replace the saved session, or None when it may.
+
+    At logout the save runs while Hyprland is going away: hyprctl fails, or answers with the windows that are
+    still open. Neither is the session the user wants back, so the previous file stays. An empty snapshot is
+    written only when there is nothing to lose (no previous windows)."""
+    if snap is None: return "Hyprland is not answering"
+    if not snap["windows"] and previous and previous.get("windows"): return "no windows are open"
+    return None
+
+def read_state():
+    try: return json.loads(STATE.read_text())
+    except (OSError, ValueError): return None
+
 def save():
     STATE.parent.mkdir(parents=True, exist_ok=True)
     s = snapshot()
+    if reason := keep_previous(s, read_state()):
+        print(f"not saved ({reason}); the previous session file is kept"); write_status(); return
     tmp = STATE.with_suffix(".tmp"); tmp.write_text(json.dumps(s, indent=1)); tmp.replace(STATE)
     print(f"saved {len(s['windows'])} windows to {STATE}")
     write_status()
@@ -197,6 +215,12 @@ def selftest():
     assert lua_string('[workspace 2 silent] foot -e sh -c "echo \\"hi\\""') == '"[workspace 2 silent] foot -e sh -c \\"echo \\\\\\"hi\\\\\\"\\""', "quotes and backslashes escaped for Lua"
     assert parse_interval("[Timer]\nOnActiveSec=\nOnActiveSec=5min\nOnUnitActiveSec=\nOnUnitActiveSec=5min\n") == 5, "the reset line must not win"
     assert parse_interval("") == 1
+    prev = {"windows": [{"class": "foot", "workspace": 1, "command": ["foot"]}]}
+    assert keep_previous(None, prev) == "Hyprland is not answering", "a failed snapshot never replaces the file"
+    assert keep_previous({"windows": []}, prev) == "no windows are open", "an empty snapshot keeps the saved windows"
+    assert keep_previous({"windows": []}, {"windows": []}) is None, "empty over empty is fine"
+    assert keep_previous({"windows": []}, None) is None, "the first save may be empty"
+    assert keep_previous(prev, {"windows": []}) is None
     print("omarchy-session selftest ok")
 
 if __name__ == "__main__":
