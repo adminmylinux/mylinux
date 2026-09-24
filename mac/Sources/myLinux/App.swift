@@ -17,6 +17,7 @@ struct MyLinuxApp: App {
                 .environmentObject(runs)
                 .environmentObject(remote)
         }
+        .defaultSize(width: 1000, height: 820)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New myLinux Machine") { _ = store.add(kind: .mylinux) }.keyboardShortcut("n")
@@ -45,6 +46,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let picks = i + 1 < args.count ? args[i + 1].split(separator: ",").map(String.init) : []
             var o = AgentInstallOptions(); o.claude = picks.contains("claude"); o.codex = picks.contains("codex"); o.basics = picks.contains("basics")
             print(o.script); exit(o.problems.isEmpty ? 0 : 1)
+        }
+        // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
+        if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
+            let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), dismiss: {}).environmentObject(AppSettings.shared))
+            view.frame = NSRect(origin: .zero, size: view.fittingSize); view.appearance = NSAppearance(named: .darkAqua)
+            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+            }
+            exit(0)
         }
         // `myLinux --render-agents-sheet <png>`: draw the Install Agents dialog to a file (a look without a machine)
         if let i = args.firstIndex(of: "--render-agents-sheet"), i + 1 < args.count {

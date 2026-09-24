@@ -12,6 +12,7 @@ struct MachineView: View {
     @StateObject private var runtime = RuntimeManager.shared
     @StateObject private var omarchy = OmarchyManager.shared
     @StateObject private var debian = DebianManager.shared
+    @StateObject private var images = ImageManager.shared
     private var isOmarchy: Bool { draft.kind == .omarchy }
     private var isDebian: Bool { draft.kind == .debian }
     private var guestName: String { isOmarchy ? "Omarchy" : isDebian ? "Debian" : "myLinux" }
@@ -22,6 +23,23 @@ struct MachineView: View {
     }
 
     private var editable: Bool { !runner.isActive && runner.state != .inUseElsewhere }
+
+    /// What has to be downloaded before this machine can start, or nil. An existing machine has its own disk and
+    /// needs no download; a new one needs its guest, and Omarchy the accelerated QEMU.
+    private var missingBeforeStart: String? {
+        switch draft.kind {
+        case .mylinux:
+            return images.present ? nil : (settings.developerMode ? "Build the image first (./build.sh)" : "Download myLinux first")
+        case .omarchy:
+            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
+            if !runtime.present { return "Download the accelerated QEMU first" }
+            return created || omarchy.present ? nil : "Download Omarchy first"
+        case .debian:
+            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
+            if !settings.qemuAvailable { return "Download the accelerated QEMU first" }
+            return created || debian.present ? nil : "Download Debian first"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,7 +52,7 @@ struct MachineView: View {
             }
         }
         .onChange(of: draft) { _, new in store.update(new) }
-        .onAppear { if isOmarchy { runtime.refresh(settings); omarchy.refresh(settings) }; if isDebian { runtime.refresh(settings); debian.refresh(settings) } }
+        .onAppear { runtime.refresh(settings); images.refresh(settings); if isOmarchy { omarchy.refresh(settings) }; if isDebian { debian.refresh(settings) } }
         .onChange(of: runner.state) { _, new in
             if new == .running { showConsole = false }
         }
@@ -61,9 +79,10 @@ struct MachineView: View {
                 Spacer()
                 switch runner.state {
                 case .stopped, .failed:
+                    if let missing = missingBeforeStart { Text(missing).font(.caption).foregroundStyle(.orange).multilineTextAlignment(.trailing) }
                     Button { runner.start(draft, settings: settings) } label: { Label("Start", systemImage: "play.fill") }
                         .buttonStyle(.borderedProminent)
-                        .disabled(!draft.problems.isEmpty)
+                        .disabled(!draft.problems.isEmpty || missingBeforeStart != nil)
                 case .starting:
                     ProgressView().controlSize(.small)
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }

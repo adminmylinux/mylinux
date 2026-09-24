@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    @State private var showWelcome = false
     @EnvironmentObject var store: ProfileStore
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var runs: RunManager
@@ -66,8 +67,13 @@ struct ContentView: View {
             if selection == nil { selection = store.profiles.first?.id }
             images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
+            // a fresh install: say what is missing and offer the download, once
+            if !settings.developerMode, !images.present, !UserDefaults.standard.bool(forKey: "welcomeShown") {
+                UserDefaults.standard.set(true, forKey: "welcomeShown"); showWelcome = true
+            }
         }
-        .frame(minWidth: 820, minHeight: 560)
+        .sheet(isPresented: $showWelcome) { WelcomeSheet(images: images, dismiss: { showWelcome = false }).environmentObject(settings) }
+        .frame(minWidth: 860, minHeight: 720)
     }
 
     /// Everything that can be added, behind one + above the list: the two kinds of machine, the two kinds of remote
