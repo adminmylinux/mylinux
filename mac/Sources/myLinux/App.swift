@@ -23,6 +23,8 @@ struct MyLinuxApp: App {
                 Button("New myLinux Machine") { _ = store.add(kind: .mylinux) }.keyboardShortcut("n")
                 Button("New Omarchy Machine") { _ = store.add(kind: .omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Debian Server") { _ = store.add(kind: .debian) }.keyboardShortcut("n", modifiers: [.command, .option])
+                Divider()
+                Button("Download Linux…") { NotificationCenter.default.post(name: WelcomeSheet.showNotification, object: nil) }
                 Button("Quick Connect…") { QuickConnect.shared.show() }.keyboardShortcut("k")
             }
         }
@@ -49,7 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
-            let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), dismiss: {}).environmentObject(AppSettings.shared))
+            let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), omarchy: OmarchyManager(), debian: DebianManager(), runtime: RuntimeManager(), done: { _ in })
+                .environmentObject(AppSettings.shared))
             view.frame = NSRect(origin: .zero, size: view.fittingSize); view.appearance = NSAppearance(named: .darkAqua)
             if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                 view.cacheDisplay(in: view.bounds, to: rep)

@@ -1,46 +1,194 @@
 import SwiftUI
+import AppKit
 
-/// The first thing a new install shows: what the launcher runs and that myLinux itself is a download away. The
-/// download runs right here; the other kinds of machine fetch what they need from their own pages.
+/// The first thing a new install shows, and what File › Download Linux… brings back: the Linux machines the launcher
+/// can run, each with what it is, its download size and a checkbox. Download fetches the ticked ones side by side,
+/// with progress on each row, and adds a machine of each kind that has none yet.
 struct WelcomeSheet: View {
+    static let showNotification = Notification.Name("mylinux.showWelcome")
     @EnvironmentObject var settings: AppSettings
     @ObservedObject var images: ImageManager
-    let dismiss: () -> Void
+    @ObservedObject var omarchy: OmarchyManager
+    @ObservedObject var debian: DebianManager
+    @ObservedObject var runtime: RuntimeManager
+    /// Called when the sheet closes, with the kinds that were downloaded and are ready (to add machines for).
+    let done: ([Profile.Kind]) -> Void
+    @State private var chosen: Set<Profile.Kind> = [.mylinux]
+    @State private var started = false
+
+    struct Offer {
+        let kind: Profile.Kind
+        let name: String
+        let size: String
+        let bytes: Double
+        let text: String
+    }
+    static let offers = [
+        Offer(kind: .mylinux, name: "myLinux", size: "110 MB", bytes: 110e6,
+              text: "A small Linux desktop with a Mac feel that starts in seconds and runs from memory, so every start is clean. Your home folder, browsers and coding agents live on their own disk."),
+        Offer(kind: .omarchy, name: "Omarchy", size: "1.4 GB", bytes: 1.4e9,
+              text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. The Option key works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
+        Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
+              text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
+    ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 14) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Welcome to myLinux").font(.title2.bold())
-                    Text("Linux machines on this Mac, each with its own disk.").foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            VStack(spacing: 10) {
+                ForEach(Self.offers, id: \.kind) { row($0) }
             }
-            Text("The launcher brought its own QEMU. What it does not carry is the operating system: **myLinux** is a 110 MB download, once, and every myLinux machine boots from it. Omarchy (1.4 GB) and Debian Server (300 MB) download from their own machine pages when you add one.")
-                .fixedSize(horizontal: false, vertical: true)
-            if images.busy {
-                HStack {
-                    ProgressView().controlSize(.small)
-                    Text(images.progress.isEmpty ? "Downloading…" : images.progress).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            .padding(.horizontal, 24)
+            footer
+        }
+        .frame(width: 640)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // ---- parts ----------------------------------------------------------------------------------------------------
+    private var header: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Image(nsImage: WelcomeSheet.icon("launcher") ?? NSApp.applicationIconImage).resizable().frame(width: 64, height: 64)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Welcome to myLinux").font(.system(size: 24, weight: .bold))
+                Text("Pick the Linux machines you want on this Mac. Each one downloads once and runs in its own window with its own disk. You can add the others later with the + button.")
+                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 20)
+    }
+
+    private func row(_ o: Offer) -> some View {
+        let isOn = present(o.kind) || chosen.contains(o.kind)
+        return HStack(alignment: .top, spacing: 14) {
+            Toggle("", isOn: Binding(get: { isOn }, set: { on in if on { chosen.insert(o.kind) } else { chosen.remove(o.kind) } }))
+                .toggleStyle(.checkbox).labelsHidden()
+                .disabled(started || present(o.kind))
+                .padding(.top, 16)
+                .accessibilityLabel("Download \(o.name), \(o.size)")
+            logo(o.kind)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(o.name).font(.system(size: 15, weight: .semibold))
                     Spacer()
-                    Button("Cancel") { images.cancel() }
+                    Text(present(o.kind) ? "Downloaded" : o.size).font(.callout.monospacedDigit()).foregroundStyle(present(o.kind) ? Color.green : Color.secondary)
                 }
-            } else if images.present {
-                Banner(text: "myLinux is downloaded. Select the machine and press Start.", kind: .info)
+                Text(o.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                status(o.kind)
             }
-            if let e = images.lastError { Banner(text: e, kind: .error) }
-            HStack {
-                Spacer()
-                if images.present {
-                    Button("Done", action: dismiss).keyboardShortcut(.defaultAction)
-                } else {
-                    Button("Later", action: dismiss).keyboardShortcut(.cancelAction).disabled(images.busy)
-                    Button("Download myLinux") { images.download(settings) }.keyboardShortcut(.defaultAction).disabled(images.busy)
-                }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isOn ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isOn ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !started, !present(o.kind) else { return }
+            if chosen.contains(o.kind) { chosen.remove(o.kind) } else { chosen.insert(o.kind) }
+        }
+    }
+
+    /// The machine's own mark on a tile of the same size for all three.
+    private func logo(_ kind: Profile.Kind) -> some View {
+        ZStack {
+            switch kind {
+            case .mylinux:
+                if let i = WelcomeSheet.icon("myLinux") { Image(nsImage: i).resizable().frame(width: 52, height: 52) }
+                else { tile(.blue, "desktopcomputer") }
+            case .omarchy:
+                // the mark comes on its own dark tile with a margin
+                if let i = WelcomeSheet.icon("omarchy") { Image(nsImage: i).resizable().frame(width: 60, height: 60) }
+                else { tile(.purple, "keyboard") }
+            case .debian:
+                if let i = WelcomeSheet.icon("debian") {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous).fill(.white).frame(width: 46, height: 46)
+                        .overlay(Image(nsImage: i).resizable().aspectRatio(contentMode: .fit).padding(8))
+                } else { tile(.red, "terminal") }
+            }
+        }
+        .frame(width: 52, height: 52)
+        .padding(.top, 2)
+    }
+    private func tile(_ color: Color, _ symbol: String) -> some View {
+        RoundedRectangle(cornerRadius: 11, style: .continuous).fill(color.gradient).frame(width: 46, height: 46)
+            .overlay(Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(.white))
+    }
+
+    @ViewBuilder private func status(_ kind: Profile.Kind) -> some View {
+        let m = manager(kind)
+        if m.busy {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(m.progress.isEmpty ? "Starting…" : m.progress).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .padding(.top, 4)
+        } else if let e = m.lastError, started, chosen.contains(kind) {
+            Text(e).font(.caption).foregroundStyle(.red).lineLimit(3).padding(.top, 4)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            Text(summary).font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            if !started {
+                Button("Later") { done([]) }.keyboardShortcut(.cancelAction)
+                Button("Download") { start() }
+                    .keyboardShortcut(.defaultAction).controlSize(.large).disabled(pending.isEmpty)
+            } else if anyBusy {
+                Button("Continue in Background") { done(readyKinds) }
+            } else {
+                Button("Done") { done(readyKinds) }.keyboardShortcut(.defaultAction).controlSize(.large)
             }
         }
         .padding(24)
-        .frame(width: 520)
-        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // ---- state ----------------------------------------------------------------------------------------------------
+    private func manager(_ kind: Profile.Kind) -> ScriptDownloader {
+        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian }
+    }
+    private func present(_ kind: Profile.Kind) -> Bool {
+        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present }
+    }
+    /// Ticked and not downloaded yet.
+    private var pending: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && !present($0) } }
+    private var anyBusy: Bool { images.busy || omarchy.busy || debian.busy || runtime.busy }
+    private var readyKinds: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && present($0) } }
+    private var summary: String {
+        if started && anyBusy { return "Downloading…" }
+        if started { return readyKinds.isEmpty ? "Nothing was downloaded." : "Ready. Select a machine and press Start." }
+        let bytes = Self.offers.filter { pending.contains($0.kind) }.map(\.bytes).reduce(0, +)
+        if bytes == 0 { return "Nothing selected." }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .decimal) + " to download"
+    }
+
+    private func start() {
+        started = true
+        for kind in pending {
+            switch kind {
+            case .mylinux: images.download(settings)
+            case .omarchy:
+                // Omarchy runs only on the accelerated runtime; a release carries it, a local build fetches it
+                if !runtime.present && !runtime.busy && RuntimeManager.bundledTarball == nil { runtime.download(settings) }
+                omarchy.download(settings)
+            case .debian: debian.download(settings)
+            }
+        }
+    }
+
+    /// An icon from the app bundle (Contents/Resources/icons), or from the developer checkout's tools/icons.
+    static func icon(_ name: String) -> NSImage? {
+        let file = name == "launcher" ? "myLinux Launcher.png" : "\(name).png"
+        if let url = Bundle.main.resourceURL?.appendingPathComponent("icons/\(file)"), let i = NSImage(contentsOf: url) { return i }
+        let repo = AppSettings.shared.repoPath
+        if !repo.isEmpty, let i = NSImage(contentsOfFile: (repo as NSString).appendingPathComponent("tools/icons/\(file)")) { return i }
+        if let repo = Paths.buildRepo, let i = NSImage(contentsOfFile: (repo as NSString).appendingPathComponent("tools/icons/\(file)")) { return i }
+        return nil
     }
 }

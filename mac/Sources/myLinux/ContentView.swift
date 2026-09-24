@@ -67,12 +67,27 @@ struct ContentView: View {
             if selection == nil { selection = store.profiles.first?.id }
             images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
-            // a fresh install: say what is missing and offer the download, once
-            if !settings.developerMode, !images.present, !UserDefaults.standard.bool(forKey: "welcomeShown") {
+            // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
+            OmarchyManager.shared.refresh(settings); DebianManager.shared.refresh(settings)
+            if !settings.developerMode, !images.present, !OmarchyManager.shared.present, !DebianManager.shared.present,
+               !UserDefaults.standard.bool(forKey: "welcomeShown") {
                 UserDefaults.standard.set(true, forKey: "welcomeShown"); showWelcome = true
             }
         }
-        .sheet(isPresented: $showWelcome) { WelcomeSheet(images: images, dismiss: { showWelcome = false }).environmentObject(settings) }
+        .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
+        .sheet(isPresented: $showWelcome) {
+            WelcomeSheet(images: images, omarchy: .shared, debian: .shared, runtime: runtime, done: { kinds in
+                showWelcome = false
+                // a machine of each downloaded kind that has none yet, and the first of them selected
+                var first: UUID?
+                for kind in kinds where !store.profiles.contains(where: { $0.kind == kind }) {
+                    let p = store.add(kind: kind); if first == nil { first = p.id }
+                }
+                if let first { selection = first }
+                else if let k = kinds.first, let p = store.profiles.first(where: { $0.kind == k }) { selection = p.id }
+            })
+            .environmentObject(settings)
+        }
         .frame(minWidth: 860, minHeight: 720)
     }
 

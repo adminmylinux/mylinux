@@ -395,3 +395,6 @@ instead of starting it.
 GPL-3.0-or-later (see `LICENSE`). The desktop shell links the Qt Wayland Compositor module,
 which Qt offers under the GPL v3 only. Theme palettes are from Omarchy (MIT, see
 `board/overlay/usr/share/mylinux/themes/LICENSE.omarchy`); the Inter font is under the SIL OFL.
+The launcher's welcome sheet shows two marks in `tools/icons/`: `debian.png` is the Debian Open Use Logo,
+Copyright (c) 1999 Software in the Public Interest, Inc., under LGPL-3 or CC-BY-SA 3.0; `omarchy.png` is the
+Omarchy mark from Omarchy's brand kit (as used by Try Omarchy), a pending trademark of the Omarchy project.

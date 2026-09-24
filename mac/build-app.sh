@@ -87,6 +87,10 @@ done
 # icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds
 mkdir -p "$NEW/Contents/Resources/runtime/tools/icons"
 cp "tools/icons/myLinux Launcher.icns" "$NEW/Contents/Resources/myLinux Launcher.icns"
+# the marks the welcome sheet shows: the launcher's and myLinux's own, Omarchy's (from its brand kit, via Try
+# Omarchy) and Debian's Open Use Logo (Software in the Public Interest, LGPL-3 or CC-BY-SA 3.0)
+mkdir -p "$NEW/Contents/Resources/icons"
+cp "tools/icons/myLinux Launcher.png" tools/icons/myLinux.png tools/icons/omarchy.png tools/icons/debian.png "$NEW/Contents/Resources/icons/"
 cp tools/icons/myLinux.icns "$NEW/Contents/Resources/runtime/tools/icons/myLinux.icns"
 
 # Signed inside out: the libraries, then the app with its entitlements. MYLINUX_SIGN_IDENTITY, else the local
