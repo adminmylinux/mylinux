@@ -52,7 +52,38 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class DebianProfileTests: XCTestCase {
+    func testEnvironmentMapsOntoRunDebianSh() {
+        var p = ProfileStore.newProfile(named: "Build box", kind: .debian, folder: URL(fileURLWithPath: "/m/build-box"))
+        p.memoryGB = 8; p.cpus = 4; p.appsSizeGB = 64; p.sshPort = 2300
+        let env = p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/tmp/s.sock", qmpSocket: "/tmp/q.sock")
+        XCTAssertEqual(p.script, "run-debian.sh")
+        XCTAssertEqual(env["DISK"], "/m/build-box/debian.raw")
+        XCTAssertEqual(env["DISK_SIZE_GB"], "64"); XCTAssertEqual(env["MEM"], "8G"); XCTAssertEqual(env["CPUS"], "4")
+        XCTAssertEqual(env["SSH_PORT"], "2300"); XCTAssertEqual(env["NAME"], "Build box")
+        XCTAssertEqual(env["SHARE_DIR"], "/m/build-box/Mac"); XCTAssertEqual(env["QMP"], "/tmp/q.sock")
+        XCTAssertNil(env["GRAB"], "a server has no window and no key grab"); XCTAssertNil(env["RES"])
+        XCTAssertEqual(p.machineFolder.path, "/m/build-box")
+    }
+    func testProblemsMatchTheScriptsRefusals() {
+        var p = ProfileStore.newProfile(named: "Debian", kind: .debian, folder: URL(fileURLWithPath: "/m/d"))
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        p.sshPort = 80; XCTAssertFalse(p.problems.isEmpty)
+        p.sshPort = 2223; p.appsSizeGB = 4; XCTAssertFalse(p.problems.isEmpty)
+        p.appsSizeGB = 32; p.shareDir = "/a,b"; XCTAssertFalse(p.problems.isEmpty)
+        p.shareDir = ""; XCTAssertTrue(p.problems.isEmpty, "the share folder is optional")
+    }
+    func testNewDebianMachinesGetTheirOwnSshPort() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-debian-test-\(UUID().uuidString)")
+        let store = ProfileStore(file: dir.appendingPathComponent("profiles.json"))
+        let a = store.add(kind: .debian), b = store.add(kind: .debian)
+        XCTAssertEqual(a.sshPort, 2223); XCTAssertEqual(b.sshPort, 2224)
+        XCTAssertEqual(a.name, "Debian"); XCTAssertEqual(b.name, "Debian 2")
+        try? FileManager.default.removeItem(at: dir)
+    }
+}
 
+final class BundledRuntimeTests: XCTestCase {
     func testInstalledWhenMissingOrAnotherVersion() {
         XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "qemu-runtime-11.1.1-2", hasTarball: true))
         XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: "qemu-runtime-11.1.1-1", bundled: "qemu-runtime-11.1.1-2", hasTarball: true))

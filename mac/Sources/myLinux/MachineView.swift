@@ -11,8 +11,10 @@ struct MachineView: View {
     @State private var showConsole = false
     @StateObject private var runtime = RuntimeManager.shared
     @StateObject private var omarchy = OmarchyManager.shared
+    @StateObject private var debian = DebianManager.shared
     private var isOmarchy: Bool { draft.kind == .omarchy }
-    private var guestName: String { isOmarchy ? "Omarchy" : "myLinux" }
+    private var isDebian: Bool { draft.kind == .debian }
+    private var guestName: String { isOmarchy ? "Omarchy" : isDebian ? "Debian" : "myLinux" }
 
     init(profile: Profile, runner: Runner) {
         self.runner = runner
@@ -32,7 +34,7 @@ struct MachineView: View {
             }
         }
         .onChange(of: draft) { _, new in store.update(new) }
-        .onAppear { if isOmarchy { runtime.refresh(settings); omarchy.refresh(settings) } }
+        .onAppear { if isOmarchy { runtime.refresh(settings); omarchy.refresh(settings) }; if isDebian { runtime.refresh(settings); debian.refresh(settings) } }
         .onChange(of: runner.state) { _, new in
             if new == .running { showConsole = false }
         }
@@ -66,8 +68,14 @@ struct MachineView: View {
                     ProgressView().controlSize(.small)
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }
                 case .running:
-                    Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
-                        .buttonStyle(.borderedProminent)
+                    if isDebian {
+                        Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
+                            .buttonStyle(.borderedProminent)
+                        Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
+                    } else {
+                        Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
+                            .buttonStyle(.borderedProminent)
+                    }
                 case .stopping:
                     ProgressView().controlSize(.small)
                     Text("Shutting down…").foregroundStyle(.secondary)
@@ -98,6 +106,103 @@ struct MachineView: View {
 
     // ---- settings ---------------------------------------------------------------------------------------------
     private var form: some View {
+        if isDebian { AnyView(debianForm) } else { AnyView(desktopForm) }
+    }
+
+    /// A Debian server: no window, no keyboard settings; the terminal is the machine.
+    private var debianForm: some View {
+        Form {
+            debianDownloads
+            Section("Machine") {
+                Picker("Memory", selection: $draft.memoryGB) {
+                    ForEach(memoryChoices, id: \.self) { Text("\($0) GB").tag($0) }
+                }
+                Picker("Processor cores", selection: $draft.cpus) {
+                    Text("Automatic").tag(0)
+                    ForEach(coreChoices, id: \.self) { Text("\($0)").tag($0) }
+                }
+                LabeledContent("Disk size") {
+                    HStack {
+                        Picker("", selection: $draft.appsSizeGB) {
+                            ForEach([16, 32, 64, 128, 256, 512], id: \.self) { Text("\($0) GB").tag($0) }
+                        }
+                        .labelsHidden().frame(width: 110)
+                        Text("copied from the image on first start, growing as it fills").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section("Terminal") {
+                LabeledContent("SSH port on this Mac") {
+                    HStack {
+                        TextField("", value: $draft.sshPort, format: .number.grouping(.never)).frame(width: 80).multilineTextAlignment(.trailing)
+                        Text("ssh -p \(String(draft.sshPort)) debian@127.0.0.1").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                }
+                Text("The Terminal button opens an SSH terminal with the key made for this machine (ssh_key in its folder). The account is \"debian\" with sudo; reachable from this Mac only.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if let pw = consolePassword {
+                    LabeledContent("Console login") {
+                        Text("debian / \(pw)").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                    Text("For the serial console (the Console tab) when SSH is not up; made on the first start.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Section("Files") {
+                PathRow(title: "Disk", path: $draft.appsDisk, isDirectory: false,
+                        help: "The whole Debian install. Its SSH key, console password and cloud-init seed live in the same folder.")
+                PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
+                        help: "Mounted inside as /mnt/mac and linked from the home folder under its own name. Leave empty for none.")
+            }
+            Section {
+                LabeledContent("Host name") { Text(draft.name).foregroundStyle(.secondary) }
+                LabeledContent("Log") {
+                    Button("Show Log") { NSWorkspace.shared.open(runner.logFile) }
+                        .buttonStyle(.link)
+                        .disabled(!FileManager.default.fileExists(atPath: runner.logFile.path))
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .disabled(!editable)
+    }
+
+    private var consolePassword: String? {
+        (try? String(contentsOf: draft.machineFolder.appendingPathComponent("console-password"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The SSH terminal to this machine: an unsaved remote profile keyed by the machine's id, so a second click
+    /// brings the same window forward.
+    private func openTerminal() {
+        var p = RemoteProfile(kind: .ssh)
+        p.id = draft.id; p.name = "\(draft.name) terminal"; p.host = "127.0.0.1"; p.port = draft.sshPort; p.username = "debian"
+        p.keyFile = draft.machineFolder.appendingPathComponent("ssh_key").path
+        p.sshOptions = ["UserKnownHostsFile=\(draft.machineFolder.appendingPathComponent("known_hosts").path)", "ConnectTimeout=10"]
+        p.keyboard = .mac
+        RemoteWindowController.show(p)
+    }
+
+    /// What a Debian machine needs before its first start.
+    @ViewBuilder private var debianDownloads: some View {
+        let needQemu = !settings.qemuAvailable
+        let needImage = !debian.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
+        if needQemu || needImage || runtime.busy || debian.busy || runtime.lastError != nil || debian.lastError != nil {
+            Section("Before the first start") {
+                if needQemu || runtime.busy {
+                    downloadRow(title: "Accelerated QEMU", detail: "about 10 MB", busy: runtime.busy, progress: runtime.progress,
+                                start: { runtime.download(settings) }, cancel: { runtime.cancel() })
+                }
+                if let e = runtime.lastError { Banner(text: e, kind: .error) }
+                if needImage || debian.busy {
+                    downloadRow(title: "Debian", detail: "about 300 MB, the latest stable cloud image from cloud.debian.org", busy: debian.busy, progress: debian.progress,
+                                start: { debian.download(settings) }, cancel: { debian.cancel() })
+                }
+                if let e = debian.lastError { Banner(text: e, kind: .error) }
+            }
+        }
+    }
+
+    private var desktopForm: some View {
         Form {
             if isOmarchy { omarchyDownloads }
             Section(isOmarchy ? "Keyboard" : "Keyboard and mouse") {

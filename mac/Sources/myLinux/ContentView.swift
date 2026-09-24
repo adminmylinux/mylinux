@@ -80,6 +80,9 @@ struct ContentView: View {
             Button { selection = store.add(copying: selected?.kind == .omarchy ? selected : nil, kind: .omarchy).id } label: {
                 Label("Omarchy Machine", systemImage: "cube")
             }
+            Button { selection = store.add(copying: selected?.kind == .debian ? selected : nil, kind: .debian).id } label: {
+                Label("Debian Server", systemImage: "server.rack")
+            }
             Divider()
             Button { selection = remote.add(.vnc).id } label: { Label("VNC Desktop", systemImage: "display") }
             Button { selection = remote.add(.ssh).id } label: { Label("SSH Terminal", systemImage: "terminal") }
@@ -180,7 +183,9 @@ private struct MachineRow: View {
         case .stopping: return "Shutting down…"
         case .inUseElsewhere: return "Running outside the app"
         case .failed: return "Failed"
-        case .stopped: return "\(profile.memoryGB) GB · \(profile.grab == "opt" ? "Option as ⌘" : profile.grab == "full" ? "All keys" : "No key grab")"
+        case .stopped:
+            if profile.kind == .debian { return "Debian server · \(profile.memoryGB) GB · ssh port \(String(profile.sshPort))" }
+            return "\(profile.memoryGB) GB · \(profile.grab == "opt" ? "Option as ⌘" : profile.grab == "full" ? "All keys" : "No key grab")"
         }
     }
 }

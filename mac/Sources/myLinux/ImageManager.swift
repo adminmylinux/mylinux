@@ -155,3 +155,23 @@ final class OmarchyManager: ScriptDownloader {
 
     override func finished() { refresh() }
 }
+
+/// The Debian cloud image and its UEFI firmware (tools/get-debian.sh): the latest stable image from cloud.debian.org
+/// (about 300 MB) kept in <out>/debian; every Debian machine's disk is copied from it on its first start.
+final class DebianManager: ScriptDownloader {
+    static let shared = DebianManager()
+
+    @Published private(set) var revision: String?
+    @Published private(set) var present = false
+
+    func refresh(_ settings: AppSettings = .shared) {
+        present = settings.debianPresent
+        revision = settings.debianRevision
+    }
+
+    func download(_ settings: AppSettings = .shared) {
+        run("tools/get-debian.sh", starting: "Looking up the latest Debian image…", settings: settings)
+    }
+
+    override func finished() { refresh() }
+}

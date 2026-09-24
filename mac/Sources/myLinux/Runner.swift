@@ -45,7 +45,14 @@ final class Runner: ObservableObject {
         guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent(p.script).path) else {
             state = .failed("\(p.script) was not found (developer checkout moved, or the app bundle is incomplete)."); return
         }
-        if p.kind == .omarchy {
+        if p.kind == .debian {
+            // an existing machine has its disk and seed; only a new one needs the downloaded image and firmware
+            let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: p.machineFolder.appendingPathComponent("seed.iso").path)
+            guard created || settings.debianPresent else { state = .failed("Debian is not downloaded yet (Download on this page)."); return }
+            guard settings.debianPresent || FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("debian/edk2-aarch64-code.fd").path) else {
+                state = .failed("The UEFI firmware is missing (Download Debian on this page)."); return
+            }
+        } else if p.kind == .omarchy {
             guard settings.runtimePresent else { state = .failed("Omarchy needs the accelerated QEMU (Settings › QEMU › Download)."); return }
             // an existing machine has its own disk and boot files; only a new one needs the downloaded guest
             let machine = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
@@ -208,7 +215,7 @@ final class Runner: ObservableObject {
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
         guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) else { return }
-        if profile?.kind == .omarchy {
+        if profile?.kind == .omarchy || profile?.kind == .debian {
             state = .stopping; stoppingSince = Date()
             let path = qmpSocket
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in

@@ -43,6 +43,7 @@ final class SshTerminal: LocalProcessTerminalView {
 
     func start() {
         var args = ["-p", String(profile.port), "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30"]
+        for o in profile.sshOptions { args += ["-o", o] }
         if !profile.keyFile.isEmpty { args += ["-i", (profile.keyFile as NSString).expandingTildeInPath] }
         let tmux = profile.tmux.trimmingCharacters(in: .whitespaces)
         if !tmux.isEmpty { args.append("-t") }

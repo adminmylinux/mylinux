@@ -79,9 +79,9 @@ for lib in "$NEW"/Contents/Frameworks/*.dylib; do
   fi
 done
 # the scripts the app runs: run.sh and everything it calls
-cp run.sh run-omarchy.sh "$NEW/Contents/Resources/runtime/"
+cp run.sh run-omarchy.sh run-debian.sh "$NEW/Contents/Resources/runtime/"
 mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session "$NEW/Contents/Resources/runtime/omarchy/"
-for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh qemu-flavour.sh qemu-runtime.version; do
+for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-debian.sh sparse-copy.py omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done
 # icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds
