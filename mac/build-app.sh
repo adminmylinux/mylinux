@@ -109,7 +109,7 @@ if [ "${MYLINUX_RELEASE:-0}" = 1 ]; then
   [ -f "$TARBALL" ] && [ -f "$TARBALL.sha256" ] || { echo "MYLINUX_RELEASE=1 needs $TARBALL and its .sha256 (tools/build-qemu-runtime.sh)" >&2; exit 1; }
   HAVE=$(tar -xzOf "$TARBALL" qemu-runtime/RUNTIME-REVISION 2>/dev/null | tr -d '\n')
   [ "$HAVE" = "$WANT" ] || { echo "$TARBALL is $HAVE, tools/qemu-runtime.version says $WANT: rebuild the runtime first" >&2; exit 1; }
-  RT="$NEW/Contents/Resources/runtime"
+  RT="$REPO/$NEW/Contents/Resources/runtime"
   if [ "$HARDENED" = 1 ]; then
     RS=$(mktemp -d "${TMPDIR:-/tmp}/mylinux-runtime-sign.XXXXXX")
     tar -xzf "$TARBALL" -C "$RS"
