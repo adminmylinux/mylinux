@@ -22,6 +22,10 @@ final class BrowserPane: NSView, WKNavigationDelegate, WKUIDelegate {
         store.proxyConfigurations = [ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: socksPort)!))]
         config.websiteDataStore = store
         config.preferences.isElementFullscreenEnabled = true
+        // sign-in flows (Google's, say) open popups from a click; the page's own user agent ends like Safari's, since
+        // some sign-in services refuse what they take for an embedded web view
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        config.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         web = WKWebView(frame: .zero, configuration: config)
         super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
         web.navigationDelegate = self; web.uiDelegate = self
@@ -115,19 +119,19 @@ final class BrowserPane: NSView, WKNavigationDelegate, WKUIDelegate {
     @objc private func addressEntered() { load(address.stringValue); window?.makeFirstResponder(web) }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        address.stringValue = shown(webView.url)
+        if webView === web { address.stringValue = shown(webView.url) }
     }
     /// Links and redirects to the machine's localhost go through a forward too.
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if let u = navigationAction.request.url, let host = u.host?.lowercased(), BrowserPane.localHosts.contains(host), localForward != nil,
+        if webView === web, let u = navigationAction.request.url, let host = u.host?.lowercased(), BrowserPane.localHosts.contains(host), localForward != nil,
            !(host == "127.0.0.1" && forwards[u.port ?? 80] != nil) {
             decisionHandler(.cancel); load(u); return
         }
         decisionHandler(.allow)
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        address.stringValue = shown(webView.url)
-        onTitle?(webView.title ?? "")
+        if webView === web { address.stringValue = shown(webView.url); onTitle?(webView.title ?? "") }
+        else if let w = popups.first(where: { $0.contentView === webView }), let t = webView.title, !t.isEmpty { w.title = t }
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         NSLog("browser pane: navigation failed: %@", error.localizedDescription)
@@ -135,12 +139,24 @@ final class BrowserPane: NSView, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         let e = error as NSError
         NSLog("browser pane: %@ failed: %@ (%@ %d)", webView.url?.absoluteString ?? "?", e.localizedDescription, e.domain, e.code)
-        guard e.code != NSURLErrorCancelled else { return }
+        guard e.code != NSURLErrorCancelled, webView === web else { return }
         webView.loadHTMLString(BrowserPane.message("Cannot open the page.", "\(e.localizedDescription)<br><br>Addresses go through the machine: <code>localhost:3000</code> is what runs inside it."), baseURL: nil)
     }
-    /// target=_blank and window.open stay in this pane
+    /// window.open and target=_blank: a real popup window, so the page keeps a window object that can talk back to its
+    /// opener and close itself (sign-in flows depend on that); plain links to another tab open in the pane.
+    private var popups: [NSWindow] = []
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let u = navigationAction.request.url { webView.load(URLRequest(url: u)) }
-        return nil
+        let popup = WKWebView(frame: NSRect(x: 0, y: 0, width: 520, height: 680), configuration: configuration)
+        popup.navigationDelegate = self; popup.uiDelegate = self
+        popup.customUserAgent = web.customUserAgent
+        let w = NSWindow(contentRect: popup.frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        w.title = "Sign in"; w.contentView = popup; w.isReleasedWhenClosed = false
+        if let parent = window { w.center(); var f = w.frame; f.origin.y = parent.frame.midY - f.height / 2; f.origin.x = parent.frame.midX - f.width / 2; w.setFrame(f, display: false) }
+        popups.append(w)
+        w.makeKeyAndOrderFront(nil)
+        return popup
+    }
+    func webViewDidClose(_ webView: WKWebView) {
+        if let w = popups.first(where: { $0.contentView === webView }) { w.close(); popups.removeAll { $0 === w } }
     }
 }
