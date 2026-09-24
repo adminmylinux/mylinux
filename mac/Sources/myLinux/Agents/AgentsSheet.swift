@@ -11,33 +11,33 @@ struct AgentsSheet: View {
     @StateObject private var runner = AgentInstallRunner()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Install agents in \(profile.name.replacingOccurrences(of: " terminal", with: ""))").font(.title3.bold())
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Install agents").font(.title2.bold())
+                Text("Into \(profile.name.replacingOccurrences(of: " terminal", with: "")), as its user, over the machine's SSH connection.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
             Form {
+                agentSection(title: "Claude Code", on: $options.claude, alias: $options.claudeAlias,
+                             name: $options.claudeAliasName, command: $options.claudeAliasCommand,
+                             note: "Anthropic's native installer, into ~/.local/bin. Sign in with claude the first time.")
+                agentSection(title: "Codex", subtitle: "OpenAI", on: $options.codex, alias: $options.codexAlias,
+                             name: $options.codexAliasName, command: $options.codexAliasCommand,
+                             note: "The prebuilt Linux binary from the latest release, into ~/.local/bin. Sign in with codex the first time.")
                 Section {
-                    Toggle("Claude Code", isOn: $options.claude)
-                    Text("Anthropic's native installer, into ~/.local/bin. Sign in with `claude` the first time.").font(.caption).foregroundStyle(.secondary)
-                    if options.claude {
-                        Toggle("Alias", isOn: $options.claudeAlias)
-                        if options.claudeAlias { aliasRow(name: $options.claudeAliasName, command: $options.claudeAliasCommand) }
+                    Toggle(isOn: $options.basics) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Basics")
+                            Text("git and tmux. curl and certificates come either way.").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
-                }
-                Section {
-                    Toggle("Codex (OpenAI)", isOn: $options.codex)
-                    Text("The prebuilt Linux binary from the latest release, into ~/.local/bin. Sign in with `codex` the first time.").font(.caption).foregroundStyle(.secondary)
-                    if options.codex {
-                        Toggle("Alias", isOn: $options.codexAlias)
-                        if options.codexAlias { aliasRow(name: $options.codexAliasName, command: $options.codexAliasCommand) }
-                    }
-                }
-                Section {
-                    Toggle("Basics: git and tmux", isOn: $options.basics)
-                    Text("curl and certificates are installed either way. Everything runs as the machine's user through sudo where needed.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
+            .scrollDisabled(true)
             .disabled(runner.state == .running)
-            .frame(minHeight: 300)
+            VStack(alignment: .leading, spacing: 10) {
             if let first = options.problems.first, runner.state == .idle { Banner(text: first, kind: .warning) }
             if runner.state != .idle {
                 ScrollViewReader { proxy in
@@ -54,6 +54,8 @@ struct AgentsSheet: View {
             }
             if case .failed(let why) = runner.state { Banner(text: why, kind: .error) }
             if runner.state == .done { Banner(text: "Installed. The terminal picks up the aliases now; new shells have them too.", kind: .info) }
+            }
+            .padding(.horizontal, 20)
             HStack {
                 Spacer()
                 switch runner.state {
@@ -70,16 +72,36 @@ struct AgentsSheet: View {
                     Button("Try Again") { runner.run(options, profile: profile) }
                 }
             }
+            .padding(.horizontal, 20).padding(.vertical, 16)
         }
-        .padding(20)
         .frame(width: 560)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private func aliasRow(name: Binding<String>, command: Binding<String>) -> some View {
-        HStack {
-            TextField("name", text: name).frame(width: 60)
-            Text("=").foregroundStyle(.secondary)
-            TextField("command", text: command).font(.body.monospaced())
+    /// One agent: the switch with its explanation, and under it the alias switch with the name and command fields.
+    private func agentSection(title: String, subtitle: String? = nil, on: Binding<Bool>, alias: Binding<Bool>,
+                              name: Binding<String>, command: Binding<String>, note: String) -> some View {
+        Section {
+            Toggle(isOn: on) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                        if let subtitle { Text(subtitle).foregroundStyle(.secondary) }
+                    }
+                    Text(note).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if on.wrappedValue {
+                Toggle("Alias", isOn: alias)
+                if alias.wrappedValue {
+                    HStack(spacing: 6) {
+                        TextField("", text: name, prompt: Text("name")).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 64)
+                        Text("=").foregroundStyle(.secondary)
+                        TextField("", text: command, prompt: Text("command")).labelsHidden().textFieldStyle(.roundedBorder).font(.callout.monospaced())
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
         }
     }
 }

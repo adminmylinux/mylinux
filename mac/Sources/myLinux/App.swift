@@ -46,6 +46,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var o = AgentInstallOptions(); o.claude = picks.contains("claude"); o.codex = picks.contains("codex"); o.basics = picks.contains("basics")
             print(o.script); exit(o.problems.isEmpty ? 0 : 1)
         }
+        // `myLinux --render-agents-sheet <png>`: draw the Install Agents dialog to a file (a look without a machine)
+        if let i = args.firstIndex(of: "--render-agents-sheet"), i + 1 < args.count {
+            var p = RemoteProfile(kind: .ssh); p.name = "Debian terminal"
+            let view = NSHostingView(rootView: AgentsSheet(profile: p, dismiss: {}, finished: {}))
+            view.frame = NSRect(origin: .zero, size: view.fittingSize)
+            view.appearance = NSAppearance(named: .darkAqua)
+            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+            }
+            exit(0)
+        }
         // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
         if let i = args.firstIndex(of: "--remote"), i + 1 < args.count, let id = UUID(uuidString: args[i + 1]),
            let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {
