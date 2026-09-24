@@ -52,6 +52,24 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class TerminalURLTests: XCTestCase {
+    func testLastURLWinsAndTrailingPunctuationGoes() {
+        let text = "see https://a.example/one and then (https://b.example/two)."
+        XCTAssertEqual(SshTerminal.lastURL(in: text, cols: 80)?.absoluteString, "https://b.example/two")
+    }
+    func testAURLWrappedAtTheTerminalWidthIsJoined() {
+        let cols = 20
+        let line1 = "https://claude.ai/oa"      // exactly cols wide: the terminal wrapped here
+        let line2 = "uth?code=abc"
+        XCTAssertEqual(line1.count, cols)
+        XCTAssertEqual(SshTerminal.lastURL(in: "Open:\n\(line1)\n\(line2)\n", cols: cols)?.absoluteString, "https://claude.ai/oauth?code=abc")
+    }
+    func testAShortLineIsNotJoined() {
+        XCTAssertEqual(SshTerminal.lastURL(in: "https://a.example/x\nnot part of it", cols: 80)?.absoluteString, "https://a.example/x")
+        XCTAssertNil(SshTerminal.lastURL(in: "no links here", cols: 80))
+    }
+}
+
 final class AgentInstallTests: XCTestCase {
     func testDefaultScriptInstallsClaudeWithItsAlias() {
         let s = AgentInstallOptions().script

@@ -58,6 +58,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             exit(0)
         }
+        // `myLinux --terminal-window <png>` (with MYLINUX_LOCAL_SHELL=1): open a machine terminal window on a local shell
+        // and photograph it, to check the window's layout
+        if let i = args.firstIndex(of: "--terminal-window"), i + 1 < args.count {
+            var p = RemoteProfile(kind: .ssh); p.name = "Debian terminal"; p.host = "127.0.0.1"; p.launcherMachine = true
+            // MYLINUX_TEST_SSH="port|key|known_hosts|share": a real machine, and the browser pane opens on a page inside it
+            var wait = 2.0
+            if let spec = ProcessInfo.processInfo.environment["MYLINUX_TEST_SSH"]?.split(separator: "|").map(String.init), spec.count == 4 {
+                p.port = Int(spec[0]) ?? 22; p.username = "debian"; p.keyFile = spec[1]
+                p.sshOptions = ["UserKnownHostsFile=\(spec[2])", "ConnectTimeout=10"]; p.shareMacPath = spec[3]; p.shareGuestPath = "~/Mac"
+                wait = 12
+            }
+            let c = RemoteWindowController.show(p)
+            if wait > 5 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { c.testShowBrowser(URL(string: ProcessInfo.processInfo.environment["MYLINUX_TEST_URL"] ?? "http://localhost:8000/")!) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 9.0) { c.testScreenshotToMachine() }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                let n = c.window?.windowNumber ?? 0
+                let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); t.arguments = ["-x", "-l", String(n), args[i + 1]]
+                try? t.run(); t.waitUntilExit(); exit(0)
+            }
+            return
+        }
+        // `myLinux --render-terminal <png>`: draw a local terminal running a short command, to check the text placement
+        if let i = args.firstIndex(of: "--render-terminal"), i + 1 < args.count {
+            var p = RemoteProfile(kind: .ssh); p.name = "render"
+            let width = Double(ProcessInfo.processInfo.environment["RENDER_WIDTH"] ?? "600") ?? 600
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
+            let t = SshTerminal(profile: p); t.frame = w.contentView!.bounds; w.contentView!.addSubview(t)
+            t.startProcess(executable: "/bin/sh", args: ["-c", "printf 'Xabcdefghij first column check\\n0123456789 second line\\n'"], environment: nil, currentDirectory: nil)
+            w.orderFront(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if let rep = t.bitmapImageRepForCachingDisplay(in: t.bounds) {
+                    t.cacheDisplay(in: t.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
         if let i = args.firstIndex(of: "--remote"), i + 1 < args.count, let id = UUID(uuidString: args[i + 1]),
            let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {

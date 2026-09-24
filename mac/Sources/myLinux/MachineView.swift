@@ -179,6 +179,7 @@ struct MachineView: View {
         p.keyFile = draft.machineFolder.appendingPathComponent("ssh_key").path
         p.sshOptions = ["UserKnownHostsFile=\(draft.machineFolder.appendingPathComponent("known_hosts").path)", "ConnectTimeout=10"]
         p.keyboard = .mac; p.launcherMachine = true
+        if !draft.shareDir.isEmpty { p.shareMacPath = draft.shareDir; p.shareGuestPath = "~/" + URL(fileURLWithPath: draft.shareDir).lastPathComponent }
         RemoteWindowController.show(p)
     }
 

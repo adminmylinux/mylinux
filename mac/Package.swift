@@ -19,7 +19,7 @@ let package = Package(
             path: "Sources/myLinux",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.linkedFramework("IOSurface"), .linkedFramework("QuartzCore"), .linkedFramework("Carbon"),
-                             .linkedFramework("Security"), .linkedFramework("Network")]
+                             .linkedFramework("Security"), .linkedFramework("Network"), .linkedFramework("WebKit")]
         ),
         .testTarget(
             name: "myLinuxTests",

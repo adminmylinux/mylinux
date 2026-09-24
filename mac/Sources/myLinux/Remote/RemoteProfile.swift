@@ -36,6 +36,9 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     var sshOptions: [String] = []
     /// The terminal of one of the launcher's own machines (a Debian server): its window carries the myLinux menu.
     var launcherMachine = false
+    /// The machine's share folder on the Mac and its path inside the machine ("~/Mac"); not saved.
+    var shareMacPath = ""
+    var shareGuestPath = ""
 
     init(kind: Kind = .vnc) { self.kind = kind; port = kind == .ssh ? 22 : 5900; keyboard = kind == .ssh ? .mac : .optionSuper }
 

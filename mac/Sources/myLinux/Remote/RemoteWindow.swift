@@ -4,7 +4,7 @@ import SwiftUI
 /// One remote connection in its own window; windows of this kind tab together (native macOS window tabs, so a tab
 /// can be torn off, and each can go fullscreen on its own display). The toolbar carries the zoom (VNC) and the
 /// keyboard mode; the HUD line under the picture shows the connection's numbers.
-final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuDelegate {
     static var open: [RemoteWindowController] = []
     static var noPasswordHosts: Set<String> = []      // hosts that connected with an empty password this session: no prompt again
     static let trace: Any? = ProcessInfo.processInfo.environment["MYLINUX_TRACE"] == nil ? nil : NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { e in
@@ -61,6 +61,12 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     required init?(coder: NSCoder) { fatalError() }
 
     private var contentArea: NSRect { NSRect(x: 0, y: 22, width: window!.contentView!.bounds.width, height: window!.contentView!.bounds.height - 22) }
+    /// The terminal's place: inset from the window's edges, so the first column is not against the rounded frame.
+    private var terminalArea: NSRect { contentArea.insetBy(dx: 6, dy: 0) }
+    private var browser: BrowserPane?
+    private var tunnel: SocksTunnel?
+    private var forwards: [Int: PortForward] = [:]
+    private var split: NSSplitView?
 
     func connect() {
         guard let root = window?.contentView else { return }
@@ -82,9 +88,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             else { askPassword { pw in if pw.isEmpty { RemoteWindowController.noPasswordHosts.insert(self.profile.host) }; c.password = pw; c.start() } }
         } else {
             let t = SshTerminal(profile: profile)
-            t.frame = contentArea; t.autoresizingMask = [.width, .height]
+            t.frame = terminalArea; t.autoresizingMask = [.width, .height]
             root.addSubview(t, positioned: .below, relativeTo: overlay)
             ssh = t
+            if profile.launcherMachine { t.onOpenLink = { [weak self] url in self?.openInBrowser(url) } }
             t.onExit = { [weak self] code in NSLog("remote %@: ssh exited %@", self?.profile.title ?? "", String(describing: code)); self?.showOverlay("Disconnected" + (code.map { $0 == 0 ? "" : " (ssh exited with status \($0))" } ?? "") + " — click to reconnect") }
             t.onTitle = { [weak self] title in self?.window?.title = title.isEmpty ? self?.profile.title ?? "" : "\(self?.profile.title ?? "") — \(title)" }
             window?.makeFirstResponder(t)
@@ -184,6 +191,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     func windowDidResignKey(_ n: Notification) { pasteboardCount = NSPasteboard.general.changeCount }
     func windowWillClose(_ n: Notification) {
         hudTimer?.invalidate(); vnc?.stop(); vncView?.setGrab(false, keep: [])
+        tunnel?.stop(); tunnel = nil; stopForwards()
         RemoteWindowController.open.removeAll { $0 === self }
         RemoteSession.noteOpenWindows()             // closed on purpose: not brought back next time (unless quitting)
     }
@@ -208,6 +216,12 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             pop.addItem(withTitle: "myLinux")
             let install = NSMenuItem(title: "Install Agents…", action: #selector(installAgents), keyEquivalent: ""); install.target = self
             pop.menu?.addItem(install)
+            pop.menu?.addItem(.separator())
+            for (title, sel) in [("Show Browser", #selector(toggleBrowser)), ("Open Last URL in Browser", #selector(openLastURL)),
+                                 ("Screenshot Browser to Machine", #selector(screenshotBrowser)), ("Paste Screenshot Path", #selector(pasteScreenshot))] {
+                let mi = NSMenuItem(title: title, action: sel, keyEquivalent: ""); mi.target = self; pop.menu?.addItem(mi)
+            }
+            pop.menu?.delegate = self
             item.view = pop; item.label = "myLinux"; item.visibilityPriority = .high
             return item
         case .flexibleSpace0: return nil
@@ -237,6 +251,107 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         updateStatus()
     }
     @objc func validateToolbarItem(_ item: NSToolbarItem) -> Bool { true }
+
+    // ---- the myLinux menu: the browser pane ----
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.item(withTitle: "Show Browser")?.title = browser == nil ? "Show Browser" : "Hide Browser"
+        menu.item(withTitle: "Hide Browser")?.title = browser == nil ? "Show Browser" : "Hide Browser"
+        menu.item(withTitle: "Screenshot Browser to Machine")?.isEnabled = browser != nil && !profile.shareMacPath.isEmpty
+        menu.item(withTitle: "Paste Screenshot Path")?.isEnabled = !profile.shareMacPath.isEmpty
+    }
+
+    /// The browser beside the terminal, half the window each, its traffic through a tunnel into the machine.
+    @objc private func toggleBrowser() {
+        if browser != nil { hideBrowser(); return }
+        guard let root = window?.contentView, let t = ssh else { return }
+        let tunnel = SocksTunnel(profile: profile)
+        let pane = BrowserPane(machineID: profile.id, socksPort: tunnel.port)
+        pane.onTitle = { [weak self] title in self?.updateStatus(); _ = title }
+        pane.localForward = { [weak self] guestPort, done in self?.forward(guestPort, done) }
+        t.removeFromSuperview()
+        let sv = NSSplitView(frame: contentArea)
+        sv.isVertical = true; sv.dividerStyle = .thin; sv.autoresizingMask = [.width, .height]
+        t.autoresizingMask = []; t.frame = NSRect(x: 0, y: 0, width: contentArea.width / 2, height: contentArea.height)
+        pane.frame = NSRect(x: 0, y: 0, width: contentArea.width / 2, height: contentArea.height)
+        sv.addArrangedSubview(t); sv.addArrangedSubview(pane)
+        sv.setHoldingPriority(NSLayoutConstraint.Priority(250), forSubviewAt: 0)
+        sv.setHoldingPriority(NSLayoutConstraint.Priority(251), forSubviewAt: 1)
+        root.addSubview(sv, positioned: .below, relativeTo: overlay)
+        sv.layoutSubtreeIfNeeded()
+        sv.setPosition(contentArea.width / 2, ofDividerAt: 0)
+        browser = pane; split = sv; self.tunnel = tunnel
+        let first = t.lastURL()
+        showOverlay("Opening a tunnel into the machine…")
+        tunnel.start { [weak self] ok in
+            guard let self, self.browser === pane else { return }
+            self.hideOverlay()
+            if ok { if let first { pane.load(first) } else { pane.showStart() } }
+            else { self.showOverlay("The tunnel into the machine did not come up (is it running, and is SSH reachable?). Click to dismiss.") }
+        }
+        window?.makeFirstResponder(t)
+    }
+    /// A Mac port that leads to the machine's port, opened once per port and kept while the pane is open.
+    private func forward(_ guestPort: Int, _ done: @escaping (UInt16?) -> Void) {
+        if let f = forwards[guestPort], f.isRunning { done(f.macPort); return }
+        let f = PortForward(profile: profile, guestPort: guestPort)
+        forwards[guestPort] = f
+        f.whenReady { ok in done(ok ? f.macPort : nil) }
+    }
+    private func stopForwards() { forwards.values.forEach { $0.stop() }; forwards.removeAll() }
+    private func hideBrowser() {
+        guard let root = window?.contentView, let t = ssh, let sv = split else { return }
+        tunnel?.stop(); tunnel = nil; stopForwards()
+        t.removeFromSuperview(); sv.removeFromSuperview()
+        browser = nil; split = nil
+        t.frame = terminalArea; t.autoresizingMask = [.width, .height]
+        root.addSubview(t, positioned: .below, relativeTo: overlay)
+        window?.makeFirstResponder(t)
+    }
+    private func openInBrowser(_ url: URL) {
+        if browser == nil { toggleBrowser() }
+        if let tunnel, tunnel.isRunning, SocksTunnel.answers(tunnel.port) { browser?.load(url) }
+        else { pendingURL = url }
+    }
+    private var pendingURL: URL? {
+        didSet { if let u = pendingURL { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, let t = self.tunnel, t.isRunning else { return }
+            if SocksTunnel.answers(t.port) { self.browser?.load(u); self.pendingURL = nil } else if self.pendingURL != nil { self.pendingURL = u }
+        } } }
+    }
+    @objc private func openLastURL() {
+        guard let url = ssh?.lastURL() else { showOverlay("No web address in the terminal yet. Click to dismiss."); return }
+        openInBrowser(url)
+    }
+
+    /// A PNG into the machine's share folder, and its path inside the machine typed into the terminal.
+    private func saveIntoShare(_ image: NSImage, prefix: String) {
+        guard !profile.shareMacPath.isEmpty, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { showOverlay("This machine has no share folder. Click to dismiss."); return }
+        let folder = URL(fileURLWithPath: profile.shareMacPath).appendingPathComponent("screenshots", isDirectory: true)
+        let f = DateFormatter(); f.dateFormat = "yyyyMMdd-HHmmss"
+        let name = "\(prefix)-\(f.string(from: Date())).png"
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try png.write(to: folder.appendingPathComponent(name))
+        } catch { showOverlay("Could not save the screenshot: \(error.localizedDescription). Click to dismiss."); return }
+        ssh?.type("\(profile.shareGuestPath)/screenshots/\(name) ")
+        window?.makeFirstResponder(ssh)
+    }
+    @objc private func screenshotBrowser() {
+        guard let browser else { showOverlay("Show the browser first. Click to dismiss."); return }
+        browser.snapshot { [weak self] image in
+            guard let image else { self?.showOverlay("Could not photograph the page. Click to dismiss."); return }
+            self?.saveIntoShare(image, prefix: "browser")
+        }
+    }
+    @objc private func pasteScreenshot() {
+        guard let image = NSImage(pasteboard: .general) else { showOverlay("No picture on the Mac clipboard (Shift+Ctrl+⌘+4 copies a screenshot). Click to dismiss."); return }
+        saveIntoShare(image, prefix: "clipboard")
+    }
+
+    /// For the scripted check: the pane on a given page, and a screenshot into the share.
+    func testShowBrowser(_ url: URL) { openInBrowser(url) }
+    func testScreenshotToMachine() { screenshotBrowser() }
 
     // ---- the myLinux menu: Install Agents… ----
     private var sheetWindow: NSWindow?

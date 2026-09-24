@@ -93,7 +93,14 @@ machine's key. That terminal window has a **myLinux** menu in the middle of its 
 coding agents into the machine: Claude Code (Anthropic's native installer) and Codex (OpenAI's prebuilt Linux
 binary), each with an alias you can edit (`cc` for `claude update && claude --dangerously-skip-permissions`, `cx`
 for `codex --full-auto`), plus git and tmux. The dialog turns the choice into one bash script, runs it over the
-machine's SSH connection with the output in view, and the terminal picks up the aliases straight away. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
+machine's SSH connection with the output in view, and the terminal picks up the aliases straight away. **Show
+Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
+(`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
+forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says
+localhost. ⌘-click a link in the terminal (the Claude login URL, say) and it opens there; **Open Last URL in
+Browser** finds the last address in the scrollback. **Screenshot Browser to Machine** and **Paste Screenshot
+Path** put a PNG of the page, or of the Mac clipboard, into the machine's share folder and type its path into the
+terminal, so an agent inside can look at it. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
 `SERIAL`, `QMP`, `DRYRUN=1`.
 
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
