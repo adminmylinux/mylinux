@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/sparse-copy.py" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-debian.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -195,6 +195,37 @@ c=$(cat "$T/om/Mac Files/mylinux-tools/control/"*.cmd 2>/dev/null); [ "$c" = "in
 not_rc0 "unknown session commands are refused" $rc
 (python3 "$REPO/omarchy/session/omarchy-session" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-session selftest (restore planning, terminal working directory)" $rc 0
+
+echo "run-debian.sh (DRYRUN, with the fake runtime)"
+out=$(cd / && DRYRUN=1 DISK="$T/deb/debian.raw" SHARE_DIR="$T/deb/Mac Files" NAME="Debian test" SSH_PORT=2299 FORWARD=8080:80 QMP="$T/q.sock" sh "$W/run-debian.sh" -qmp none 2>&1); rc=$?
+is_rc "dry run works from another directory" $rc 0
+has "boots the downloaded UEFI firmware" "$out" "$W/out/debian/edk2-aarch64-code.fd"
+has "root disk as a raw virtio disk" "$out" "file=$T/deb/debian.raw,format=raw"
+has "the cloud-init seed rides as a read-only disk" "$out" "file=$T/deb/seed.iso,format=raw,media=disk,readonly=on"
+has "SSH forwarded to the asked port" "$out" "hostfwd=tcp:127.0.0.1:2299-:22"
+has "more forwards after it" "$out" "hostfwd=tcp:127.0.0.1:8080-:80"
+has "no display: the serial console is the machine" "$out" "-display"
+has "share exported for the guest's user" "$out" "path=$T/deb/Mac Files,security_model=none,multidevs=remap,guest_owner_uid=1000"
+has "host name from the machine name" "$out" "HOSTNAME=debian-test"
+has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
+has "extra QEMU arguments pass through" "$out" "none"
+file_absent "a dry run creates no disk" "$T/deb/debian.raw"
+file_absent "a dry run makes no seed" "$T/deb/seed.iso"
+out=$(cd "$W" && DRYRUN=1 SSH_PORT=80 sh run-debian.sh 2>&1); rc=$?
+not_rc0 "a privileged SSH port is refused" $rc
+out=$(cd "$W" && DRYRUN=1 DISK="/a,b/debian.raw" sh run-debian.sh 2>&1); rc=$?
+not_rc0 "a comma in the disk path is refused" $rc
+out=$(cd "$W" && DRYRUN=1 SHARE_DIR="$HOME" sh run-debian.sh 2>&1); rc=$?
+not_rc0 "the whole home folder is refused as a share" $rc
+out=$(cd "$W" && DRYRUN=1 DISK_SIZE_GB=4 sh run-debian.sh 2>&1); rc=$?
+not_rc0 "a disk under 8 GB is refused" $rc
+echo "tools/sparse-copy.py"
+python3 -c 'f=open("'"$T"'/z.img","wb"); f.write(b"A"*4096); f.write(bytes(3*1024*1024)); f.write(b"B"*10); f.close()'
+python3 "$REPO/tools/sparse-copy.py" "$T/z.img" "$T/z2.img" 1 >/dev/null 2>&1; rc=$?
+is_rc "copies a disk image" $rc 0
+[ "$(stat -f %z "$T/z2.img")" = 1073741824 ] && rc=0 || rc=1; is_rc "grows it to the asked size" $rc 0
+[ "$(du -k "$T/z2.img" | cut -f1)" -lt 8192 ] && rc=0 || rc=1; is_rc "zeros became holes" $rc 0
+head -c "$(stat -f %z "$T/z.img")" "$T/z2.img" > "$T/z2.head"; cmp -s "$T/z.img" "$T/z2.head" && rc=0 || rc=1; is_rc "the data is the same" $rc 0
 
 echo "mac/package-dmg.sh"
 FAKE="$T/Fake App.app"; mkdir -p "$FAKE/Contents/MacOS"; printf '#!/bin/sh\necho hi\n' > "$FAKE/Contents/MacOS/Fake App"; chmod +x "$FAKE/Contents/MacOS/Fake App"

@@ -75,6 +75,23 @@ tool through the share folder. The clipboard is shared both ways, text and PNG i
 Omarchy's own clipboard agent and `tools/omarchy-clipboard.py` on the Mac (`CLIPBOARD=0` turns it off). Not there
 (they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output.
 
+### Debian server machines
+
+The third kind of machine is a plain Debian server with no window at all: the latest stable Debian (trixie) from
+its official arm64 cloud image, for anything that only needs a terminal. `tools/get-debian.sh` downloads the image
+(about 300 MB, checked against Debian's SHA512SUMS; the raw disk is kept sparse in `out/debian`) and the UEFI
+firmware it boots with (the edk2 build QEMU itself ships, from the runtime's pinned QEMU commit, by checksum), and
+`./run-debian.sh` boots it on the runtime or Homebrew's QEMU. Each machine has its own disk, copied from the image
+on the first start and grown to `DISK_SIZE_GB` (cloud-init grows the root filesystem into it), and is set up by
+cloud-init from a seed made on the Mac: the `debian` account with sudo, an SSH key generated for the machine
+(`ssh_key` beside the disk), a random console password (`console-password`, for the serial console), the machine's
+name as its host name, and the share folder mounted at `/mnt/mac` and linked from the home folder. SSH is forwarded
+to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
+and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
+page has the settings, the Console tab the serial console, and the Terminal button opens an SSH terminal with the
+machine's key. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=4G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
+`SERIAL`, `QMP`, `DRYRUN=1`.
+
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
 size of the display under your mouse pointer; if the first start puts it on another display, give your
 terminal app Accessibility permission (System Settings › Privacy & Security) and it is moved automatically.
@@ -338,6 +355,7 @@ patches/                    Qt Wayland compositor patch (wl_seat v5, data device
 tools/                      build, SDK, apps-disk, automation helpers
 mac/                        the Mac launcher app (SwiftUI; mac/build-app.sh bundles it)
 run.sh / build.sh           run on the Mac / build inside Debian
+run-omarchy.sh, run-debian.sh   the other two kinds of machine (Omarchy desktop, Debian server)
 ```
 
 ## Checks and tests
