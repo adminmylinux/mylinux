@@ -113,6 +113,8 @@ final class BrowserPane: NSView, WKNavigationDelegate, WKUIDelegate {
         web.takeSnapshot(with: nil) { image, _ in completion(image) }
     }
 
+    func focusAddress() { window?.makeFirstResponder(address); address.selectText(nil) }
+
     @objc private func goBack() { web.goBack() }
     @objc private func goForward() { web.goForward() }
     @objc private func reloadPage() { web.reload() }

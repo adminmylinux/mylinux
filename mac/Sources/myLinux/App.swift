@@ -70,6 +70,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 wait = 12
             }
             let c = RemoteWindowController.show(p)
+            // MYLINUX_TEST_KEYS=1: press ⌘↩ and ⇧⌘↩ the way the keyboard would, and report what they did
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "1" {
+                func press(_ mods: NSEvent.ModifierFlags) {
+                    guard let w = c.window, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: w.windowNumber,
+                                                                       context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) else { return }
+                    NSApp.postEvent(e, atStart: false)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { press([.command]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { print("windows after cmd-return:", RemoteWindowController.open.count); press([.command, .shift]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { print("browser after shift-cmd-return:", c.testHasBrowser, "windows:", RemoteWindowController.open.count) }
+                wait = 4.5
+            }
             if wait > 5 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { c.testShowBrowser(URL(string: ProcessInfo.processInfo.environment["MYLINUX_TEST_URL"] ?? "http://localhost:8000/")!) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 9.0) { c.testScreenshotToMachine() }

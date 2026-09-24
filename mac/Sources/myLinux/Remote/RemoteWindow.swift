@@ -54,6 +54,15 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         overlay.textColor = .white; overlay.backgroundColor = NSColor.black.withAlphaComponent(0.7); overlay.drawsBackground = true
         overlay.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
         root.addSubview(overlay)
+        if profile.launcherMachine {
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+                guard let self, e.window === self.window, e.keyCode == 36 else { return e }      // 36: Return
+                let mods = e.modifierFlags.intersection([.command, .shift, .option, .control])
+                if mods == [.command] { self.newTerminal(); return nil }
+                if mods == [.command, .shift] { self.showBrowserAndFocus(); return nil }
+                return e
+            }
+        }
         let toolbar = NSToolbar(identifier: "remote-\(profile.kind.rawValue)\(profile.launcherMachine ? "-machine" : "")"); toolbar.delegate = self; toolbar.displayMode = .iconOnly
         if profile.launcherMachine { toolbar.centeredItemIdentifiers = [NSToolbarItem.Identifier(Item.mylinux.rawValue)] }
         w.toolbar = toolbar
@@ -66,6 +75,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     private var browser: BrowserPane?
     private var tunnel: SocksTunnel?
     private var forwards: [Int: PortForward] = [:]
+    private var keyMonitor: Any?
     private var split: NSSplitView?
 
     func connect() {
@@ -192,6 +202,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     func windowWillClose(_ n: Notification) {
         hudTimer?.invalidate(); vnc?.stop(); vncView?.setGrab(false, keep: [])
         tunnel?.stop(); tunnel = nil; stopForwards()
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor); self.keyMonitor = nil }
         RemoteWindowController.open.removeAll { $0 === self }
         RemoteSession.noteOpenWindows()             // closed on purpose: not brought back next time (unless quitting)
     }
@@ -217,7 +228,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             let install = NSMenuItem(title: "Install Agents…", action: #selector(installAgents), keyEquivalent: ""); install.target = self
             pop.menu?.addItem(install)
             pop.menu?.addItem(.separator())
-            for (title, sel) in [("Show Browser", #selector(toggleBrowser)), ("Open Last URL in Browser", #selector(openLastURL)),
+            let term = NSMenuItem(title: "New Terminal", action: #selector(newTerminal), keyEquivalent: "\r"); term.target = self; pop.menu?.addItem(term)
+            let show = NSMenuItem(title: "Show Browser", action: #selector(toggleBrowser), keyEquivalent: "\r"); show.keyEquivalentModifierMask = [.command, .shift]; show.target = self; pop.menu?.addItem(show)
+            for (title, sel) in [("Open Last URL in Browser", #selector(openLastURL)),
                                  ("Screenshot Browser to Machine", #selector(screenshotBrowser)), ("Paste Screenshot Path", #selector(pasteScreenshot))] {
                 let mi = NSMenuItem(title: title, action: sel, keyEquivalent: ""); mi.target = self; pop.menu?.addItem(mi)
             }
@@ -258,6 +271,17 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         menu.item(withTitle: "Hide Browser")?.title = browser == nil ? "Show Browser" : "Hide Browser"
         menu.item(withTitle: "Screenshot Browser to Machine")?.isEnabled = browser != nil && !profile.shareMacPath.isEmpty
         menu.item(withTitle: "Paste Screenshot Path")?.isEnabled = !profile.shareMacPath.isEmpty
+    }
+
+    /// ⌘↩, as in Omarchy: another terminal to the same machine, as a tab of this window.
+    @objc private func newTerminal() {
+        var p = profile; p.id = UUID()
+        RemoteWindowController.show(p)
+    }
+    /// ⇧⌘↩, as in Omarchy: the browser, with the address bar ready to type into.
+    private func showBrowserAndFocus() {
+        if browser == nil { toggleBrowser() }
+        browser?.focusAddress()
     }
 
     /// The browser beside the terminal, half the window each, its traffic through a tunnel into the machine.
@@ -349,6 +373,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         saveIntoShare(image, prefix: "clipboard")
     }
 
+    var testHasBrowser: Bool { browser != nil }
     /// For the scripted check: the pane on a given page, and a screenshot into the share.
     func testShowBrowser(_ url: URL) { openInBrowser(url) }
     func testScreenshotToMachine() { screenshotBrowser() }
