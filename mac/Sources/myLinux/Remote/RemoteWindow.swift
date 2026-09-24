@@ -428,6 +428,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     var testHasBrowser: Bool { browser != nil }
+    func testType(_ text: String) { ssh?.type(text + "\n") }
+    func testSplit() { splitTerminal() }
     var testTerminalCount: Int { terminals.count }
     var testTerminalsStacked: Bool { terminalArea?.isVertical == false }
     /// For the scripted check: the pane on a given page, and a screenshot into the share.

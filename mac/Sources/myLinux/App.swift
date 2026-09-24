@@ -81,6 +81,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 wait = 12
             }
             let c = RemoteWindowController.show(p)
+            // photographs are taken on a Retina display when there is one
+            if let retina = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }), let w = c.window {
+                let v = retina.visibleFrame
+                w.setFrameOrigin(NSPoint(x: v.midX - w.frame.width / 2, y: v.midY - w.frame.height / 2))
+            }
             // MYLINUX_TEST_KEYS=1: press ⌘↩ and ⇧⌘↩ the way the keyboard would, and report what they did
             if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "1" {
                 func press(_ chars: String, _ code: UInt16, _ mods: NSEvent.ModifierFlags) {
@@ -95,7 +100,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5.5) { print("windows after cmd-t:", RemoteWindowController.open.count) }
                 wait = 6.5
             }
-            if wait > 5 {
+            // MYLINUX_TEST_SCENE="first command|second command": a product shot: the first command in the terminal, a
+            // split with the second, the browser on MYLINUX_TEST_URL
+            if let scene = ProcessInfo.processInfo.environment["MYLINUX_TEST_SCENE"]?.split(separator: "|").map(String.init), wait > 5 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { c.testType(scene.first ?? "") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { c.testSplit() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { c.testType(scene.count > 1 ? scene[1] : "") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 11.0) { c.testShowBrowser(URL(string: ProcessInfo.processInfo.environment["MYLINUX_TEST_URL"] ?? "http://localhost:3000/")!) }
+                wait = 20
+            } else if wait > 5 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { c.testShowBrowser(URL(string: ProcessInfo.processInfo.environment["MYLINUX_TEST_URL"] ?? "http://localhost:8000/")!) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 9.0) { c.testScreenshotToMachine() }
             }
