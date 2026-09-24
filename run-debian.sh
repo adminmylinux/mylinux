@@ -7,7 +7,7 @@
 # generated for this machine (<machine>/ssh_key), a random console password (<machine>/console-password), sudo,
 # the Mac share mounted at /mnt/mac and linked from the home folder.
 # Environment: DISK=path of the root disk (default $MYLINUX_OUT/debian-machine/debian.raw), DISK_SIZE_GB=32, NAME=machine
-#              name (also the host name), MEM=4G, CPUS, SHARE_DIR=folder shown inside as ~/<its name> (optional),
+#              name (also the host name), MEM=2G, CPUS, SHARE_DIR=folder shown inside as ~/<its name> (optional),
 #              SERIAL=chardev for the console (default: file <machine>/console.log; unix:<path>,server,nowait for the launcher),
 #              QMP=unix socket path for control (a clean stop is {"execute":"system_powerdown"} there),
 #              SSH_PORT=port on 127.0.0.1 forwarded to the guest's sshd (default 2223), FORWARD=host:guest[,...] more ports,
@@ -28,7 +28,7 @@ else
 fi
 NAME="${NAME:-Debian}"
 HOSTNAME=$(printf '%s' "$NAME" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//'); [ -n "$HOSTNAME" ] || HOSTNAME=debian
-MEM="${MEM:-4G}"
+MEM="${MEM:-2G}"
 NCPU=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 CPUS="${CPUS:-$(( NCPU > 8 ? 4 : 2 ))}"
 case "$CPUS" in ''|*[!0-9]*) die "CPUS must be a number" ;; esac

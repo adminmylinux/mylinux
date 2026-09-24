@@ -180,7 +180,7 @@ final class ProfileStore: ObservableObject {
         if kind == .debian {
             var p = Profile(name: name, appsDisk: dir.appendingPathComponent("debian.raw").path,
                             shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
-            p.kind = .debian; p.memoryGB = 4; p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
+            p.kind = .debian; p.memoryGB = 2; p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
             return p
         }
         if kind == .omarchy {
