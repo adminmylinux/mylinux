@@ -196,6 +196,21 @@ not_rc0 "unknown session commands are refused" $rc
 (python3 "$REPO/omarchy/session/omarchy-session" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-session selftest (restore planning, terminal working directory)" $rc 0
 
+echo "mac/package-dmg.sh"
+FAKE="$T/Fake App.app"; mkdir -p "$FAKE/Contents/MacOS"; printf '#!/bin/sh\necho hi\n' > "$FAKE/Contents/MacOS/Fake App"; chmod +x "$FAKE/Contents/MacOS/Fake App"
+printf '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Fake App</string><key>CFBundleIdentifier</key><string>test.fake</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>' > "$FAKE/Contents/Info.plist"
+codesign --force --sign - "$FAKE" >/dev/null 2>&1
+(sh "$REPO/mac/package-dmg.sh" "$FAKE" "$T/fake.dmg" >/dev/null 2>&1); rc=$?
+is_rc "packages an app into a DMG" $rc 0
+[ -s "$T/fake.dmg.sha256" ] && rc=0 || rc=1; is_rc "writes the checksum beside it" $rc 0
+M="$T/mnt"; mkdir -p "$M"; hdiutil attach -quiet -nobrowse -readonly -mountpoint "$M" "$T/fake.dmg" >/dev/null 2>&1
+[ -d "$M/Fake App.app" ] && [ -L "$M/Applications" ] && rc=0 || rc=1; is_rc "the DMG holds the app and an Applications shortcut" $rc 0
+hdiutil detach -quiet "$M" >/dev/null 2>&1 || true
+(sh "$REPO/mac/package-dmg.sh" "$T/nowhere.app" "$T/x.dmg" >/dev/null 2>&1); rc=$?
+not_rc0 "refuses a path that is not an app" $rc
+(sh "$REPO/mac/package-dmg.sh" --notarize prof "$FAKE" "$T/y.dmg" >/dev/null 2>&1); rc=$?
+not_rc0 "refuses to notarise without a signing identity" $rc
+
 echo "tools/omarchy-bake-session.sh"
 grep -q 'tools/omarchy-bake-session.sh "$DISK.new"' "$W/run-omarchy.sh" && rc=0 || rc=1
 is_rc "run-omarchy.sh bakes the session tool into a new disk" $rc 0

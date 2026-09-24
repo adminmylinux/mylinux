@@ -126,10 +126,25 @@ machines.json…* reads the guest viewer's saved machines (copy `~/.config/mylin
 passwords, `~/.config/mylinux/secrets.env` to the share first).
 
 Without this checkout the app works on its own: it downloads the release image into
-`~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`. It
-still needs Homebrew's QEMU (`brew install qemu`). Point Settings › Developer at a checkout to start from
-that checkout's `run.sh`, `out/` and `share/` instead, which is what you want while working on myLinux
-itself. The bundle is signed ad hoc, so on another Mac Gatekeeper needs right-click › Open once.
+`~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`, and
+libvncclient with its libraries travel inside the bundle (`Contents/Frameworks`), so Homebrew is not needed.
+QEMU is the accelerated runtime (Settings › QEMU downloads it) or Homebrew's. Point Settings › Developer at a
+checkout to start from that checkout's `run.sh`, `out/` and `share/` instead, which is what you want while
+working on myLinux itself. A local build is signed ad hoc, so on another Mac Gatekeeper needs right-click › Open once.
+
+**A release for other Macs** is a notarised DMG with the QEMU runtime inside, installed on the app's first start:
+
+```sh
+tools/build-libvncclient.sh      # libvncclient, libjpeg-turbo and OpenSSL from pinned sources, built for macOS 15 (once)
+tools/build-qemu-runtime.sh      # out/qemu-runtime-macos-arm64.tar.gz at the version in tools/qemu-runtime.version
+mac/release.sh --notarize <notarytool keychain profile>   # Developer ID from the keychain; out/mac/myLinux-Launcher-<version>.dmg
+```
+
+`mac/release.sh` builds the app with `MYLINUX_RELEASE=1` (the runtime tarball rides in `Contents/Resources/runtime`,
+no checkout path in Info.plist), signs it inside out with the hardened runtime, and `mac/package-dmg.sh` has Apple
+notarise the app and the disk image and staples both tickets. Homebrew's libvncclient is built for the macOS it was
+installed on (26 here), which is why the release uses the libraries from `tools/build-libvncclient.sh` in `out/libvnc`;
+`mac/build-app.sh` prefers them whenever they are there. The DMG goes into a release in `adminmylinux/mylinux-releases`.
 
 ## Keys
 
