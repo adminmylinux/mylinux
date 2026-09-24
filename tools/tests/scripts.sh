@@ -184,6 +184,9 @@ has "clipboard port for Omarchy's agent by default" "$out" "name=dev.tryomarchy.
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 CLIPBOARD=0 sh run-omarchy.sh 2>&1)
 case "$out" in *tryomarchy.clipboard*) ko "CLIPBOARD=0 leaves the port out" ;; *) ok "CLIPBOARD=0 leaves the port out" ;; esac
 out=$(cd "$W" && DRYRUN=1 SCALE=1 RES=1600x1000 SHARE_DIR="$T/om/Mac Files" sh run-omarchy.sh 2>&1); has "dry run: no session tools copied into the share" "$out" "DISK="
+has "the session helper and the share are handed to the window as two values (no shell line)" "$out" "SESSION_CMD=$W/tools/omarchy-session-mac.sh SESSION_SHARE=$T/om/Mac Files"
+grep -q 'launchedTaskWithExecutableURL:\[NSURL fileURLWithPath:helper\]' "$REPO/tools/qemu-runtime-patches/qemu-cocoa-size-buttons.patch" && rc=0 || rc=1
+is_rc "the window runs the session helper directly, not through /bin/sh" $rc 0
 file_absent "dry run leaves the share alone" "$T/om/Mac Files/mylinux-tools"
 (sh "$REPO/tools/omarchy-session-mac.sh" "$T/om/Mac Files" interval 5 >/dev/null 2>&1); rc=$?
 is_rc "omarchy-session-mac.sh drops a command file into the share" $rc 0

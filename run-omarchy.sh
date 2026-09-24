@@ -117,7 +117,8 @@ if [ -n "$SHARE_DIR" ]; then
   # session save/restore (sh ~/<share>/mylinux-tools/install-session.sh once)
   if [ "${DRYRUN:-0}" != 1 ]; then mkdir -p "$SHARE_DIR/mylinux-tools/control" && cp -f omarchy/session/* "$SHARE_DIR/mylinux-tools/" 2>/dev/null || true; fi
   # the Session menu in the window's title bar: QEMU runs this to drop commands for the agent, and reads the status
-  export MYLINUX_SESSION_CMD="$REPO/tools/omarchy-session-mac.sh '$SHARE_DIR'" MYLINUX_SESSION_STATUS="$SHARE_DIR/mylinux-tools/control/status.json"
+  # the window runs the helper directly with these as its first argument (no shell: paths with spaces or quotes are fine)
+  export MYLINUX_SESSION_CMD="$REPO/tools/omarchy-session-mac.sh" MYLINUX_SESSION_SHARE="$SHARE_DIR" MYLINUX_SESSION_STATUS="$SHARE_DIR/mylinux-tools/control/status.json"
 fi
 export MYLINUX_SIZE_BUTTONS=1     # the window's size and full screen buttons are for Omarchy (the guest follows the window)
 
@@ -167,6 +168,7 @@ fi
 [ -z "${QMP:-}" ] || set -- "$@" -qmp "unix:$QMP,server=on,wait=off"
 if [ "${DRYRUN:-0}" = 1 ]; then
   echo "RES=$RES SCALE=$SCALE DISK=$DISK SHARE_DIR=$SHARE_DIR NAME=$NAME CPUS=$CPUS MEM=$MEM"
+  echo "SESSION_CMD=${MYLINUX_SESSION_CMD:-} SESSION_SHARE=${MYLINUX_SESSION_SHARE:-}"
   for a in "$@"; do printf '%s\n' "$a"; done
   exit 0
 fi

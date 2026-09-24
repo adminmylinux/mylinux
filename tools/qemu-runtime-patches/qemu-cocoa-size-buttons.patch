@@ -81,7 +81,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1675,6 +1708,298 @@
+@@ -1675,6 +1708,308 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -89,8 +89,9 @@
 + * myLinux: the window's own controls, in a toolbar. At the right: minus (back to the content size the window came up
 + * with), plus (10% larger) and full screen; the first two turn Zoom To Fit on (the window becomes resizable and the
 + * picture scales to it), and a guest that follows the window's size gets more room that way. Centred: a Session
-+ * menu, when MYLINUX_SESSION_CMD names a command that hands "save", "restore" or "interval N" to the guest (through
-+ * the share folder; MYLINUX_SESSION_STATUS is the status file the guest keeps for the menu). The size buttons are
++ * menu, when MYLINUX_SESSION_CMD names a helper that hands "save", "restore" or "interval N" to the guest (run
++ * without a shell, with the share folder from MYLINUX_SESSION_SHARE as its first argument; MYLINUX_SESSION_STATUS
++ * is the status file the guest keeps for the menu). The size buttons are
 + * only there with MYLINUX_SIZE_BUTTONS set (run-omarchy.sh); a window without either keeps its plain title bar.
 + * In full screen, where the title bar is hidden, a small floating box carries the Session menu and an exit button.
 + */
@@ -250,23 +251,32 @@
 +    [menu setSubmenu:every forItem:item];
 +}
 +
-+- (void)sessionCommand:(NSString *)arguments
++- (void)sessionCommand:(NSArray<NSString *> *)words
 +{
 +    const char *command = mylinux_env("MYLINUX_SESSION_CMD");
-+    if (!command) {
++    const char *share = mylinux_env("MYLINUX_SESSION_SHARE");
++    if (!command || !share) {
 +        return;
 +    }
-+    NSString *line = [NSString stringWithFormat:@"%s %@", command, arguments];
-+    [NSTask launchedTaskWithExecutableURL:[NSURL fileURLWithPath:@"/bin/sh"] arguments:@[@"-c", line]
++    /* the helper is run directly, as an argument list: a space or a quote in the app's or the share's path is
++     * only a character, and UTF-8 paths arrive as they are */
++    NSString *helper = [NSString stringWithUTF8String:command];
++    NSString *folder = [NSString stringWithUTF8String:share];
++    if (!helper || !folder) {
++        return;
++    }
++    NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithObject:folder];
++    [arguments addObjectsFromArray:words];
++    [NSTask launchedTaskWithExecutableURL:[NSURL fileURLWithPath:helper] arguments:arguments
 +                                    error:NULL terminationHandler:nil];
 +}
 +
-+- (void)sessionSave:(id)sender { [self sessionCommand:@"save"]; }
-+- (void)sessionRestore:(id)sender { [self sessionCommand:@"restore"]; }
++- (void)sessionSave:(id)sender { [self sessionCommand:@[@"save"]]; }
++- (void)sessionRestore:(id)sender { [self sessionCommand:@[@"restore"]]; }
 +- (void)sessionInterval:(id)sender
 +{
 +    long minutes = [sender tag];
-+    [self sessionCommand:minutes ? [NSString stringWithFormat:@"interval %ld", minutes] : @"interval off"];
++    [self sessionCommand:@[@"interval", minutes ? [NSString stringWithFormat:@"%ld", minutes] : @"off"]];
 +}
 +
 +- (void)showFullScreenPanel
