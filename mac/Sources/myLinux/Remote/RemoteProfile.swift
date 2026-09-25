@@ -53,6 +53,8 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     /// Such a server's install script (debian_install.sh, alpine_install.sh); not saved, like launcherMachine.
     var installScript = ""
     var installScriptFile: String { installScript.isEmpty ? InstallScript.defaultFile : installScript }
+    /// Such a server's own id (a ⌘T tab has an id of its own); not saved.
+    var machineID: UUID?
     /// The machine's share folder on the Mac and its path inside the machine ("~/Mac"); not saved.
     var shareMacPath = ""
     var shareGuestPath = ""

@@ -233,6 +233,18 @@ out=$(cd "$W" && DRYRUN=1 sh run-debian.sh 2>&1); rc=$?
 has "run-debian.sh is still Debian by default" "$out" "DISTRO=debian USER=debian"
 out=$(cd "$W" && DRYRUN=1 DISTRO=fedora sh run-server.sh 2>&1); rc=$?
 not_rc0 "an unknown distribution is refused" $rc
+mkdir -p "$T/cloud/Dropbox"
+out=$(cd "$W" && DRYRUN=1 HOME="$T/cloud-home" EXTRA_SHARES="dropbox=$T/cloud/Dropbox
+onedrive=$T/cloud/missing" sh run-alpine.sh 2>&1); rc=$?
+is_rc "extra shares: a dry run" $rc 0
+has "extra shares: the folder with its mount tag" "$out" "virtio-9p-pci,fsdev=extra1,mount_tag=dropbox"
+has "extra shares: a missing folder is left out with a note" "$out" "is not there; onedrive is not shared this time"
+out=$(cd "$W" && DRYRUN=1 HOME="$T/cloud-home" EXTRA_SHARES="x=$T/cloud-home/Library/CloudStorage/Dropbox" sh run-alpine.sh 2>&1); rc=$?
+is_rc "extra shares: a cloud folder in ~/Library/CloudStorage is allowed" $rc 0
+out=$(cd "$W" && DRYRUN=1 HOME="$T/cloud-home" EXTRA_SHARES="x=$T/cloud-home/Library/Keychains" sh run-alpine.sh 2>&1); rc=$?
+not_rc0 "extra shares: the rest of ~/Library is refused" $rc
+out=$(cd "$W" && DRYRUN=1 EXTRA_SHARES="Bad Tag=/tmp" sh run-alpine.sh 2>&1); rc=$?
+not_rc0 "extra shares: a mount tag must be plain" $rc
 # what Alpine's first boot changes (found booting it: each broke something)
 grep -q 'AllowTcpForwarding local' "$REPO/run-server.sh" && ok "Alpine allows the local forwarding the browser pane uses" || ko "Alpine's sshd keeps forwarding off"
 grep -q 'rc-update add netmount default' "$REPO/run-server.sh" && ok "Alpine mounts the share on every start (netmount)" || ko "Alpine's share is mounted on the first start only"

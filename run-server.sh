@@ -13,6 +13,8 @@
 #              SERIAL=chardev for the console (default: file <machine>/console.log; unix:<path>,server,nowait for the launcher),
 #              QMP=unix socket path for control (a clean stop is {"execute":"system_powerdown"} there),
 #              SSH_PORT=port on 127.0.0.1 forwarded to the guest's sshd (default 2223), FORWARD=host:guest[,...] more ports,
+#              EXTRA_SHARES=more Mac folders, one "tag=path" per line (the launcher's cloud folders: Dropbox, OneDrive, ...),
+#              each a virtio-9p share with that mount tag, which the launcher mounts inside after the start,
 #              DRYRUN=1 prints the QEMU command, MYLINUX_OUT=dir with <distro>/ and qemu-runtime/, MYLINUX_QEMU=brew|runtime.
 set -eu
 cd "$(dirname "$0")"
@@ -167,6 +169,34 @@ set -- \
 if [ -n "$SHARE_DIR" ]; then
   set -- "$@" -fsdev "local,id=share,path=$SHARE_DIR,security_model=none,multidevs=remap$OWNER" \
     -device "virtio-9p-pci,fsdev=share,mount_tag=mac$ROM"
+fi
+# more Mac folders: tag=path lines. Cloud folders live in ~/Library (CloudStorage, Mobile Documents), which is
+# otherwise refused; a folder that is not there (the cloud app signed out) is left out with a note.
+if [ -n "${EXTRA_SHARES:-}" ]; then
+  n=0
+  NL='
+'
+  OLDIFS=$IFS; IFS=$NL
+  for entry in $EXTRA_SHARES; do
+    IFS=$OLDIFS
+    tag=${entry%%=*}; dir=${entry#*=}
+    case "$tag" in ''|*[!a-z0-9-]*) die "EXTRA_SHARES: '$tag' is not a mount tag (a-z, 0-9, -)" ;; esac
+    case "$dir" in /*) ;; *) die "EXTRA_SHARES: $tag needs an absolute path" ;; esac
+    case "$dir" in *,*) die "EXTRA_SHARES: the path for $tag must not contain a comma" ;; esac
+    case "$dir" in
+      "$HOME/Library/CloudStorage"/?*|"$HOME/Library/Mobile Documents/com~apple~CloudDocs"|"$HOME/Library/Mobile Documents/com~apple~CloudDocs"/*) ;;
+      /|/Users|/private|/tmp|/private/tmp|/System|/Library|/Applications|/Volumes|"$HOME"|"$HOME/Library"|"$HOME/Library"/*) die "refusing to share $dir (a system folder, the home folder or the Library)" ;;
+    esac
+    if [ -d "$dir" ]; then
+      n=$((n + 1))
+      set -- "$@" -fsdev "local,id=extra$n,path=$dir,security_model=none,multidevs=remap$OWNER" \
+        -device "virtio-9p-pci,fsdev=extra$n,mount_tag=$tag$ROM"
+    else
+      echo "run-$DISTRO.sh: $dir is not there; $tag is not shared this time" >&2
+    fi
+    IFS=$NL
+  done
+  IFS=$OLDIFS
 fi
 [ -z "${QMP:-}" ] || set -- "$@" -qmp "unix:$QMP,server=on,wait=off"
 if [ "${DRYRUN:-0}" = 1 ]; then

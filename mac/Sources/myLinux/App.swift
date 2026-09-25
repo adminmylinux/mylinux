@@ -67,7 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = args.firstIndex(of: "--render-install-script"), i + 1 < args.count {
             var p = RemoteProfile(kind: .ssh); p.name = "Debian terminal"
             if let file = ProcessInfo.processInfo.environment["MYLINUX_INSTALL_SCRIPT"] { p.installScript = file; p.name = "Alpine terminal" }
-            let view = NSHostingView(rootView: InstallScriptSheet(profile: p, dismiss: {}, run: { _ in }, preset: InstallScript.bundled(p.installScriptFile) ?? "#!/bin/bash\n"))
+            let tab: InstallScriptSheet.Tab = ProcessInfo.processInfo.environment["MYLINUX_INSTALL_TAB"] == "cloud" ? .cloud : .install
+            let view = NSHostingView(rootView: InstallScriptSheet(profile: p, dismiss: {}, run: { _ in }, preset: InstallScript.bundled(p.installScriptFile) ?? "#!/bin/bash\n", tab: tab))
             view.frame = NSRect(origin: .zero, size: view.fittingSize)
             view.appearance = NSAppearance(named: .darkAqua)
             if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
@@ -140,7 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let store = ProfileStore.shared
             var p = store.profiles.first(where: { $0.kind == kind }) ?? store.add(kind: kind)
             if let port = env["MYLINUX_TEST_PORT"].flatMap(Int.init) { p.sshPort = port; store.update(p) }
-            let runner = Runner(profileID: p.id)
+            if let cloud = env["MYLINUX_TEST_CLOUD"] { p.cloudFolders = cloud.split(separator: ",").map(String.init); store.update(p) }
+            let runner = RunManager.shared.runner(for: p.id)
             let t0 = Date()
             func say(_ m: String) { print(String(format: "%6.1fs ", Date().timeIntervalSince(t0)) + m); fflush(stdout) }
             say("starting \(p.name) (\(kind.rawValue)), ssh port \(p.sshPort), log \(runner.logFile.path)")

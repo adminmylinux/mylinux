@@ -101,7 +101,14 @@ rewrites its line, so the text is always what runs. **Run in Terminal** copies t
 (`~/.local/share/mylinux/debian_install.sh`, over the machine's SSH connection) and runs it in the terminal, in
 view. It installs git and tmux, the chosen tools, and the aliases `cc` (`claude update && claude
 --dangerously-skip-permissions`) and `cx` (`codex --dangerously-bypass-approvals-and-sandbox`; Codex dropped `--full-auto`) in a marked block of `~/.bashrc`. With Tailscale on,
-it ends at Tailscale's sign-in link. The script can change on `main` without a new launcher. **Show
+it ends at Tailscale's sign-in link. The script can change on `main` without a new launcher. The dialog's **Cloud**
+tab shares the Mac's cloud folders into the machine beside `~/Mac`: Dropbox, OneDrive (`~/Library/CloudStorage`),
+iCloud Drive (`~/Library/Mobile Documents/com~apple~CloudDocs`) and Google Drive, each one found on the Mac a
+checkbox. A ticked folder is one more virtio-9p share (`EXTRA_SHARES`, one `tag=path` per line, for `run-server.sh`;
+cloud folders are the one part of `~/Library` it will share), attached when the machine starts, so saving a change
+restarts a running machine. After each start, once SSH answers, the launcher mounts the ticked folders at
+`/mnt/<tag>` through `/etc/fstab` and links them as `~/Dropbox`, `~/OneDrive`, `~/iCloud`, `~/GoogleDrive`, and takes
+out the ones no longer ticked. The Mac's own cloud apps do the syncing; online-only files download when first read. **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
 forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says

@@ -38,6 +38,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var cpus = 0                // CPUS: 0 lets the script choose from the Mac's core count
     var sound = true            // AUDIO
     var sshPort = 0             // SSH=1 and FORWARD=<port>:22 when not 0: ssh -p <port> <user>@127.0.0.1 from the Mac
+    var cloudFolders: [String] = []   // servers: CloudFolder raw values, shared inside beside ~/Mac (EXTRA_SHARES)
 
     init(name: String, appsDisk: String, shareDir: String) {
         self.name = name; self.appsDisk = appsDisk; self.shareDir = shareDir
@@ -60,6 +61,7 @@ struct Profile: Codable, Identifiable, Hashable {
         cpus = try c.decodeIfPresent(Int.self, forKey: .cpus) ?? 0
         sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? true
         sshPort = try c.decodeIfPresent(Int.self, forKey: .sshPort) ?? 0
+        cloudFolders = try c.decodeIfPresent([String].self, forKey: .cloudFolders) ?? []
         // saved before Automatic existed: automatic when still at that launcher's fixed default, else the user's choice
         memoryAuto = try c.decodeIfPresent(Bool.self, forKey: .memoryAuto) ?? (memoryGB == Profile.legacyMemoryGB[kind])
     }
@@ -104,7 +106,7 @@ struct Profile: Codable, Identifiable, Hashable {
         p.id = id; p.name = "\(name) terminal"; p.host = "127.0.0.1"; p.port = sshPort; p.username = kind.serverUser
         p.keyFile = machineFolder.appendingPathComponent("ssh_key").path
         p.sshOptions = [RemoteProfile.knownHostsOption(machineFolder.appendingPathComponent("known_hosts").path), "ConnectTimeout=10"]
-        p.keyboard = .mac; p.launcherMachine = true; p.installScript = kind.installScriptName
+        p.keyboard = .mac; p.launcherMachine = true; p.installScript = kind.installScriptName; p.machineID = id
         if !shareDir.isEmpty { p.shareMacPath = shareDir; p.shareGuestPath = "~/" + URL(fileURLWithPath: shareDir).lastPathComponent }
         return p
     }
@@ -156,6 +158,8 @@ struct Profile: Codable, Identifiable, Hashable {
             if !shareDir.isEmpty { env["SHARE_DIR"] = shareDir }
             if !qmpSocket.isEmpty { env["QMP"] = qmpSocket }
             if cpus > 0 { env["CPUS"] = String(cpus) }
+            let extra = CloudFolder.extraShares(cloudFolders)
+            if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             return env
         }
         if kind == .omarchy {

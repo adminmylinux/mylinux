@@ -282,6 +282,44 @@ final class AlpineServerTests: XCTestCase {
     }
 }
 
+final class CloudFolderTests: XCTestCase {
+    func testFoldersAreFoundWhereTheCloudAppsKeepThem() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-home-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let storage = home.appendingPathComponent("Library/CloudStorage")
+        for d in ["Dropbox", "OneDrive-SoftwareOne", "GoogleDrive-me@example.com"] {
+            try FileManager.default.createDirectory(at: storage.appendingPathComponent(d), withIntermediateDirectories: true)
+        }
+        XCTAssertEqual(CloudFolder.dropbox.macPath(home: home), storage.appendingPathComponent("Dropbox").path)
+        XCTAssertEqual(CloudFolder.onedrive.macPath(home: home), storage.appendingPathComponent("OneDrive-SoftwareOne").path)
+        XCTAssertEqual(CloudFolder.googledrive.macPath(home: home), storage.appendingPathComponent("GoogleDrive-me@example.com").path)
+        XCTAssertNil(CloudFolder.icloud.macPath(home: home), "no iCloud Drive in this home")
+        let docs = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        XCTAssertEqual(CloudFolder.icloud.macPath(home: home), docs.path)
+    }
+    func testTheMountScriptAddsTheTickedAndRemovesTheRest() {
+        let s = CloudFolder.mountScript(["dropbox"])
+        XCTAssertTrue(s.contains(#"want="dropbox:Dropbox""#))
+        XCTAssertTrue(s.contains("for pair in dropbox:Dropbox onedrive:OneDrive icloud:iCloud googledrive:GoogleDrive; do"))
+        XCTAssertTrue(s.contains(##"$R sed -i "\#^$tag $mp #d" /etc/fstab"##), "an unticked folder leaves fstab")
+        XCTAssertTrue(s.contains("command -v doas") && s.contains("sudo -n"), "root through doas (Alpine) or sudo (Debian)")
+        XCTAssertTrue(CloudFolder.mountScript([]).contains(#"want="""#))
+    }
+    func testAServerPassesItsCloudFoldersToRunServerSh() throws {
+        var p = ProfileStore.newProfile(named: "A", kind: .alpine, folder: URL(fileURLWithPath: "/m/a"))
+        XCTAssertNil(p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/s")["EXTRA_SHARES"], "none by default")
+        p.cloudFolders = ["dropbox", "nonsense"]
+        let env = p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/s")
+        if let dropbox = CloudFolder.dropbox.macPath() { XCTAssertEqual(env["EXTRA_SHARES"], "dropbox=\(dropbox)") }
+        else { XCTAssertNil(env["EXTRA_SHARES"], "a folder this Mac does not have is left out") }
+        let saved = try JSONDecoder().decode(Profile.self, from: JSONEncoder().encode(p))
+        XCTAssertEqual(saved.cloudFolders, ["dropbox", "nonsense"])
+        let old = try JSONDecoder().decode(Profile.self, from: Data(#"{"kind":"alpine","name":"A","appsDisk":"/a","shareDir":""}"#.utf8))
+        XCTAssertEqual(old.cloudFolders, [], "saved before cloud folders existed")
+    }
+}
+
 final class BundledRuntimeTests: XCTestCase {
     func testInstalledWhenMissingOrAnotherVersion() {
         XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "qemu-runtime-11.1.1-2", hasTarball: true))

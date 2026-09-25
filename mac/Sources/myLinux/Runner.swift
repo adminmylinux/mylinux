@@ -137,6 +137,10 @@ final class Runner: ObservableObject {
     private func finished(status: Int32) {
         closeSerial()
         sshReady = false
+        if let p = restartWith {
+            restartWith = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.start(p) }
+        }
         try? logHandle?.close(); logHandle = nil
         let wasStopping = state == .stopping
         process = nil; stoppingSince = nil
@@ -251,6 +255,8 @@ final class Runner: ObservableObject {
                 if (try? t.run()) != nil {
                     t.waitUntilExit()
                     if t.terminationStatus == 0 {
+                        // the cloud folders (Install Script… › Cloud): mounted before the terminal opens, so ~/Dropbox is there
+                        self.mountCloudFolders(p, sshArgs: SshTerminal.arguments(for: profile))
                         DispatchQueue.main.async { self.sshReady = true; self.waitingForSSH = false; RemoteWindowController.show(profile) }
                         return
                     }
@@ -259,6 +265,30 @@ final class Runner: ObservableObject {
             }
         }
     }
+
+    /// Mounts the ticked cloud folders inside and takes out the others (CloudFolder.mountScript), over ssh; waits for
+    /// it, up to 20 s. Nothing to do on a machine that never had any.
+    private func mountCloudFolders(_ p: Profile, sshArgs: [String]) {
+        let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        t.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"] + sshArgs + ["sh", "-s"]
+        var env = ProcessInfo.processInfo.environment; env["PATH"] = Paths.toolPath; t.environment = env
+        let input = Pipe(); t.standardInput = input
+        t.standardOutput = FileHandle.nullDevice; t.standardError = FileHandle.nullDevice
+        guard (try? t.run()) != nil else { return }
+        input.fileHandleForWriting.write(Data(CloudFolder.mountScript(p.cloudFolders).utf8))
+        try? input.fileHandleForWriting.close()
+        let deadline = Date().addingTimeInterval(20)
+        while t.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+        if t.isRunning { t.terminate() }
+    }
+
+    /// Shut down, then start again with `p` (new cloud folders are attached only when QEMU starts).
+    func restart(_ p: Profile) {
+        guard isActive else { start(p); return }
+        restartWith = p
+        stop()
+    }
+    private var restartWith: Profile?
 
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
