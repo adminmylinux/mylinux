@@ -34,6 +34,20 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     /// Extra `-o` options for ssh, set by the launcher for its own machines (a per-machine known_hosts file);
     /// not saved.
     var sshOptions: [String] = []
+    /// `UserKnownHostsFile="<path>"`: ssh reads an unquoted value as a list of files split at spaces, so a path under
+    /// "Application Support" would become two files (and the key would be kept in ~/Library/Application).
+    static func knownHostsOption(_ path: String) -> String { "UserKnownHostsFile=\"\(path)\"" }
+    /// Launchers up to 0.3.6 left the machines' host keys in that stray ~/Library/Application file, where a stale key
+    /// then blocked a recreated machine on the same port. Removed only when it is a plain file holding nothing but
+    /// keys for 127.0.0.1 ports; returns whether it was.
+    @discardableResult static func removeStrayKnownHosts(library: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library")) -> Bool {
+        let url = library.appendingPathComponent("Application")
+        guard let a = try? FileManager.default.attributesOfItem(atPath: url.path), a[.type] as? FileAttributeType == .typeRegular,
+              (a[.size] as? Int ?? .max) < 65_536, let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+        let lines = text.split(whereSeparator: \.isNewline).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !lines.isEmpty, lines.allSatisfy({ $0.range(of: #"^\[127\.0\.0\.1\]:[0-9]+ \S+ \S+"#, options: .regularExpression) != nil }) else { return false }
+        return (try? FileManager.default.removeItem(at: url)) != nil
+    }
     /// The terminal of one of the launcher's own machines (a Debian server): its window carries the myLinux menu.
     var launcherMachine = false
     /// The machine's share folder on the Mac and its path inside the machine ("~/Mac"); not saved.

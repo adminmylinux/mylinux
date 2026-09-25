@@ -76,6 +76,7 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$SEED" ]; }; then
     { cp -c "$G/debian.raw" "$DISK.new" 2>/dev/null || dd if="$G/debian.raw" of="$DISK.new" bs=1m conv=sparse 2>/dev/null; } \
       && grow_file "$DISK.new" "$DISK_SIZE_GB" && mv "$DISK.new" "$DISK" || { rm -f "$DISK.new"; die "could not create the disk"; }
     cp "$G/DEBIAN-REVISION" "$MACHINE/DEBIAN-REVISION" 2>/dev/null || true
+    rm -f "$MACHINE/known_hosts"       # a new disk has a new host key: forget the old one
   fi
   [ -s "$MACHINE/ssh_key" ] || ssh-keygen -q -t ed25519 -N '' -C "myLinux $HOSTNAME" -f "$MACHINE/ssh_key" || die "could not make the SSH key (ssh-keygen)"
   if [ ! -s "$MACHINE/console-password" ]; then
@@ -143,5 +144,6 @@ if [ "${DRYRUN:-0}" = 1 ]; then
 fi
 [ -x "$QEMU" ] || die "$QEMU is missing"
 [ -s "$G/edk2-aarch64-code.fd" ] || die "the UEFI firmware is missing: run tools/get-debian.sh"
-printf 'ssh -i %s -p %s -o UserKnownHostsFile=%s -o StrictHostKeyChecking=accept-new debian@127.0.0.1\n' "$MACHINE/ssh_key" "$SSH_PORT" "$MACHINE/known_hosts" > "$MACHINE/ssh-command"
+# the path in double quotes inside the option: ssh reads an unquoted UserKnownHostsFile as a list split at spaces
+printf '%s\n' "ssh -i \"$MACHINE/ssh_key\" -p $SSH_PORT -o 'UserKnownHostsFile=\"$MACHINE/known_hosts\"' -o StrictHostKeyChecking=accept-new debian@127.0.0.1" > "$MACHINE/ssh-command"
 exec "$QEMU" "$@"

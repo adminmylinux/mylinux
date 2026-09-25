@@ -120,6 +120,28 @@ final class TerminalURLTests: XCTestCase {
     }
 }
 
+final class KnownHostsTests: XCTestCase {
+    func testTheOptionQuotesThePath() {
+        XCTAssertEqual(RemoteProfile.knownHostsOption("/Users/a/Library/Application Support/myLinux/m/known_hosts"),
+                       "UserKnownHostsFile=\"/Users/a/Library/Application Support/myLinux/m/known_hosts\"")
+        let p = ProfileStore.newProfile(named: "Debian", kind: .debian, folder: URL(fileURLWithPath: "/Users/a/Library/Application Support/myLinux/machines/d"))
+        XCTAssertEqual(p.terminalProfile.sshOptions.first, "UserKnownHostsFile=\"/Users/a/Library/Application Support/myLinux/machines/d/known_hosts\"")
+    }
+    func testTheStrayFileGoesOnlyWhenItHoldsOurKeys() throws {
+        let lib = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: lib, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: lib) }
+        let stray = lib.appendingPathComponent("Application")
+        try "[127.0.0.1]:2223 ssh-ed25519 AAAAC3Nz\n[127.0.0.1]:2224 ecdsa-sha2-nistp256 AAAAE2V\n".write(to: stray, atomically: true, encoding: .utf8)
+        XCTAssertTrue(RemoteProfile.removeStrayKnownHosts(library: lib))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stray.path))
+        try "[127.0.0.1]:2223 ssh-ed25519 AAAAC3Nz\nsomething else\n".write(to: stray, atomically: true, encoding: .utf8)
+        XCTAssertFalse(RemoteProfile.removeStrayKnownHosts(library: lib), "anything else in it: left alone")
+        try FileManager.default.removeItem(at: stray); try FileManager.default.createDirectory(at: stray, withIntermediateDirectories: false)
+        XCTAssertFalse(RemoteProfile.removeStrayKnownHosts(library: lib), "a folder: left alone")
+    }
+}
+
 final class InstallScriptTests: XCTestCase {
     let sample = """
     #!/bin/bash

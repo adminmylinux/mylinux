@@ -65,7 +65,7 @@ struct Profile: Codable, Identifiable, Hashable {
         var p = RemoteProfile(kind: .ssh)
         p.id = id; p.name = "\(name) terminal"; p.host = "127.0.0.1"; p.port = sshPort; p.username = "debian"
         p.keyFile = machineFolder.appendingPathComponent("ssh_key").path
-        p.sshOptions = ["UserKnownHostsFile=\(machineFolder.appendingPathComponent("known_hosts").path)", "ConnectTimeout=10"]
+        p.sshOptions = [RemoteProfile.knownHostsOption(machineFolder.appendingPathComponent("known_hosts").path), "ConnectTimeout=10"]
         p.keyboard = .mac; p.launcherMachine = true
         if !shareDir.isEmpty { p.shareMacPath = shareDir; p.shareGuestPath = "~/" + URL(fileURLWithPath: shareDir).lastPathComponent }
         return p

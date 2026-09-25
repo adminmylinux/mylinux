@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ImageManager.shared.refresh()
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
+        RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
         let args = CommandLine.arguments
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
@@ -81,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var wait = 2.0
             if let spec = ProcessInfo.processInfo.environment["MYLINUX_TEST_SSH"]?.split(separator: "|").map(String.init), spec.count == 4 {
                 p.port = Int(spec[0]) ?? 22; p.username = "debian"; p.keyFile = spec[1]
-                p.sshOptions = ["UserKnownHostsFile=\(spec[2])", "ConnectTimeout=10"]; p.shareMacPath = spec[3]; p.shareGuestPath = "~/Mac"
+                p.sshOptions = [RemoteProfile.knownHostsOption(spec[2]), "ConnectTimeout=10"]; p.shareMacPath = spec[3]; p.shareGuestPath = "~/Mac"
                 wait = 12
             }
             let c = RemoteWindowController.show(p)
