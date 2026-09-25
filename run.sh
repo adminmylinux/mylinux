@@ -126,7 +126,10 @@ if [ "${DRYRUN:-0}" = 1 ]; then
   exit 0
 fi
 # Launch through $OUT/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title.
-tools/make-app-bundle.sh >/dev/null || die "could not prepare $OUT/myLinux.app"
+# With APP_ID (the launcher's machines) the machine has a bundle of its own, named after it: its own app in ⌘Tab.
+BUNDLE=$(tools/make-app-bundle.sh | sed -n 's/ ready$//p' | tail -1) || true
+[ -n "$BUNDLE" ] || die "could not prepare $OUT/myLinux.app"
+QEMU="$BUNDLE/Contents/MacOS/qemu-myLinux"
 [ -x "$QEMU" ] || die "$QEMU is missing"
 
 # ---- host agent: window commands from the guest + text clipboard bridge -----------------------------
@@ -160,7 +163,7 @@ if [ "$CLIPBOARD" = 1 ]; then tools/clipboard-host.sh "$SHARE_DIR/clipboard" & C
 on run argv
   set {nm, w, sw, sh, sx, sy} to {item 1 of argv, item 2 of argv as integer, item 3 of argv as integer, item 4 of argv as integer, item 5 of argv as integer, item 6 of argv as integer}
   tell application "System Events"
-    repeat with pr in (every process whose bundle identifier is "dev.mylinux.vm")
+    repeat with pr in (every process whose bundle identifier starts with "dev.mylinux.vm")
       repeat with win in windows of pr
         set t to name of win
         if t is nm or t starts with (nm & " - (Press") then

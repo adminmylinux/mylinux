@@ -183,6 +183,12 @@ struct CloudTab: View {
         p.cloudFolders = CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) }
         store.update(p)
         let r = RunManager.shared.runner(for: machineID)
+        if MachineApp.active {
+            // in the machine's own app: the launcher saves and restarts; this window shows the seconds
+            MachineLink.request(["action": "cloudFolders", "folders": p.cloudFolders, "restart": r.isActive])
+            if r.isActive { r.mirrorRestartAsked(); restarting() } else { dismiss() }
+            return
+        }
         if r.isActive { r.restart(p); restarting() } else { dismiss() }
     }
 }

@@ -19,7 +19,7 @@ enum RemoteSession {
     }
     /// The window controller calls this after its list of open windows changed.
     static func noteOpenWindows() {
-        guard !quitting else { return }
+        guard !quitting, !MachineApp.active else { return }      // a machine's own app: the file is the launcher's
         save(RemoteWindowController.open.map { $0.profile.id })
     }
     /// At launch: the remembered profiles that still exist, in the order they were opened.
@@ -33,13 +33,14 @@ enum RemoteSession {
 /// mylinux-launcher://remote/<id> from earlier builds keep working. The name is matched as the profile's name, then
 /// its host (case-insensitive), or its id.
 enum RemoteLink {
-    enum Target: Equatable { case start; case remote(kind: RemoteProfile.Kind?, name: String) }
+    /// start: the machine used last; startMachine: one machine (its own app in the Dock sends mylinux-launcher://start/<id>)
+    enum Target: Equatable { case start; case startMachine(UUID); case remote(kind: RemoteProfile.Kind?, name: String) }
 
     static func parse(_ url: URL) -> Target? {
         guard url.scheme == "mylinux" || url.scheme == "mylinux-launcher" else { return nil }
         let name = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         switch url.host {
-        case "start": return .start
+        case "start": return UUID(uuidString: name).map { .startMachine($0) } ?? .start
         case "vnc": return .remote(kind: .vnc, name: name)
         case "ssh": return .remote(kind: .ssh, name: name)
         case "remote": return .remote(kind: nil, name: name)

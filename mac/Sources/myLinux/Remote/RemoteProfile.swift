@@ -145,6 +145,7 @@ final class RemoteStore: ObservableObject {
         profiles.removeAll { $0.id == id }
     }
     private func save() {
+        guard !MachineApp.active else { return }       // a machine's own app reads the launcher's list, never writes it
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]

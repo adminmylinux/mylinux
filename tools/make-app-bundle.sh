@@ -1,6 +1,10 @@
 #!/bin/sh
 # Create out/myLinux.app (or $MYLINUX_OUT/myLinux.app): a thin macOS bundle around Homebrew's QEMU so the Mac shows "myLinux"
 # as the app name, Dock icon and window title. run.sh calls this.
+# With APP_ID (a machine's id, from the launcher) the machine also gets a bundle of its own,
+# $OUT/machines/<APP_ID>/<APP_NAME>.app, with APP_NAME as its name and APP_ICON (an .icns) as its icon, so each
+# machine is its own app in the Dock and ⌘Tab; QEMU in it is an APFS clone of the shared one (no extra disk space).
+# The last line of output is "<bundle> ready": run.sh starts QEMU from that bundle.
 # Contents/MacOS/qemu-myLinux is QEMU (run.sh starts it with the machine's arguments); Contents/MacOS/myLinux, the
 # bundle's main executable, is a small script for launches from the Dock or Finder: with no arguments there is no
 # machine to run, so it asks myLinux Launcher to start the last-used machine (or bring a running one forward).
@@ -96,4 +100,50 @@ elif [ ! -f "$ICNS" ]; then
     sips -s format icns "$APP/Contents/Resources/myLinux.png" --out "$ICNS" >/dev/null || true
   else echo "warning: no icon (python3 unavailable)" >&2; fi
 fi
-echo "$APP ready"
+[ -n "${APP_ID:-}" ] || { echo "$APP ready"; exit 0; }
+
+# ---- the machine's own bundle ---------------------------------------------------------------------------------------
+case "$APP_ID" in *[!0-9A-Fa-f-]*|"") echo "APP_ID must be a machine id" >&2; exit 1 ;; esac
+ID=$(printf '%s' "$APP_ID" | tr 'A-F' 'a-f')
+NAME=$(printf '%s' "${APP_NAME:-myLinux}" | tr '/:' '--' | sed 's/^\.*//'); [ -n "$NAME" ] || NAME=myLinux
+DIR="$OUT/machines/$ID"; MAPP="$DIR/$NAME.app"
+mkdir -p "$DIR"
+# a renamed machine: the bundle under its old name goes
+for old in "$DIR"/*.app; do [ -e "$old" ] && [ "$old" != "$MAPP" ] && rm -rf "$old"; done
+mkdir -p "$MAPP/Contents/MacOS" "$MAPP/Contents/Resources"
+MBIN="$MAPP/Contents/MacOS/qemu-myLinux"
+if [ ! -f "$MBIN" ] || ! cmp -s "$BIN" "$MBIN"; then
+  rm -f "$MBIN.new"; cp -c "$BIN" "$MBIN.new" 2>/dev/null || cp "$BIN" "$MBIN.new"
+  mv -f "$MBIN.new" "$MBIN"
+fi
+# the Dock and Finder entry point: this machine, started (or brought forward) by the launcher
+cat > "$MAPP/Contents/MacOS/myLinux.new" <<SH
+#!/bin/sh
+case "\${1:-}" in ''|-psn_*) exec /usr/bin/open "mylinux-launcher://start/$ID" ;; esac
+exec "\$(dirname "\$0")/qemu-myLinux" "\$@"
+SH
+chmod +x "$MAPP/Contents/MacOS/myLinux.new" && mv -f "$MAPP/Contents/MacOS/myLinux.new" "$MAPP/Contents/MacOS/myLinux"
+rm -f "$MAPP/Contents/share" "$MAPP/Contents/lib"
+[ -e "$APP/Contents/lib" ] && ln -sfn "$(readlink "$APP/Contents/lib")" "$MAPP/Contents/lib"
+[ -e "$APP/Contents/share" ] && ln -sfn "$(readlink "$APP/Contents/share")" "$MAPP/Contents/share"
+XNAME=$(printf '%s' "$NAME" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+cat > "$MAPP/Contents/Info.plist.new" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>$XNAME</string>
+  <key>CFBundleDisplayName</key><string>$XNAME</string>
+  <key>CFBundleExecutable</key><string>myLinux</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE_ID.$ID</string>
+  <key>CFBundleIconFile</key><string>machine</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1</string>
+  <key>NSHighResolutionCapable</key><$HIDPI/>
+</dict></plist>
+PLIST
+if cmp -s "$MAPP/Contents/Info.plist.new" "$MAPP/Contents/Info.plist"; then rm -f "$MAPP/Contents/Info.plist.new"
+else mv -f "$MAPP/Contents/Info.plist.new" "$MAPP/Contents/Info.plist"; touch "$MAPP"; fi
+MICNS="$MAPP/Contents/Resources/machine.icns"
+SRC="${APP_ICON:-$ICNS}"
+if [ -f "$SRC" ] && ! cmp -s "$SRC" "$MICNS"; then cp -f "$SRC" "$MICNS" && touch "$MAPP"; fi
+echo "$MAPP ready"

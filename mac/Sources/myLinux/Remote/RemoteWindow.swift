@@ -160,11 +160,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             area.addArrangedSubview(t)
             window?.makeFirstResponder(t.keyView)
             if hadBrowser { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in if self?.browser == nil { self?.toggleBrowser() } } }
-            status.stringValue = "ssh \(profile.username.isEmpty ? "" : profile.username + "@")\(profile.host):\(profile.port)" + (profile.tmux.isEmpty ? "" : "  tmux \(profile.tmux)")
-            // a launcher machine: how long it took from Start to this terminal
-            if profile.launcherMachine, let t = RunManager.shared.runner(for: profile.machineID ?? profile.id).readyIn {
-                status.stringValue += "  ·  ready in \(Runner.seconds(t))"
-            }
+            sshStatus()
         }
         hudTimer?.invalidate()
         hudTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.updateStatus() }
@@ -291,6 +287,16 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         if let v = vncView, keyboardMode == .all, !v.grabbing { v.setGrab(true, keep: profile.keepForMac) }
     }
     func windowDidResignKey(_ n: Notification) { pasteboardCount = NSPasteboard.general.changeCount }
+    /// The ssh line under a terminal; a launcher machine adds how long it took from Start to ready (in a machine's
+    /// own app that arrives from the launcher a moment after the window opens, and is shown again then).
+    func sshStatus() {
+        guard profile.kind == .ssh else { return }
+        status.stringValue = "ssh \(profile.username.isEmpty ? "" : profile.username + "@")\(profile.host):\(profile.port)" + (profile.tmux.isEmpty ? "" : "  tmux \(profile.tmux)")
+        if profile.launcherMachine, let t = RunManager.shared.runner(for: profile.machineID ?? profile.id).readyIn {
+            status.stringValue += "  ·  ready in \(Runner.seconds(t))"
+        }
+    }
+
     func windowWillClose(_ n: Notification) {
         hudTimer?.invalidate(); vnc?.stop(); vncView?.setGrab(false, keep: [])
         tunnel?.stop(); tunnel = nil; stopForwards()

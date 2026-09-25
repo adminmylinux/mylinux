@@ -187,7 +187,10 @@ if [ "${DRYRUN:-0}" = 1 ]; then
   for a in "$@"; do printf '%s\n' "$a"; done
   exit 0
 fi
-MYLINUX_BUNDLE=omarchy tools/make-app-bundle.sh >/dev/null || die "could not prepare $OUT/myLinux-omarchy.app"
+# With APP_ID (the launcher's machines) the machine has a bundle of its own, named after it: its own app in ⌘Tab.
+BUNDLE=$(MYLINUX_BUNDLE=omarchy tools/make-app-bundle.sh | sed -n 's/ ready$//p' | tail -1) || true
+[ -n "$BUNDLE" ] || die "could not prepare $OUT/myLinux-omarchy.app"
+QEMU="$BUNDLE/Contents/MacOS/qemu-myLinux"
 [ -x "$QEMU" ] || die "$QEMU is missing"
 # the clipboard bridge connects once QEMU has made the socket and leaves when QEMU (its parent after the exec) is gone
 # the bridge is the launcher's own binary (MYLINUX_HELPER, set by the app); from the command line, the Python one

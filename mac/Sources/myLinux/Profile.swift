@@ -179,6 +179,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
+            env.merge(appBundleEnvironment) { $1 }
             return env
         }
         var env: [String: String] = [
@@ -194,6 +195,15 @@ struct Profile: Codable, Identifiable, Hashable {
             "SERIAL": "unix:\(serialSocket),server,nowait",
         ]
         if !resolution.isEmpty { env["RES"] = resolution.lowercased() }
+        env.merge(appBundleEnvironment) { $1 }
+        return env
+    }
+
+    /// A desktop machine's own app (tools/make-app-bundle.sh): named after the machine, with its kind's icon, so each
+    /// machine is an app of its own in the Dock and ⌘Tab. The icon path is relative to the scripts folder.
+    var appBundleEnvironment: [String: String] {
+        var env = ["APP_ID": id.uuidString.lowercased(), "APP_NAME": name]
+        if kind == .omarchy { env["APP_ICON"] = "tools/icons/machine-omarchy.icns" }
         return env
     }
 }
@@ -297,9 +307,23 @@ final class ProfileStore: ObservableObject {
     }
 
     /// Removes the profile only; its disk and share stay on disk.
-    func remove(_ id: UUID) { profiles.removeAll { $0.id == id } }
+    func remove(_ id: UUID) {
+        profiles.removeAll { $0.id == id }
+        // the machine's own app (MachineApp, make-app-bundle.sh) goes with it
+        try? FileManager.default.removeItem(at: AppSettings.shared.outDir.appendingPathComponent("machines/\(id.uuidString.lowercased())"))
+    }
+
+    /// A machine's own app (MachineApp) reads the list but never writes it: the launcher keeps it.
+    static var readOnly: Bool { MachineApp.active }
+
+    /// The list as saved now (a machine's own app, after the launcher changed it).
+    func reload() {
+        guard let data = try? Data(contentsOf: file), let list = try? JSONDecoder().decode([Profile].self, from: data), !list.isEmpty else { return }
+        loaded = false; profiles = list; loaded = true
+    }
 
     private func save() {
+        guard !ProfileStore.readOnly else { return }
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]

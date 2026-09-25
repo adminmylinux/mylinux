@@ -593,11 +593,56 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "no windows: nothing to bring back")
         XCTAssertEqual(RemoteSession.load(from: file), [])
     }
+    func testMachineAppsAreNamedAfterTheMachine() {
+        var p = ProfileStore.newProfile(named: "Build/box: 2", kind: .debian)
+        XCTAssertEqual(MachineApp.appName(p), "Build-box- 2", "no slash or colon in a bundle name")
+        XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.machine.\(p.id.uuidString.lowercased())")
+        p.name = "..."
+        XCTAssertEqual(MachineApp.appName(p), "Debian", "an empty name falls back to the kind")
+        let desk = ProfileStore.newProfile(named: "Work", kind: .omarchy)
+        XCTAssertEqual(MachineApp.bundleID(desk), "dev.mylinux.vm.omarchy.\(desk.id.uuidString.lowercased())")
+        XCTAssertEqual(desk.appBundleEnvironment["APP_NAME"], "Work")
+        XCTAssertEqual(desk.appBundleEnvironment["APP_ICON"], "tools/icons/machine-omarchy.icns")
+        XCTAssertEqual(desk.environment(outDir: URL(fileURLWithPath: "/tmp"), serialSocket: "/tmp/s")["APP_ID"], desk.id.uuidString.lowercased())
+        XCTAssertFalse(MachineApp.active, "the tests are the launcher")
+    }
+
+    func testTheMachineAppMirrorsTheLaunchersRunner() {
+        let id = UUID()
+        let app = Runner(profileID: id)
+        let t = Date().timeIntervalSince1970
+        app.mirror(["id": id.uuidString, "state": "running", "startedAt": t - 14, "readyAt": t, "sshReady": true, "mountingCloud": false])
+        XCTAssertEqual(app.state, .running)
+        XCTAssertEqual(app.readyIn ?? 0, 14, accuracy: 0.01)
+        XCTAssertTrue(app.sshReady)
+        app.mirrorRestartAsked()
+        XCTAssertNil(app.readyAt, "a restart asked in the app counts from the ask")
+        app.mirror(["id": id.uuidString, "state": "stopping", "startedAt": t - 14, "readyAt": t])
+        XCTAssertGreaterThan(app.restartBeganAt ?? .distantPast, Date(timeIntervalSince1970: t), "the ask is kept until the launcher's own restart begins")
+        app.mirror(["id": id.uuidString, "state": "failed", "why": "no disk"])
+        XCTAssertEqual(app.state, .failed("no disk"))
+        XCTAssertEqual(Runner(profileID: id).report["state"] as? String, "stopped")
+    }
+
+    func testStatsReadTheQemuCommandLine() {
+        XCTAssertEqual(MachineStats.smp("qemu-system-aarch64 -name x -smp 4 -m 2G"), 4)
+        XCTAssertEqual(MachineStats.smp("qemu -smp cpus=6,cores=6 -m 8G"), 6)
+        XCTAssertNil(MachineStats.smp("qemu -m 2G"))
+        let f = FileManager.default.temporaryDirectory.appendingPathComponent("stats-\(UUID().uuidString).img")
+        FileManager.default.createFile(atPath: f.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: f) }
+        let h = try! FileHandle(forWritingTo: f); try! h.truncate(atOffset: 1 << 30); try! h.close()
+        let d = MachineStats.fileDisk(f.path)
+        XCTAssertEqual(d?.total, Double(1 << 30))
+        XCTAssertLessThan(d?.used ?? 1e9, 1e6, "a sparse disk file takes almost nothing until written")
+    }
+
     func testLinksNameTheMachine() throws {
         XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux://vnc/omarchy%20imac")!), .remote(kind: .vnc, name: "omarchy imac"))
         XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux://ssh/build-box/")!), .remote(kind: .ssh, name: "build-box"))
         XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux-launcher://start")!), .start)
         let id = UUID()
+        XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux-launcher://start/\(id.uuidString.lowercased())")!), .startMachine(id), "a machine's own app in the Dock")
         XCTAssertEqual(RemoteLink.parse(URL(string: "mylinux-launcher://remote/\(id.uuidString)")!), .remote(kind: nil, name: id.uuidString), "the older form still works")
         XCTAssertNil(RemoteLink.parse(URL(string: "https://mylinux.app/vnc/x")!))
         XCTAssertNil(RemoteLink.parse(URL(string: "mylinux://settings")!))

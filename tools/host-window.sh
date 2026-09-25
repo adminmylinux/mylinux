@@ -11,7 +11,7 @@ osascript - "$CMD" "$NAME" <<'AS'
 on run argv
   set {cmd, nm} to {item 1 of argv, item 2 of argv}
   tell application "System Events"
-    repeat with pr in (every process whose bundle identifier is "dev.mylinux.vm")
+    repeat with pr in (every process whose bundle identifier starts with "dev.mylinux.vm")
       repeat with win in windows of pr
         set t to name of win
         if t is nm or t starts with (nm & " - (Press") then

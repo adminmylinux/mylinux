@@ -24,8 +24,20 @@ struct MyLinuxApp: App {
                 .environmentObject(remote)
         }
         .defaultSize(width: 1000, height: 820)
+        // a machine's own app (MachineApp) shows its terminal only, never the launcher's window
+        .defaultLaunchBehavior(MachineApp.active ? .suppressed : .automatic)
         .commands {
             CommandGroup(replacing: .newItem) {
+                if !MachineApp.active { newItems }
+            }
+            if MachineApp.active { CommandGroup(replacing: .appSettings) {} }
+        }
+        Settings {
+            SettingsView().environmentObject(settings)
+        }
+    }
+
+    @ViewBuilder private var newItems: some View {
                 Button("New myLinux Machine") { _ = store.add(kind: .mylinux) }.keyboardShortcut("n")
                 Button("New Omarchy Machine") { _ = store.add(kind: .omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Debian Server") { _ = store.add(kind: .debian) }.keyboardShortcut("n", modifiers: [.command, .option])
@@ -33,23 +45,21 @@ struct MyLinuxApp: App {
                 Divider()
                 Button("Download Linux…") { NotificationCenter.default.post(name: WelcomeSheet.showNotification, object: nil) }
                 Button("Quick Connect…") { QuickConnect.shared.show() }.keyboardShortcut("k")
-            }
-        }
-        Settings {
-            SettingsView().environmentObject(settings)
-        }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         signal(SIGPIPE, SIG_IGN)                 // a closed serial socket must not end the app
+        if MachineApp.active { MachineApp.run(); return }     // a machine's own app: its terminal, nothing else
         StatusMenu.shared.install()              // the menu bar item: the way out of a full keyboard grab
         ImageManager.shared.refresh()
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
         RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
         Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
+        MachineLink.serve()                              // the servers' own apps: their state, their requests
+        MachineStats.shared.start()                      // CPU, memory and disk under each running machine
         let args = CommandLine.arguments
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
@@ -380,7 +390,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(main.windowNumber), shot]
                     try? cap.run(); cap.waitUntilExit(); say("photographed the launcher window")
                 }
-                if windowAt == nil, runner.sshReady || env["MYLINUX_TEST_STALE_WINDOW"] != "1",
+                // MYLINUX_TEST_MACHINE_APP=1: the terminal opens in the machine's own app; name it, and photograph its
+                // window (after the app's own cloud restart when MYLINUX_TEST_RESTART_CLOUD is set)
+                if env["MYLINUX_TEST_MACHINE_APP"] == "1" {
+                    if windowAt == nil, runner.sshReady, let app = MachineApp.running(p) {
+                        windowAt = Date()
+                        say("machine app: \(app.localizedName ?? "?") (\(app.bundleIdentifier ?? "?")) pid \(app.processIdentifier) at \(app.bundleURL?.path ?? "?")")
+                        let restart = env["MYLINUX_TEST_RESTART_CLOUD"] != nil
+                        func shoot(_ path: String) {
+                            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+                            let wins = list.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier && ($0[kCGWindowLayer as String] as? Int) == 0 }
+                            guard let n = wins.first?[kCGWindowNumber as String] as? Int else { say("no window of the machine app on screen"); return }
+                            let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-o", "-l", String(n), path]
+                            try? cap.run(); cap.waitUntilExit(); say("photographed the machine app's window (\(wins.count) window(s))")
+                        }
+                        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { tm in
+                            if restart {
+                                if runner.restartBeganAt != nil, windowAt.map({ Date().timeIntervalSince($0) > 9 }) == true, !FileManager.default.fileExists(atPath: args[i + 2].replacingOccurrences(of: ".png", with: "-mid.png")) {
+                                    shoot(args[i + 2].replacingOccurrences(of: ".png", with: "-mid.png"))
+                                }
+                                guard let began = runner.restartBeganAt, let ready = runner.readyAt, ready > began else { return }
+                                tm.invalidate(); say("ready again \(Runner.seconds(ready.timeIntervalSince(began))) after the restart began")
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { shoot(args[i + 2]); say("qmp \(runner.qmpSocket)"); exit(0) }
+                            } else if Date().timeIntervalSince(windowAt ?? Date()) > 8 {
+                                tm.invalidate(); shoot(args[i + 2]); say("qmp \(runner.qmpSocket)"); exit(0)
+                            }
+                        }
+                    }
+                } else if windowAt == nil, runner.sshReady || env["MYLINUX_TEST_STALE_WINDOW"] != "1",
                    let c = RemoteWindowController.open.first(where: { $0.profile.id == p.id }) {
                     // MYLINUX_TEST_RESTART_CLOUD=dropbox: then save cloud folders as the Cloud tab does, and photograph
                     // the restart's progress halfway (<png>-mid.png) and when ready (<png>)
@@ -449,6 +486,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls {
             switch RemoteLink.parse(url) {
             case .start: QuickStart.run()
+            case .startMachine(let id):
+                if let p = ProfileStore.shared.profiles.first(where: { $0.id == id }) { QuickStart.start(p) } else { NSApp.activate() }
             case .remote(let kind, let name):
                 if let p = RemoteStore.shared.find(name, kind: kind) { RemoteWindowController.show(p) }
                 else { NSApp.activate(ignoringOtherApps: true); NSLog("no remote machine named %@ for %@", name, url.absoluteString) }
@@ -460,12 +499,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ n: Notification) { RemoteSession.quitting = true }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool {
-        RunManager.shared.active.isEmpty
+        MachineApp.active || RunManager.shared.active.isEmpty
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        guard MachineApp.active else { return true }
+        MachineApp.reopen(); return false
     }
 
     /// Machines keep running when the launcher quits (they are their own QEMU processes), so say so and offer to
     /// shut them down first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if MachineApp.active { return .terminateNow }       // the machine keeps running: it is the launcher's
         RemoteSession.quitting = true            // remote windows closing from here on are not closed on purpose
         if Handover.handingOver { return .terminateNow }      // a newer launcher takes over; the machines keep running
         let running = RunManager.shared.active
@@ -515,8 +560,9 @@ enum QuickStart {
     static func start(_ profile: Profile, runs: RunManager = .shared) {
         let runner = runs.runner(for: profile.id)
         if runner.isActive || Runner.diskInUse(profile.appsDisk) {
-            // already running: its window is a "myLinux" app instance; bring one forward
-            NSRunningApplication.runningApplications(withBundleIdentifier: "dev.mylinux.vm").first?.activate()
+            // already running: a server's terminal comes forward (its own app), a desktop's own app comes forward
+            if profile.isServer { runner.openTerminal(profile); return }
+            MachineApp.running(profile)?.activate()
             return
         }
         runner.start(profile)
@@ -530,7 +576,7 @@ struct SettingsView: View {
     @State private var clearError: String?
     @StateObject private var images = ImageManager.shared
     @StateObject private var runtime = RuntimeManager.shared
-    @AppStorage(TerminalEngine.settingKey) private var terminalEngine = TerminalEngine.ghostty.rawValue
+    @AppStorage(TerminalEngine.settingKey, store: TerminalEngine.defaults) private var terminalEngine = TerminalEngine.ghostty.rawValue
 
     var body: some View {
         Form {

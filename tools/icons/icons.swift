@@ -173,3 +173,44 @@ render("myLinux Launcher", to: out) { ctx in
     grad()
     ctx.restoreGState()
 }
+
+// ---- the machines' own apps (one per machine, in the Dock and ⌘Tab): each distribution's mark on the shared body ----
+/// A picture (a PNG beside this script, or an SF Symbol) drawn centred in the body, `size` wide.
+func mark(_ ctx: CGContext, _ image: NSImage, size: CGFloat, tint: NSColor? = nil) {
+    var img = image
+    if let tint {
+        img = NSImage(size: image.size, flipped: false) { r in
+            image.draw(in: r); tint.set(); r.fill(using: .sourceAtop); return true
+        }
+    }
+    let aspect = img.size.height / max(img.size.width, 1)
+    let w = aspect > 1 ? size / aspect : size, h = w * aspect
+    let r = CGRect(x: 512 - w / 2, y: 512 - h / 2, width: w, height: h)
+    guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+    ctx.saveGState()
+    ctx.translateBy(x: 0, y: S); ctx.scaleBy(x: 1, y: -1)        // CGImage wants y up
+    ctx.interpolationQuality = .high
+    ctx.draw(cg, in: CGRect(x: r.minX, y: S - r.maxY, width: w, height: h))
+    ctx.restoreGState()
+}
+let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+
+render("machine-omarchy", to: out) { ctx in
+    body(ctx, gradient: [0x151912, 0x151912, 0x151912], glow: 0x151912)
+    // omarchy.png is Omarchy's own tile; its dark square melts into the body
+    // (the body in the tile's own colour, flat, so no edge shows), clipped to the body
+    ctx.saveGState(); ctx.addPath(squircle(CGRect(x: 100, y: 100, width: 824, height: 824))); ctx.clip()
+    if let i = NSImage(contentsOf: here.appendingPathComponent("omarchy.png")) { mark(ctx, i, size: 860) }
+    ctx.restoreGState()
+}
+render("machine-debian", to: out) { ctx in
+    body(ctx, gradient: [0xFFFFFF, 0xF2F2F5, 0xDCDDE4], glow: 0xFFFFFF)
+    if let i = NSImage(contentsOf: here.appendingPathComponent("debian.png")) { mark(ctx, i, size: 560) }
+}
+render("machine-alpine", to: out) { ctx in
+    body(ctx, gradient: [0x1C7FA8, 0x0D5980, 0x083B57], glow: 0x9FE3FF)
+    let cfg = NSImage.SymbolConfiguration(pointSize: 400, weight: .semibold)
+    if let i = NSImage(systemSymbolName: "mountain.2.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
+        mark(ctx, i, size: 600, tint: .white)
+    }
+}

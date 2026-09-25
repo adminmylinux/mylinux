@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import Combine
 
 /// One running (or stopped) machine: run.sh as a child process with the profile's environment, its output in a
 /// log file, and the guest's serial console (a root shell) on a unix socket. Stop is a clean poweroff typed into
@@ -204,7 +205,7 @@ final class Runner: ObservableObject {
             guard let self, self.serialFD == fd else { return }
             self.closeSerial()
             // a machine this launcher did not start ends here (there is no child process to report it)
-            if self.process == nil && (self.state == .stopping || self.state == .inUseElsewhere) { self.state = .stopped; self.stoppingSince = nil }
+            if self.process == nil && (self.state == .stopping || self.state == .inUseElsewhere) { self.endedElsewhere() }
         }
     }
 
@@ -254,7 +255,7 @@ final class Runner: ObservableObject {
     /// the test, and a press during the wait just waits along.
     func openTerminal(_ p: Profile) {
         let profile = p.terminalProfile
-        if sshReady { RemoteWindowController.show(profile); return }
+        if sshReady { Runner.showTerminal(p); return }
         guard !waitingForSSH else { return }
         waitingForSSH = true
         let args = SshTerminal.arguments(for: profile) + ["true"]
@@ -275,7 +276,7 @@ final class Runner: ObservableObject {
                         self.mountCloudFolders(p, sshArgs: SshTerminal.arguments(for: profile))
                         DispatchQueue.main.async {
                             self.mountingCloud = false; self.readyAt = Date()
-                            self.sshReady = true; self.waitingForSSH = false; RemoteWindowController.show(profile)
+                            self.sshReady = true; self.waitingForSSH = false; Runner.showTerminal(p)
                         }
                         return
                     }
@@ -283,6 +284,11 @@ final class Runner: ObservableObject {
                 Thread.sleep(forTimeInterval: 1)      // each try already waits up to 3 s for the banner
             }
         }
+    }
+
+    /// The terminal in the machine's own app (MachineApp), or in the launcher when there is none.
+    static func showTerminal(_ p: Profile) {
+        if !MachineApp.show(p) { RemoteWindowController.show(p.terminalProfile) }
     }
 
     /// Mounts the ticked cloud folders inside and takes out the others (CloudFolder.mountScript), over ssh; waits for
@@ -304,6 +310,12 @@ final class Runner: ObservableObject {
     /// Shut down, then start again with `p` (new cloud folders are attached only when QEMU starts).
     func restart(_ p: Profile) {
         restartBeganAt = Date(); stoppedAt = nil
+        if state == .inUseElsewhere {
+            // started by an earlier launcher: shut down through its control socket, started here once it is gone
+            restartWith = p; stop()
+            if state != .stopping { restartWith = nil; state = .failed("\(p.name) could not be shut down for the restart.") }
+            return
+        }
         guard isActive else { stoppedAt = restartBeganAt; start(p); return }
         restartWith = p
         stop()
@@ -349,7 +361,7 @@ final class Runner: ObservableObject {
         switch state {
         case .stopping where process == nil:
             // shut down from here while another launcher had started it: done once its QEMU is gone
-            if !inUse { state = .stopped; stoppingSince = nil; closeSerial() }
+            if !inUse { closeSerial(); endedElsewhere() }
         case .stopped, .failed, .inUseElsewhere:
             if inUse && state != .inUseElsewhere { state = .inUseElsewhere }
             if !inUse && state == .inUseElsewhere { state = .stopped; closeSerial() }
@@ -358,7 +370,55 @@ final class Runner: ObservableObject {
         }
     }
 
+    /// A machine this launcher did not start is gone: stopped, and started here again when that was a restart.
+    private func endedElsewhere() {
+        state = .stopped; stoppingSince = nil
+        if let p = restartWith {
+            restartWith = nil; stoppedAt = Date()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.start(p) }
+        }
+    }
+
     func clearFailure() { if case .failed = state { state = .stopped } }
+
+    // ---- a server's own app (MachineApp): the state the launcher reports, and the copy the app keeps ------------
+    /// What the machine's app shows: the state and the clock (a machine run by an earlier launcher counts as running).
+    var report: [String: Any] {
+        var d: [String: Any] = ["id": profileID.uuidString, "mountingCloud": mountingCloud, "sshReady": sshReady]
+        switch state {
+        case .stopped: d["state"] = "stopped"
+        case .starting: d["state"] = "starting"
+        case .running, .inUseElsewhere: d["state"] = "running"
+        case .stopping: d["state"] = "stopping"
+        case .failed(let why): d["state"] = "failed"; d["why"] = why
+        }
+        for (k, v) in [("startedAt", startedAt), ("sshAnsweredAt", sshAnsweredAt), ("readyAt", readyAt),
+                       ("restartBeganAt", restartBeganAt), ("stoppedAt", stoppedAt)] {
+            if let v { d[k] = v.timeIntervalSince1970 }
+        }
+        return d
+    }
+
+    /// In the machine's app: the launcher's runner, as reported.
+    func mirror(_ d: [AnyHashable: Any]) {
+        switch d["state"] as? String {
+        case "starting": state = .starting
+        case "running": state = .running
+        case "stopping": state = .stopping
+        case "failed": state = .failed(d["why"] as? String ?? "The machine stopped.")
+        default: state = .stopped
+        }
+        func date(_ k: String) -> Date? { (d[k] as? Double).map(Date.init(timeIntervalSince1970:)) }
+        startedAt = date("startedAt"); sshAnsweredAt = date("sshAnsweredAt"); readyAt = date("readyAt")
+        stoppedAt = date("stoppedAt")
+        // a restart asked for here counts from the ask until the launcher's own begins
+        if let began = date("restartBeganAt") ?? restartBeganAt { restartBeganAt = max(began, restartBeganAt ?? began) }
+        mountingCloud = d["mountingCloud"] as? Bool ?? false
+        sshReady = d["sshReady"] as? Bool ?? false
+    }
+
+    /// In the machine's app, when it asks the launcher for a restart: the clock starts now.
+    func mirrorRestartAsked() { restartBeganAt = Date(); stoppedAt = nil; readyAt = nil; sshAnsweredAt = nil }
 
     // ---- helpers --------------------------------------------------------------------------------------------------
     static func connectUnix(_ path: String) -> Int32 {
@@ -463,12 +523,17 @@ final class Runner: ObservableObject {
 final class RunManager: ObservableObject {
     static let shared = RunManager()
     private var runners: [UUID: Runner] = [:]
+    private var changes: [UUID: AnyCancellable] = [:]
     private var timer: Timer?
 
     func runner(for id: UUID) -> Runner {
         if let r = runners[id] { return r }
         let r = Runner(profileID: id)
         runners[id] = r
+        // the launcher tells a server's own app about each change (MachineLink), after the change has landed
+        if !MachineApp.active {
+            changes[id] = r.objectWillChange.sink { [weak r] _ in DispatchQueue.main.async { if let r { MachineLink.send(r) } } }
+        }
         return r
     }
 

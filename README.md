@@ -178,6 +178,24 @@ up as "running outside the app". Keep **myLinux** itself in the Dock too (it is 
 in Application Support): clicking it starts the machine you used last through the launcher, or brings it
 forward when it is already running.
 
+**Each machine is its own app** in the Dock and ⌘Tab, under the machine's name and with its kind's icon
+(`tools/icons/machine-*.icns`). A desktop runs from `<out>/machines/<id>/<name>.app`, which
+`tools/make-app-bundle.sh` makes beside the shared `myLinux.app` when the launcher passes `APP_ID`, `APP_NAME` and
+`APP_ICON`: QEMU in it is an APFS clone of the branded one, so it takes no extra space. A server's terminal windows
+run in an app of the same shape that `MachineApp.swift` builds: a clone of the launcher's own binary, signed ad hoc,
+with the launcher's Frameworks and Resources linked in, whose Info.plist names the machine (machine mode: the
+terminal windows and nothing else). The machine itself stays the launcher's: it reports its state and seconds to
+the app, and the app's Cloud tab asks it for the restart (distributed notifications scoped to the data folder,
+`MachineLink`). Quitting the app leaves the machine running; the app quits by itself when the machine is shut down;
+kept in the Dock, the app starts its machine (opening the launcher in the background when needed) and counts the
+seconds until the terminal opens. One launcher runs at a time: a newer one takes over from an older one.
+
+**Numbers in the sidebar.** Under each running machine: CPU (its QEMU's share of the machine's virtual CPUs),
+memory in use of what it was given, and its disk's free space, as bars. Debian, Alpine and Omarchy report their
+memory from inside through QEMU's balloon statistics; myLinux shows the memory its QEMU holds on the Mac. A
+server's disk is `df` inside over ssh (every 30 s); a desktop's is the Mac's view of the disk file (space freed
+inside is not handed back, so the free space shown is a floor).
+
 **Remote machines, natively.** The launcher's sidebar has a *Remote* group: VNC desktops and SSH terminals
 opened straight from the Mac, so only one keyboard owner sits between you and the remote (see
 `docs/MAC-REMOTE-PLAN.md`). VNC uses libvncclient (Homebrew `libvncserver`) decoding into an IOSurface, with

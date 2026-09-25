@@ -26,7 +26,11 @@ enum TerminalEngine: String, CaseIterable {
     static let settingKey = "terminalEngine"
     static var current: TerminalEngine {
         if let e = ProcessInfo.processInfo.environment["MYLINUX_TERMINAL"].flatMap(TerminalEngine.init(rawValue:)) { return e }   // tests
-        return UserDefaults.standard.string(forKey: settingKey).flatMap(TerminalEngine.init(rawValue:)) ?? .ghostty
+        return defaults.string(forKey: settingKey).flatMap(TerminalEngine.init(rawValue:)) ?? .ghostty
+    }
+    /// The launcher's settings, also in a machine's own app (MachineApp), which has a defaults domain of its own.
+    static var defaults: UserDefaults {
+        MachineApp.active ? (UserDefaults(suiteName: MachineApp.launcherBundleID) ?? .standard) : .standard
     }
     var title: String { self == .swiftTerm ? "SwiftTerm (the earlier terminal)" : "Ghostty" }
 

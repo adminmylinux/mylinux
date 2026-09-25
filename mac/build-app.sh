@@ -97,6 +97,8 @@ cp "tools/icons/myLinux Launcher.icns" "$NEW/Contents/Resources/myLinux Launcher
 mkdir -p "$NEW/Contents/Resources/icons"
 cp "tools/icons/myLinux Launcher.png" tools/icons/myLinux.png tools/icons/omarchy.png tools/icons/debian.png "$NEW/Contents/Resources/icons/"
 cp tools/icons/myLinux.icns "$NEW/Contents/Resources/runtime/tools/icons/myLinux.icns"
+# each machine's own app (make-app-bundle.sh for the desktops, MachineApp.swift for the servers) has its kind's icon
+cp tools/icons/machine-omarchy.icns tools/icons/machine-debian.icns tools/icons/machine-alpine.icns "$NEW/Contents/Resources/runtime/tools/icons/"
 
 # Signed inside out: the libraries, then the app with its entitlements. MYLINUX_SIGN_IDENTITY, else the local
 # "myLinux Launcher (local signing)" certificate when the login keychain has one (a stable signature keeps the
