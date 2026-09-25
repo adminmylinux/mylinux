@@ -54,10 +54,11 @@ enum InstallScript {
 
     /// The line typed into the terminal: run the uploaded script with the shell its #! line names (Alpine's is sh:
     /// bash is what it installs), then a fresh bash login, which reads the new aliases (and on Alpine is the new login
-    /// shell). The leading space keeps it out of the history.
+    /// shell). The login follows even when the script stopped early, as long as there is a bash. The leading space
+    /// keeps it out of the history.
     static func command(file: String, script: String) -> String {
         let first = script.prefix(while: { $0 != "\n" })
-        return " \(first.contains("bash") ? "bash" : "sh") \(guestPath(file)) && exec bash -l\n"
+        return " \(first.contains("bash") ? "bash" : "sh") \(guestPath(file)); command -v bash >/dev/null && exec bash -l\n"
     }
 }
 

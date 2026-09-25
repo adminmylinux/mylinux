@@ -93,14 +93,14 @@ name as its host name, and the share folder mounted at `/mnt/mac` and linked fro
 to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
 and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
 page has the settings, the Console tab the serial console, and Start opens an SSH terminal with the machine's key
-as soon as its sshd answers (the Terminal button opens it again). That terminal window has a **myLinux** menu in the middle of its title bar; **Install Script…** opens
+as soon as its sshd answers (the Terminal button opens it again). That terminal window has a **CMD** menu in the middle of its title bar (⌘P opens it); **Install Script…** (⇧⌘P) opens
 [`debian_install.sh`](debian_install.sh), loaded from this repository on GitHub (the copy built into the launcher
 stands in when GitHub can't be reached), in an editable text field. Above it is a checkbox for each option the
 script declares (a `NAME=1   # option: Label` line: Claude Code, Codex, btop and Tailscale, all on). Ticking a box
 rewrites its line, so the text is always what runs. **Run in Terminal** copies the text into the machine
 (`~/.local/share/mylinux/debian_install.sh`, over the machine's SSH connection) and runs it in the terminal, in
 view. It installs git and tmux, the chosen tools, and the aliases `cc` (`claude update && claude
---dangerously-skip-permissions`) and `cx` (`codex --full-auto`) in a marked block of `~/.bashrc`. With Tailscale on,
+--dangerously-skip-permissions`) and `cx` (`codex --dangerously-bypass-approvals-and-sandbox`; Codex dropped `--full-auto`) in a marked block of `~/.bashrc`. With Tailscale on,
 it ends at Tailscale's sign-in link. The script can change on `main` without a new launcher. **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
@@ -110,7 +110,8 @@ Browser** finds the last address in the scrollback. **Screenshot Browser to Mach
 Path** put a PNG of the page, or of the Mac clipboard, into the machine's share folder and type its path into the
 terminal, so an agent inside can look at it. The Omarchy keys work here too: ⌘↩ splits the tab with one more
 terminal (side by side; under the others once the browser is on the right), ⇧⌘↩ shows the browser with its address
-bar ready, and ⌘T opens another tab to the machine. A terminal leaves the tab when its shell ends. So one tab can
+bar ready, ⌘T opens another tab to the machine, and ⌘W closes the pane with the keyboard (the browser, or one terminal
+of several; with a single terminal, the window). A terminal leaves the tab when its shell ends. So one tab can
 hold Claude in one terminal, Codex in another below it, and the result in the browser beside them. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
 `SERIAL`, `QMP`, `DRYRUN=1`.
 

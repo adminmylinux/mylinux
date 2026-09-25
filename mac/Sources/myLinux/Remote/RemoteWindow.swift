@@ -77,6 +77,16 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                       e.modifierFlags.intersection([.command, .shift, .option, .control]) == [.command] else { return e }
                 self.newTerminal(); return nil
             }
+            // ⌘P opens the CMD menu, ⇧⌘P Install Script…, ⌘W closes the pane with the keyboard (the browser, or one
+            // terminal of several); with a single terminal ⌘W goes on to close the window as usual
+            keyMonitorP = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+                guard let self, e.window === self.window, let key = e.charactersIgnoringModifiers?.lowercased() else { return e }
+                let mods = e.modifierFlags.intersection([.command, .shift, .option, .control])
+                if key == "p", mods == [.command] { self.cmdMenu?.performClick(nil); return nil }
+                if key == "p", mods == [.command, .shift] { self.installScript(); return nil }
+                if key == "w", mods == [.command], self.closeFocusedPane() { return nil }
+                return e
+            }
         }
         let toolbar = NSToolbar(identifier: "remote-\(profile.kind.rawValue)\(profile.launcherMachine ? "-machine" : "")"); toolbar.delegate = self; toolbar.displayMode = .iconOnly
         if profile.launcherMachine { toolbar.centeredItemIdentifiers = [NSToolbarItem.Identifier(Item.mylinux.rawValue)] }
@@ -92,6 +102,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     private var forwards: [Int: PortForward] = [:]
     private var keyMonitor: Any?
     private var keyMonitorT: Any?
+    private var keyMonitorP: Any?
+    /// The CMD pull-down in the title bar (⌘P opens it).
+    private var cmdMenu: NSPopUpButton?
     /// terminals | browser
     private var outer: NSSplitView?
     /// the terminals: columns while the tab is terminals only, a stack on the left once the browser is there
@@ -137,7 +150,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         terminals.append(t)
         if profile.launcherMachine { t.onOpenLink = { [weak self] url in self?.openInBrowser(url) } }
         t.onExit = { [weak self, weak t] code in
-            guard let self, let t else { return }
+            guard let self, let t, self.terminals.contains(where: { $0 === t }) else { return }      // closed with ⌘W
             NSLog("remote %@: ssh exited %@", self.profile.title, String(describing: code))
             if self.terminals.count > 1 { self.remove(terminal: t); return }
             self.showOverlay("Disconnected" + (code.map { $0 == 0 ? "" : " (ssh exited with status \($0))" } ?? "") + " — click to reconnect")
@@ -256,6 +269,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         tunnel?.stop(); tunnel = nil; stopForwards()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor); self.keyMonitor = nil }
         if let keyMonitorT { NSEvent.removeMonitor(keyMonitorT); self.keyMonitorT = nil }
+        if let keyMonitorP { NSEvent.removeMonitor(keyMonitorP); self.keyMonitorP = nil }
         RemoteWindowController.open.removeAll { $0 === self }
         RemoteSession.noteOpenWindows()             // closed on purpose: not brought back next time (unless quitting)
     }
@@ -275,10 +289,11 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         switch kind {
         case .mylinux:
             // a pull-down with the product name as its face; the first item is what the menu is for
-            let pop = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 110, height: 24), pullsDown: true)
+            let pop = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 80, height: 24), pullsDown: true)
             pop.bezelStyle = .texturedRounded
-            pop.addItem(withTitle: "myLinux")
-            let install = NSMenuItem(title: "Install Script…", action: #selector(installScript), keyEquivalent: ""); install.target = self
+            pop.addItem(withTitle: "CMD")
+            pop.toolTip = "Commands for this machine (⌘P)"
+            let install = NSMenuItem(title: "Install Script…", action: #selector(installScript), keyEquivalent: "p"); install.keyEquivalentModifierMask = [.command, .shift]; install.target = self
             pop.menu?.addItem(install)
             pop.menu?.addItem(.separator())
             let tab = NSMenuItem(title: "New Terminal Tab", action: #selector(newTerminal), keyEquivalent: "t"); tab.target = self; pop.menu?.addItem(tab)
@@ -288,8 +303,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                                  ("Screenshot Browser to Machine", #selector(screenshotBrowser)), ("Paste Screenshot Path", #selector(pasteScreenshot))] {
                 let mi = NSMenuItem(title: title, action: sel, keyEquivalent: ""); mi.target = self; pop.menu?.addItem(mi)
             }
+            let close = NSMenuItem(title: "Close Pane", action: #selector(closePaneFromMenu), keyEquivalent: "w"); close.target = self; pop.menu?.addItem(close)
             pop.menu?.delegate = self
-            item.view = pop; item.label = "myLinux"; item.visibilityPriority = .high
+            cmdMenu = pop
+            item.view = pop; item.label = "CMD"; item.visibilityPriority = .high
             return item
         case .flexibleSpace0: return nil
         case .fit: item.label = "Fit"; item.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: "Fit"); item.action = #selector(fit)
@@ -326,6 +343,17 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         menu.item(withTitle: "Screenshot Browser to Machine")?.isEnabled = browser != nil && !profile.shareMacPath.isEmpty
         menu.item(withTitle: "Paste Screenshot Path")?.isEnabled = !profile.shareMacPath.isEmpty
     }
+
+    /// ⌘W: the browser when it has the keyboard, else the terminal with it when the tab has more than one. Returns
+    /// false when there is only the one terminal (⌘W then closes the window).
+    private func closeFocusedPane() -> Bool {
+        if let pane = browser, let r = window?.firstResponder as? NSView, r === pane || r.isDescendant(of: pane) { hideBrowser(); return true }
+        guard terminals.count > 1, let t = ssh else { return false }
+        remove(terminal: t)
+        t.terminate()
+        return true
+    }
+    @objc private func closePaneFromMenu() { if !closeFocusedPane() { window?.performClose(nil) } }
 
     /// ⌘T: another terminal to the same machine, as a tab of this window.
     @objc private func newTerminal() {
@@ -432,6 +460,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     var testHasBrowser: Bool { browser != nil }
+    func testFocusBrowser() { browser?.focusAddress() }
+    var testSheetOpen: Bool { sheetWindow != nil }
     func testType(_ text: String) { ssh?.type(text + "\n") }
     func testSplit() { splitTerminal() }
     var testTerminalCount: Int { terminals.count }
@@ -442,7 +472,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     // ---- the myLinux menu: Install Script… ----
     private var sheetWindow: NSWindow?
-    @objc private func installScript() {
+    @objc func installScript() {
         guard let window, sheetWindow == nil else { return }
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: InstallScriptSheet(
             profile: profile,

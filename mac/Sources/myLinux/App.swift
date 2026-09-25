@@ -104,8 +104,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { print("terminals after cmd-return:", c.testTerminalCount, "stacked:", c.testTerminalsStacked); press("\r", 36, [.command, .shift]) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { print("browser after shift-cmd-return:", c.testHasBrowser, "stacked:", c.testTerminalsStacked); press("\r", 36, [.command]) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { print("terminals after another cmd-return:", c.testTerminalCount); press("t", 17, [.command]) }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5.5) { print("windows after cmd-t:", RemoteWindowController.open.count) }
-                wait = 6.5
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.5) { print("windows after cmd-t:", RemoteWindowController.open.count); c.window?.makeKeyAndOrderFront(nil) }
+                // ⌘W: the browser when it has the keyboard, then one terminal of several; ⇧⌘P: Install Script…
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { c.testFocusBrowser(); press("w", 13, [.command]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6.8) { print("browser after cmd-w in it:", c.testHasBrowser, "terminals:", c.testTerminalCount); press("w", 13, [.command]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 7.6) { print("terminals after cmd-w:", c.testTerminalCount, "window open:", c.window?.isVisible == true); press("P", 35, [.command, .shift]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 8.6) { print("install script sheet after shift-cmd-p:", c.testSheetOpen) }
+                wait = 9.5
             }
             // MYLINUX_TEST_SCENE="first command|second command": a product shot: the first command in the terminal, a
             // split with the second, the browser on MYLINUX_TEST_URL

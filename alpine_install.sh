@@ -20,7 +20,6 @@ packages="bash bash-completion curl ca-certificates git tmux less"
 # Claude Code on musl needs these
 [ "$CLAUDE" = 1 ] && packages="$packages libgcc libstdc++ ripgrep"
 [ "$BTOP" = 1 ] && packages="$packages btop"
-[ "$TAILSCALE" = 1 ] && packages="$packages tailscale"
 echo "== packages: $packages"
 doas apk update -q
 doas apk add -q $packages
@@ -32,17 +31,9 @@ fi
 
 if [ "$CODEX" = 1 ]; then
   echo "== Codex"
-  asset=codex-$(uname -m)-unknown-linux-musl
-  curl -fsSL -o /tmp/codex.tar.gz "https://github.com/openai/codex/releases/latest/download/$asset.tar.gz"
-  tar -xzf /tmp/codex.tar.gz -C /tmp "$asset"
-  install -m 0755 "/tmp/$asset" "$HOME/.local/bin/codex"
-  rm -f /tmp/codex.tar.gz "/tmp/$asset"
-fi
-
-if [ "$TAILSCALE" = 1 ]; then
-  echo "== Tailscale"
-  doas rc-update add tailscale default >/dev/null
-  doas rc-service tailscale start >/dev/null 2>&1 || true
+  # OpenAI's standalone installer: ~/.local/bin/codex and its package in ~/.codex (the bare release binary no
+  # longer runs on its own); no questions asked
+  curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
 fi
 
 # bash as the login shell, reading ~/.bashrc; the PATH and the aliases in one marked block of it
@@ -57,7 +48,7 @@ sed -i '/^# >>> myLinux >>>$/,/^# <<< myLinux <<<$/d' "$HOME/.bashrc"
   echo 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
   [ "$CLAUDE" = 1 ] && echo "export USE_BUILTIN_RIPGREP=0"
   [ "$CLAUDE" = 1 ] && echo "alias cc='claude update && claude --dangerously-skip-permissions'"
-  [ "$CODEX" = 1 ] && echo "alias cx='codex --full-auto'"
+  [ "$CODEX" = 1 ] && echo "alias cx='codex --dangerously-bypass-approvals-and-sandbox'"
   echo '# <<< myLinux <<<'
 } >> "$HOME/.bashrc"
 
@@ -65,9 +56,20 @@ echo "== done"
 [ "$CLAUDE" = 1 ] && "$HOME/.local/bin/claude" --version
 [ "$CODEX" = 1 ] && "$HOME/.local/bin/codex" --version
 [ "$BTOP" = 1 ] && btop --version | head -1
-if [ "$TAILSCALE" = 1 ]; then
-  tailscale version | head -1
-  # signing in prints a link (⌘-click it); it waits until you have, so it comes last
-  doas tailscale status >/dev/null 2>&1 || doas tailscale up
-fi
 echo "Aliases: cc (Claude), cx (Codex); bash is the login shell now (this terminal switches to it)."
+
+# Tailscale last: signing in waits for a browser, and nothing else should wait behind it
+if [ "$TAILSCALE" = 1 ]; then
+  echo "== Tailscale"
+  doas apk add -q tailscale
+  doas rc-update add tailscale default >/dev/null
+  doas rc-service tailscale start >/dev/null 2>&1 || true
+  tailscale version | head -1
+  if ! doas tailscale status >/dev/null 2>&1; then
+    echo "Sign in with the link below (⌘-click opens it). Ctrl-C skips; sign in later with: doas tailscale up"
+    # Ctrl-C ends only the sign-in: the script still finishes, so the terminal still switches to the new setup
+    trap 'echo; echo "Skipped. Sign in later with: doas tailscale up"' INT
+    doas tailscale up || true
+    trap - INT
+  fi
+fi

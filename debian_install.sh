@@ -28,16 +28,9 @@ fi
 
 if [ "$CODEX" = 1 ]; then
   echo "== Codex"
-  asset=codex-$(uname -m)-unknown-linux-musl
-  curl -fsSL -o /tmp/codex.tar.gz "https://github.com/openai/codex/releases/latest/download/$asset.tar.gz"
-  tar -xzf /tmp/codex.tar.gz -C /tmp "$asset"
-  install -m 0755 "/tmp/$asset" "$HOME/.local/bin/codex"
-  rm -f /tmp/codex.tar.gz "/tmp/$asset"
-fi
-
-if [ "$TAILSCALE" = 1 ]; then
-  echo "== Tailscale"
-  command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
+  # OpenAI's standalone installer: ~/.local/bin/codex and its package in ~/.codex (the bare release binary no
+  # longer runs on its own); no questions asked
+  curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
 fi
 
 # the PATH and the aliases, in one marked block of ~/.bashrc (replaced on a rerun, so nothing piles up)
@@ -48,7 +41,7 @@ sed -i '/^# >>> myLinux >>>$/,/^# <<< myLinux <<<$/d; /^# >>> myLinux agents >>>
   echo '# >>> myLinux >>>'
   echo 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac'
   [ "$CLAUDE" = 1 ] && echo "alias cc='claude update && claude --dangerously-skip-permissions'"
-  [ "$CODEX" = 1 ] && echo "alias cx='codex --full-auto'"
+  [ "$CODEX" = 1 ] && echo "alias cx='codex --dangerously-bypass-approvals-and-sandbox'"
   echo '# <<< myLinux <<<'
 } >> "$HOME/.bashrc"
 
@@ -56,9 +49,18 @@ echo "== done"
 [ "$CLAUDE" = 1 ] && "$HOME/.local/bin/claude" --version
 [ "$CODEX" = 1 ] && "$HOME/.local/bin/codex" --version
 [ "$BTOP" = 1 ] && btop --version | head -1
-if [ "$TAILSCALE" = 1 ]; then
-  tailscale version | head -1
-  # signing in prints a link (⌘-click it); it waits until you have, so it comes last
-  sudo tailscale status >/dev/null 2>&1 || sudo tailscale up
-fi
 echo "Aliases: cc (Claude), cx (Codex); new shells have them (this one after: source ~/.bashrc)."
+
+# Tailscale last: signing in waits for a browser, and nothing else should wait behind it
+if [ "$TAILSCALE" = 1 ]; then
+  echo "== Tailscale"
+  command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
+  tailscale version | head -1
+  if ! sudo tailscale status >/dev/null 2>&1; then
+    echo "Sign in with the link below (⌘-click opens it). Ctrl-C skips; sign in later with: sudo tailscale up"
+    # Ctrl-C ends only the sign-in: the script still finishes, so the terminal still switches to the new setup
+    trap 'echo; echo "Skipped. Sign in later with: sudo tailscale up"' INT
+    sudo tailscale up || true
+    trap - INT
+  fi
+fi
