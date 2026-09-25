@@ -264,7 +264,7 @@ final class AlpineServerTests: XCTestCase {
         XCTAssertEqual(p.script, "run-alpine.sh")
         XCTAssertEqual(p.appsDisk, "/m/alpine/alpine.raw")
         XCTAssertEqual(p.memoryGB, Profile.recommendedMemoryGB(.alpine))
-        XCTAssertEqual([8, 16, 32].map { Profile.recommendedMemoryGB(.alpine, macGB: $0) }, [1, 1, 2])
+        XCTAssertEqual([8, 16, 32].map { Profile.recommendedMemoryGB(.alpine, macGB: $0) }, [2, 2, 4])
         XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
         let env = p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/s.sock", qmpSocket: "/q.sock")
         XCTAssertEqual(env["DISK"], "/m/alpine/alpine.raw"); XCTAssertEqual(env["SSH_PORT"], "2223"); XCTAssertEqual(env["QMP"], "/q.sock")
