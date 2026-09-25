@@ -1,0 +1,239 @@
+#!/usr/bin/python3
+"""Save which apps are open on which Hyprland workspace, and open them again at the next login.
+
+    omarchy-session save       write the current layout (also done every minute and at logout by the units)
+    omarchy-session restore    open what the saved layout has and this session lacks (done at login by the units)
+    omarchy-session status     show the saved layout
+    omarchy-session interval <minutes>|off   how often the timer saves (off stops it; the login restore stays)
+    omarchy-session agent      run by a user unit: takes commands the Mac window drops into the share folder
+                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N) and keeps status.json
+                               there for the window's Session menu
+    omarchy-session enable | disable      the units (install.sh enables them)
+
+Each window is remembered with the command line of its process (/proc/<pid>/cmdline), so it is reopened the way
+it was started: a terminal in its working directory, a web app with its --app=URL, a browser that restores its
+own tabs. Windows without a mappable command (Omarchy's own popups, special workspaces) are skipped. Restore is
+idempotent: a workspace that already shows a window of that class is not given another.
+"""
+import json, os, shlex, subprocess, sys, time
+from pathlib import Path
+
+STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "omarchy-session/session.json"
+SKIP_CLASSES = {"walker", "omarchy-menu", "Omarchy", "wofi", "hyprland-share-picker", "xdg-desktop-portal-gtk",
+                "org.pulseaudio.pavucontrol", "nm-connection-editor", "impala", "wiremix", "btop", "org.gnome.Nautilus.Preferences"}
+# terminals get their working directory back
+TERMINAL_CWD = {"Alacritty": ["--working-directory"], "alacritty": ["--working-directory"],
+                "com.mitchellh.ghostty": ["--working-directory="], "kitty": ["--directory"], "foot": ["--working-directory"]}
+
+def hyprctl(*args):
+    r = subprocess.run(["hyprctl", "-j", *args], capture_output=True, text=True, timeout=10)
+    return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else None
+
+def command_of(pid):
+    """The process's argv, or None when it cannot be read (gone, or not ours)."""
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return None
+    argv = [a.decode("utf-8", "replace") for a in raw.split(b"\0") if a]
+    if not argv: return None
+    # a wrapper's child: uwsm/systemd-run start the app as "uwsm app -- cmd"; keep the cmd
+    if argv[0].endswith("uwsm") and "--" in argv: argv = argv[argv.index("--") + 1:]
+    return argv or None
+
+def cwd_of(pid):
+    """The working directory of the terminal's shell (its child), which is where the user is; the terminal
+    process itself sits wherever Hyprland started it."""
+    for p in Path("/proc").iterdir():
+        try:
+            if p.name.isdigit() and int(p.joinpath("stat").read_text().split(") ")[1].split()[1]) == pid:
+                return os.readlink(p / "cwd")
+        except (OSError, IndexError, ValueError):
+            continue
+    try: return os.readlink(f"/proc/{pid}/cwd")
+    except OSError: return None
+
+def snapshot():
+    """The open windows, or None when Hyprland does not answer (not running, or already gone at logout)."""
+    clients = hyprctl("clients")
+    if clients is None: return None
+    active = hyprctl("activeworkspace") or {}
+    windows = []
+    for c in clients:
+        ws = c.get("workspace", {}).get("id", 0)
+        cls = c.get("class") or c.get("initialClass") or ""
+        if ws <= 0 or not cls or cls in SKIP_CLASSES or not c.get("mapped", True): continue
+        argv = command_of(c.get("pid", 0))
+        if not argv: continue
+        w = {"class": cls, "workspace": ws, "title": c.get("title", ""), "command": argv, "floating": bool(c.get("floating"))}
+        if cls in TERMINAL_CWD and (cwd := cwd_of(c["pid"])): w["cwd"] = cwd
+        windows.append(w)
+    return {"saved": time.strftime("%Y-%m-%dT%H:%M:%S"), "active_workspace": active.get("id", 1), "windows": windows}
+
+def launch_command(w):
+    argv = list(w["command"])
+    flag = TERMINAL_CWD.get(w["class"])
+    if flag and w.get("cwd") and not any(a.startswith(flag[0].rstrip("=")) for a in argv):
+        argv += [flag[0] + w["cwd"]] if flag[0].endswith("=") else [flag[0], w["cwd"]]
+    return shlex.join(argv)
+
+def plan(saved, current):
+    """Which saved windows to open: per (class, workspace), as many as the saved layout has beyond what is open now."""
+    have = {}
+    for c in current:
+        ws = c.get("workspace", {}).get("id", 0); cls = c.get("class") or c.get("initialClass") or ""
+        if ws > 0 and cls: have[(cls, ws)] = have.get((cls, ws), 0) + 1
+    out = []
+    for w in saved.get("windows", []):
+        key = (w["class"], w["workspace"])
+        if have.get(key, 0) > 0: have[key] -= 1; continue
+        out.append(w)
+    return out
+
+def keep_previous(snap, previous):
+    """Why a snapshot must not replace the saved session, or None when it may.
+
+    At logout the save runs while Hyprland is going away: hyprctl fails, or answers with the windows that are
+    still open. Neither is the session the user wants back, so the previous file stays. An empty snapshot is
+    written only when there is nothing to lose (no previous windows)."""
+    if snap is None: return "Hyprland is not answering"
+    if not snap["windows"] and previous and previous.get("windows"): return "no windows are open"
+    return None
+
+def read_state():
+    try: return json.loads(STATE.read_text())
+    except (OSError, ValueError): return None
+
+def save():
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    s = snapshot()
+    if reason := keep_previous(s, read_state()):
+        print(f"not saved ({reason}); the previous session file is kept"); write_status(); return
+    tmp = STATE.with_suffix(".tmp"); tmp.write_text(json.dumps(s, indent=1)); tmp.replace(STATE)
+    print(f"saved {len(s['windows'])} windows to {STATE}")
+    write_status()
+
+def lua_string(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+def dispatch(lua, classic):
+    """Hyprland 0.56 takes dispatchers as Lua (hl.dsp...); older ones take the classic words. Try Lua first."""
+    r = subprocess.run(["hyprctl", "dispatch", lua], capture_output=True, text=True, timeout=10)
+    if r.returncode == 0 and "error" not in r.stdout.lower() + r.stderr.lower(): return True
+    r = subprocess.run(["hyprctl", "dispatch", *classic], capture_output=True, text=True, timeout=10)
+    return r.returncode == 0 and "error" not in r.stdout.lower() + r.stderr.lower()
+
+def restore():
+    if not STATE.exists(): print("nothing saved yet"); return
+    saved = json.loads(STATE.read_text())
+    todo = plan(saved, hyprctl("clients") or [])
+    for w in todo:
+        cmd = launch_command(w)
+        rule = f"[workspace {w['workspace']} silent{'; float' if w.get('floating') else ''}]"
+        ok = dispatch(f"hl.dsp.exec_cmd({lua_string(rule + ' ' + cmd)})", ["exec", f"{rule} {cmd}"])
+        print(f"workspace {w['workspace']}: {cmd}" + ("" if ok else "  (dispatch failed)"))
+        time.sleep(0.4)
+    ws = saved.get("active_workspace")
+    if ws: dispatch(f'hl.dsp.focus({{ workspace = "{ws}" }})', ["workspace", str(ws)])
+    print(f"opened {len(todo)} windows")
+
+def status():
+    if not STATE.exists(): print("nothing saved yet"); return
+    s = json.loads(STATE.read_text())
+    print(f"saved {s['saved']}, active workspace {s['active_workspace']}")
+    for w in s["windows"]: print(f"  workspace {w['workspace']}: {w['class']}  {launch_command(w)}")
+
+CONTROL = Path("/mnt/mac/mylinux-tools/control")
+TIMER_DROPIN = Path.home() / ".config/systemd/user/omarchy-session-save.timer.d/interval.conf"
+
+def parse_interval(dropin_text):
+    """Minutes from the timer drop-in: the last OnUnitActiveSec= wins (an empty one first resets the unit's own)."""
+    minutes = 1
+    for line in dropin_text.splitlines():
+        if line.startswith("OnUnitActiveSec=") and line.split("=", 1)[1].strip():
+            minutes = int(line.split("=", 1)[1].strip().rstrip("min") or 1)
+    return minutes
+
+def current_interval():
+    """Minutes between timer saves, 0 when the timer is off."""
+    r = subprocess.run(["systemctl", "--user", "is-active", "omarchy-session-save.timer"], capture_output=True, text=True)
+    if r.stdout.strip() != "active": return 0
+    return parse_interval(TIMER_DROPIN.read_text()) if TIMER_DROPIN.exists() else 1
+
+def interval(value):
+    if value in ("off", "0"):
+        subprocess.run(["systemctl", "--user", "stop", "omarchy-session-save.timer"], check=False)
+        print("timer saves off (the login restore and the save at logout stay)"); return
+    minutes = max(1, int(value))
+    TIMER_DROPIN.parent.mkdir(parents=True, exist_ok=True)
+    TIMER_DROPIN.write_text(f"[Timer]\nOnActiveSec=\nOnActiveSec={minutes}min\nOnUnitActiveSec=\nOnUnitActiveSec={minutes}min\n")
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "--user", "restart", "omarchy-session-save.timer"], check=False)
+    print(f"saving every {minutes} min")
+
+def write_status():
+    try:
+        saved = json.loads(STATE.read_text()) if STATE.exists() else {}
+        CONTROL.mkdir(parents=True, exist_ok=True)
+        tmp = CONTROL / "status.json.tmp"
+        tmp.write_text(json.dumps({"last_saved": saved.get("saved"), "windows": len(saved.get("windows", [])), "interval_minutes": current_interval()}))
+        tmp.replace(CONTROL / "status.json")
+    except OSError:
+        pass
+
+def agent():
+    """Poll the share for command files from the Mac window; the share is only there when one is configured."""
+    last_status = 0
+    while True:
+        try:
+            for f in sorted(CONTROL.glob("*.cmd")):
+                try: words = f.read_text().split(); f.unlink()
+                except OSError: continue
+                if not words: continue
+                if words[0] == "save": save()
+                elif words[0] == "restore": restore()
+                elif words[0] == "interval" and len(words) > 1: interval(words[1])
+                write_status()
+        except OSError:
+            pass
+        if time.monotonic() - last_status > 30: write_status(); last_status = time.monotonic()
+        time.sleep(1)
+
+UNITS = ["omarchy-session-restore.service", "omarchy-session-save.timer", "omarchy-session-agent.service"]
+
+def units(action):
+    """enable/disable for this account. The units may be system-wide (baked into the disk by run-omarchy.sh, enabled
+    in /etc/systemd/user), which a user cannot disable; masking them in the account has the same effect."""
+    if action == "disable":
+        subprocess.run(["systemctl", "--user", "disable", "--now", *UNITS], check=False)
+        subprocess.run(["systemctl", "--user", "mask", *UNITS], check=False)
+    else:
+        subprocess.run(["systemctl", "--user", "unmask", *UNITS], check=False)
+        subprocess.run(["systemctl", "--user", "enable", "--now", *UNITS], check=False)
+
+def selftest():
+    saved = {"windows": [{"class": "Alacritty", "workspace": 1, "command": ["alacritty"], "cwd": "/home/x/prj"},
+                         {"class": "chromium", "workspace": 2, "command": ["chromium", "--app=https://a.example"]},
+                         {"class": "chromium", "workspace": 2, "command": ["chromium"]}]}
+    current = [{"class": "chromium", "workspace": {"id": 2}}]
+    todo = plan(saved, current)
+    assert [w["class"] for w in todo] == ["Alacritty", "chromium"], "one chromium is already on workspace 2"
+    assert launch_command(saved["windows"][0]) == "alacritty --working-directory /home/x/prj"
+    assert launch_command(saved["windows"][1]) == "chromium --app=https://a.example"
+    assert plan(saved, [{"class": "Alacritty", "workspace": {"id": 3}}])[0]["class"] == "Alacritty", "same class on another workspace does not count"
+    assert lua_string('[workspace 2 silent] foot -e sh -c "echo \\"hi\\""') == '"[workspace 2 silent] foot -e sh -c \\"echo \\\\\\"hi\\\\\\"\\""', "quotes and backslashes escaped for Lua"
+    assert parse_interval("[Timer]\nOnActiveSec=\nOnActiveSec=5min\nOnUnitActiveSec=\nOnUnitActiveSec=5min\n") == 5, "the reset line must not win"
+    assert parse_interval("") == 1
+    prev = {"windows": [{"class": "foot", "workspace": 1, "command": ["foot"]}]}
+    assert keep_previous(None, prev) == "Hyprland is not answering", "a failed snapshot never replaces the file"
+    assert keep_previous({"windows": []}, prev) == "no windows are open", "an empty snapshot keeps the saved windows"
+    assert keep_previous({"windows": []}, {"windows": []}) is None, "empty over empty is fine"
+    assert keep_previous({"windows": []}, None) is None, "the first save may be empty"
+    assert keep_previous(prev, {"windows": []}) is None
+    print("omarchy-session selftest ok")
+
+if __name__ == "__main__":
+    a = sys.argv[1] if len(sys.argv) > 1 else "status"
+    {"save": save, "restore": restore, "status": status, "enable": lambda: units("enable"), "disable": lambda: units("disable"),
+     "interval": lambda: interval(sys.argv[2] if len(sys.argv) > 2 else "1"), "agent": agent,
+     "--selftest": selftest}.get(a, lambda: print(__doc__))()

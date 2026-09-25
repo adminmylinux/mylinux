@@ -3,7 +3,16 @@ import Foundation
 /// One saved way to start myLinux: keyboard and mouse handling, machine size, and which apps disk and share
 /// folder it uses (separate disks are separate myLinux installs). Maps onto run.sh's environment.
 struct Profile: Codable, Identifiable, Hashable {
+    /// What runs in the machine. myLinux is run.sh: the RAM-resident image plus an apps disk. Omarchy is
+    /// run-omarchy.sh: the Try Omarchy guest on the accelerated QEMU runtime, where `appsDisk` is the machine's root
+    /// disk (its kernel and initramfs sit in boot/ beside it) and `appsSizeGB` the size that disk is created with.
+    /// Debian is run-debian.sh: a terminal-only Debian server from the cloud image, `appsDisk` its root disk, no
+    /// window; the launcher reaches it through the serial console and an SSH terminal on `sshPort`.
+    enum Kind: String, Codable { case mylinux, omarchy, debian }
+    var isServer: Bool { kind == .debian }
+
     var id = UUID()
+    var kind = Kind.mylinux
     var name = "myLinux"
     var grab = "opt"            // GRAB: opt | full | none
     var mouse = "tablet"        // MOUSE: tablet | relative
@@ -13,6 +22,10 @@ struct Profile: Codable, Identifiable, Hashable {
     var appsSizeGB = 16         // APPS_SIZE_GB, used when the disk is created
     var appsDisk = ""           // APPS_IMG
     var shareDir = ""           // SHARE_DIR
+    // Omarchy machines only (run-omarchy.sh)
+    var cpus = 0                // CPUS: 0 lets the script choose from the Mac's core count
+    var sound = true            // AUDIO
+    var sshPort = 0             // SSH=1 and FORWARD=<port>:22 when not 0: ssh -p <port> <user>@127.0.0.1 from the Mac
 
     init(name: String, appsDisk: String, shareDir: String) {
         self.name = name; self.appsDisk = appsDisk; self.shareDir = shareDir
@@ -22,6 +35,7 @@ struct Profile: Codable, Identifiable, Hashable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        kind = (try? c.decodeIfPresent(Kind.self, forKey: .kind)) ?? .mylinux      // an unknown kind from a newer app: myLinux
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? "myLinux"
         grab = try c.decodeIfPresent(String.self, forKey: .grab) ?? "opt"
         mouse = try c.decodeIfPresent(String.self, forKey: .mouse) ?? "tablet"
@@ -31,10 +45,31 @@ struct Profile: Codable, Identifiable, Hashable {
         appsSizeGB = try c.decodeIfPresent(Int.self, forKey: .appsSizeGB) ?? 16
         appsDisk = try c.decodeIfPresent(String.self, forKey: .appsDisk) ?? ""
         shareDir = try c.decodeIfPresent(String.self, forKey: .shareDir) ?? ""
+        cpus = try c.decodeIfPresent(Int.self, forKey: .cpus) ?? 0
+        sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? true
+        sshPort = try c.decodeIfPresent(Int.self, forKey: .sshPort) ?? 0
     }
 
     /// The QEMU window title and run.sh instance name. The first profile keeps the plain name.
-    var windowName: String { name == "myLinux" ? "myLinux" : "myLinux (\(name))" }
+    var windowName: String {
+        if kind != .mylinux { return name }
+        return name == "myLinux" ? "myLinux" : "myLinux (\(name))"
+    }
+    /// The script that starts this kind of machine, relative to the scripts folder.
+    var script: String { kind == .omarchy ? "run-omarchy.sh" : kind == .debian ? "run-debian.sh" : "run.sh" }
+    /// The Debian machine's folder (its disk, SSH key, console password and seed live there).
+    var machineFolder: URL { URL(fileURLWithPath: appsDisk).deletingLastPathComponent() }
+    /// The SSH terminal to a Debian machine: keyed by the machine's id, so a second request brings the same window
+    /// forward; the machine's own key and known_hosts; the share, for screenshots into it.
+    var terminalProfile: RemoteProfile {
+        var p = RemoteProfile(kind: .ssh)
+        p.id = id; p.name = "\(name) terminal"; p.host = "127.0.0.1"; p.port = sshPort; p.username = "debian"
+        p.keyFile = machineFolder.appendingPathComponent("ssh_key").path
+        p.sshOptions = ["UserKnownHostsFile=\(machineFolder.appendingPathComponent("known_hosts").path)", "ConnectTimeout=10"]
+        p.keyboard = .mac; p.launcherMachine = true
+        if !shareDir.isEmpty { p.shareMacPath = shareDir; p.shareGuestPath = "~/" + URL(fileURLWithPath: shareDir).lastPathComponent }
+        return p
+    }
 
     /// Problems that would make run.sh refuse to start, in words for the form.
     var problems: [String] {
@@ -46,6 +81,22 @@ struct Profile: Codable, Identifiable, Hashable {
                 && (Int(parts[0]) ?? 0) >= 640
             if !ok { p.append("Resolution must look like 1920x1200 (640–8192 wide, 480–8192 high).") }
         }
+        if kind == .debian {
+            if appsDisk.isEmpty { p.append("Choose where the machine's disk lives.") }
+            if !(8...2000).contains(appsSizeGB) { p.append("Disk size must be 8–2000 GB.") }
+            if shareDir.contains(",") || appsDisk.contains(",") { p.append("Paths must not contain a comma.") }
+            if !(1024...65535).contains(sshPort) { p.append("The SSH port must be 1024–65535.") }
+            if cpus < 0 || cpus > ProcessInfo.processInfo.processorCount { p.append("This Mac has \(ProcessInfo.processInfo.processorCount) processor cores.") }
+            return p
+        }
+        if kind == .omarchy {
+            if appsDisk.isEmpty { p.append("Choose where the machine's disk lives.") }
+            if !(8...2000).contains(appsSizeGB) { p.append("Disk size must be 8–2000 GB.") }
+            if shareDir.contains(",") { p.append("The share folder's path must not contain a comma.") }
+            if sshPort != 0 && !(1024...65535).contains(sshPort) { p.append("The SSH port must be 1024–65535.") }
+            if cpus < 0 || cpus > ProcessInfo.processInfo.processorCount { p.append("This Mac has \(ProcessInfo.processInfo.processorCount) processor cores.") }
+            return p                                 // the share folder is optional for Omarchy
+        }
         if appsDisk.isEmpty { p.append("Choose where the apps disk lives.") }
         if shareDir.isEmpty { p.append("Choose a share folder.") }
         if !(4...2000).contains(appsSizeGB) { p.append("Apps disk size must be 4–2000 GB.") }
@@ -53,7 +104,41 @@ struct Profile: Codable, Identifiable, Hashable {
     }
 
     /// run.sh's environment for this profile.
-    func environment(outDir: URL, serialSocket: String) -> [String: String] {
+    func environment(outDir: URL, serialSocket: String, qmpSocket: String = "") -> [String: String] {
+        if kind == .debian {
+            var env: [String: String] = [
+                "MYLINUX_OUT": outDir.path,
+                "DISK": appsDisk,
+                "DISK_SIZE_GB": String(appsSizeGB),
+                "NAME": name,
+                "MEM": "\(memoryGB)G",
+                "SERIAL": "unix:\(serialSocket),server,nowait",
+                "SSH_PORT": String(sshPort),
+            ]
+            if !shareDir.isEmpty { env["SHARE_DIR"] = shareDir }
+            if !qmpSocket.isEmpty { env["QMP"] = qmpSocket }
+            if cpus > 0 { env["CPUS"] = String(cpus) }
+            return env
+        }
+        if kind == .omarchy {
+            var env: [String: String] = [
+                "MYLINUX_OUT": outDir.path,
+                "DISK": appsDisk,
+                "DISK_SIZE_GB": String(appsSizeGB),
+                "NAME": windowName,
+                "GRAB": grab,
+                "MEM": "\(memoryGB)G",
+                "SERIAL": "unix:\(serialSocket),server,nowait",
+            ]
+            if !shareDir.isEmpty { env["SHARE_DIR"] = shareDir }
+            if !qmpSocket.isEmpty { env["QMP"] = qmpSocket }
+            if !resolution.isEmpty { env["RES"] = resolution.lowercased() }
+            if cpus > 0 { env["CPUS"] = String(cpus) }
+            if !sound { env["AUDIO"] = "0" }
+            if !clipboard { env["CLIPBOARD"] = "0" }
+            if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
+            return env
+        }
         var env: [String: String] = [
             "MYLINUX_OUT": outDir.path,
             "APPS_IMG": appsDisk,
@@ -101,8 +186,22 @@ final class ProfileStore: ObservableObject {
         return newProfile(named: "myLinux")
     }
 
-    static func newProfile(named name: String) -> Profile {
-        let dir = Paths.machines.appendingPathComponent(Paths.slug(name), isDirectory: true)
+    static func newProfile(named name: String, kind: Profile.Kind = .mylinux, folder: URL? = nil) -> Profile {
+        let dir = folder ?? Paths.machines.appendingPathComponent(Paths.slug(name), isDirectory: true)
+        if kind == .debian {
+            var p = Profile(name: name, appsDisk: dir.appendingPathComponent("debian.raw").path,
+                            shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
+            p.kind = .debian; p.memoryGB = 2; p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
+            return p
+        }
+        if kind == .omarchy {
+            // the share's own name is what Omarchy shows in the home folder (~/Mac)
+            var p = Profile(name: name, appsDisk: dir.appendingPathComponent("omarchy.ext4").path,
+                            shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
+            p.kind = .omarchy; p.memoryGB = 8; p.appsSizeGB = 32
+            p.grab = "full"      // every key to Omarchy, Command as Super: Omarchy's shortcuts as they are meant
+            return p
+        }
         return Profile(name: name, appsDisk: dir.appendingPathComponent("apps.img").path,
                        shareDir: dir.appendingPathComponent("share", isDirectory: true).path)
     }
@@ -117,20 +216,30 @@ final class ProfileStore: ObservableObject {
 
     /// A new machine: its own disk and share, the other settings copied from `template` when given.
     @discardableResult
-    func add(copying template: Profile? = nil) -> Profile {
-        let name = uniqueName(template.map { "\($0.name) copy" } ?? "Machine")
-        var p = ProfileStore.newProfile(named: name)
+    func add(copying template: Profile? = nil, kind: Profile.Kind? = nil) -> Profile {
+        let kind = kind ?? template?.kind ?? .mylinux
+        let template = template?.kind == kind ? template : nil      // settings carry over within a kind only
+        let name = uniqueName(template.map { "\($0.name) copy" } ?? (kind == .omarchy ? "Omarchy" : kind == .debian ? "Debian" : "Machine"))
+        var p = ProfileStore.newProfile(named: name, kind: kind)
         if let t = template {
             p.grab = t.grab; p.mouse = t.mouse; p.clipboard = t.clipboard
             p.memoryGB = t.memoryGB; p.resolution = t.resolution; p.appsSizeGB = t.appsSizeGB
+            p.cpus = t.cpus; p.sound = t.sound      // not the SSH port: two machines cannot listen on one
+        }
+        // a Debian machine always listens: the next free port after the other machines'
+        if kind == .debian {
+            let used = Set(profiles.map(\.sshPort))
+            var port = 2223
+            while used.contains(port) { port += 1 }
+            p.sshPort = port
         }
         // a slug already used by another profile's folder gets a suffix
         var folder = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
         var n = 2
         while profiles.contains(where: { $0.appsDisk == p.appsDisk || $0.shareDir == p.shareDir }) {
             folder = Paths.machines.appendingPathComponent("\(Paths.slug(name))-\(n)", isDirectory: true); n += 1
-            p.appsDisk = folder.appendingPathComponent("apps.img").path
-            p.shareDir = folder.appendingPathComponent("share", isDirectory: true).path
+            let fresh = ProfileStore.newProfile(named: name, kind: kind, folder: folder)
+            p.appsDisk = fresh.appsDisk; p.shareDir = fresh.shareDir
         }
         profiles.append(p)
         return p

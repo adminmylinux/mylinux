@@ -31,8 +31,18 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     var keyboard = Keyboard.optionSuper
     var keepForMac: [String] = []   // shortcuts the Mac keeps even in "all" mode, e.g. ["cmd+c", "cmd+v"]
     var hasPassword = false         // a password is stored in the Keychain
+    /// Extra `-o` options for ssh, set by the launcher for its own machines (a per-machine known_hosts file);
+    /// not saved.
+    var sshOptions: [String] = []
+    /// The terminal of one of the launcher's own machines (a Debian server): its window carries the myLinux menu.
+    var launcherMachine = false
+    /// The machine's share folder on the Mac and its path inside the machine ("~/Mac"); not saved.
+    var shareMacPath = ""
+    var shareGuestPath = ""
 
     init(kind: Kind = .vnc) { self.kind = kind; port = kind == .ssh ? 22 : 5900; keyboard = kind == .ssh ? .mac : .optionSuper }
+
+    enum CodingKeys: String, CodingKey { case id, name, kind, host, port, username, quality, keyFile, tmux, keyboard, keepForMac, hasPassword }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

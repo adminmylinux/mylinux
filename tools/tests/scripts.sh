@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$W/tools/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-debian.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -126,6 +126,181 @@ rm -f "$D/Image"
 out=$(cd / && DRYRUN=1 MYLINUX_OUT="$D" SHARE_DIR="$T/s" sh "$W/run.sh" 2>&1); rc=$?
 not_rc0 "MYLINUX_OUT: missing image in the data directory fails" $rc
 
+echo "accelerated QEMU runtime (tools/get-qemu-runtime.sh, tools/qemu-flavour.sh, run.sh)"
+out=$(cd "$W" && DRYRUN=1 sh run.sh 2>&1); has "without a runtime: Homebrew's QEMU" "$out" "QEMU=brew"
+has "without a runtime: the plain GPU device" "$out" "virtio-gpu-pci,xres="
+# a fake runtime archive: qemu is a script that answers the two questions the installer asks
+F="$T/fake runtime"; mkdir -p "$F/qemu-runtime/bin" "$F/qemu-runtime/lib"
+printf '#!/bin/sh\ncase "$*" in *"-device help"*) echo "name \"virtio-gpu-gl-pci\", bus PCI" ;; *) echo "QEMU emulator version fake" ;; esac\n' > "$F/qemu-runtime/bin/qemu-system-aarch64"
+chmod +x "$F/qemu-runtime/bin/qemu-system-aarch64"; echo fake-1 > "$F/qemu-runtime/RUNTIME-REVISION"
+A="$T/qemu-runtime-macos-arm64.tar.gz"
+(cd "$F" && tar -czf "$A" qemu-runtime) && (cd "$T" && shasum -a 256 qemu-runtime-macos-arm64.tar.gz > "$A.sha256")
+cp "$A" "$T/badsum.tar.gz"
+echo "0000000000000000000000000000000000000000000000000000000000000000  qemu-runtime-macos-arm64.tar.gz" > "$T/badsum.tar.gz.sha256"
+(cd "$W" && MYLINUX_RUNTIME_FILE="$T/badsum.tar.gz" sh tools/get-qemu-runtime.sh >/dev/null 2>&1); rc=$?
+not_rc0 "a runtime with the wrong checksum is refused" $rc
+file_absent "refused runtime: nothing installed" "$W/out/qemu-runtime"
+E="$T/evil"; mkdir -p "$E/qemu-runtime" "$E/elsewhere"; echo x > "$E/elsewhere/file"
+(cd "$E" && tar -czf "$T/evil.tar.gz" qemu-runtime elsewhere) && (cd "$T" && shasum -a 256 evil.tar.gz | sed 's/evil.tar.gz/qemu-runtime-macos-arm64.tar.gz/' > "$T/evil.tar.gz.sha256")
+(cd "$W" && MYLINUX_RUNTIME_FILE="$T/evil.tar.gz" sh tools/get-qemu-runtime.sh >/dev/null 2>&1); rc=$?
+not_rc0 "an archive with paths outside qemu-runtime/ is refused" $rc
+file_absent "refused archive: nothing unpacked beside it" "$W/out/elsewhere"
+(cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1); rc=$?
+is_rc "a good runtime installs" $rc 0
+file_is "installed runtime records its revision" "$W/out/qemu-runtime/RUNTIME-REVISION" "fake-1"
+file_absent "staging folder is gone" "$W/out/.staging-qemu-runtime"
+out=$(cd "$W" && DRYRUN=1 sh run.sh 2>&1); has "with a runtime: run.sh uses it" "$out" "QEMU=runtime"
+has "with a runtime: accelerated GPU device without a ROM file" "$out" "virtio-gpu-gl-pci,max_outputs=1,xres="
+has "with a runtime: every PCI device without a ROM file" "$out" "virtio-net-pci,netdev=n0,romfile="
+has "with a runtime: GICv3" "$out" "virt,gic-version=3"
+has "with a runtime: GL display" "$out" "cocoa,gl=es,"
+out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=brew sh run.sh 2>&1); has "MYLINUX_QEMU=brew insists on Homebrew's" "$out" "QEMU=brew"
+out=$(cd "$W" && DRYRUN=1 RENDER=soft sh run.sh 2>&1); has "RENDER=soft asks the guest for software GL" "$out" "mylinux.gl=soft"
+out=$(cd "$W" && DRYRUN=1 RENDER=fast sh run.sh 2>&1); rc=$?
+not_rc0 "unknown RENDER is refused" $rc
+out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=nonsense sh run.sh 2>&1); rc=$?
+not_rc0 "unknown MYLINUX_QEMU is refused" $rc
+echo "run-omarchy.sh (DRYRUN, with the fake runtime)"
+out=$(cd / && DRYRUN=1 SCALE=1 RES=1600x1000 DISK="$T/om/omarchy.ext4" SHARE_DIR="$T/om/Mac Files" NAME="Omarchy test" sh "$W/run-omarchy.sh" -qmp none 2>&1); rc=$?
+is_rc "dry run works from another directory" $rc 0
+has "root disk path is passed intact" "$out" "file=$T/om/omarchy.ext4,format=raw"
+has "the kernel comes from the machine's own boot folder" "$out" "$T/om/boot/vmlinuz-linux"
+has "accelerated GPU at the asked size, no ROM" "$out" "virtio-gpu-gl-pci,max_outputs=1,xres=1600,yres=1000,romfile="
+has "window fixed to the guest size" "$out" "zoom-to-fit=off"
+o2=$(cd "$W" && DRYRUN=1 SCALE=2 RES=1600x1000 sh run-omarchy.sh 2>&1); has "Retina: the guest gets twice the points" "$o2" "xres=3200,yres=2000,romfile="
+o2=$(cd "$W" && DRYRUN=1 SCALE=1 RES=9000x9000 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "a size beyond QEMU's range is refused" $rc
+o2=$(cd "$W" && DRYRUN=1 SCALE=1 RES=8000x6000 sh run-omarchy.sh 2>&1); has "a size larger than the display is shrunk to fit" "$o2" "does not fit the display"
+o2=$(cd "$W" && DRYRUN=1 SCALE=3 RES=1600x1000 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "unknown SCALE is refused" $rc
+has "share exported for the guest's first user" "$out" "path=$T/om/Mac Files,security_model=none,multidevs=remap,guest_owner_uid=1000"
+has "share name travels as URL-safe base64" "$out" "omarchy.shared_folder_name=TWFjIEZpbGVz"
+has "extra QEMU arguments pass through" "$out" "none"
+file_absent "a dry run creates no disk" "$T/om/omarchy.ext4"
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); case "$out" in *shared_folder_name*) ko "no share: nothing about one on the command line" ;; *) ok "no share: nothing about one on the command line" ;; esac
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 QMP="$T/q.sock" sh run-omarchy.sh 2>&1); has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
+case "$out" in *audiodev*) ok "sound device by default" ;; *) ko "sound device by default" ;; esac
+has "clipboard port for Omarchy's agent by default" "$out" "name=dev.tryomarchy.clipboard"
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 CLIPBOARD=0 sh run-omarchy.sh 2>&1)
+case "$out" in *tryomarchy.clipboard*) ko "CLIPBOARD=0 leaves the port out" ;; *) ok "CLIPBOARD=0 leaves the port out" ;; esac
+out=$(cd "$W" && DRYRUN=1 SCALE=1 RES=1600x1000 SHARE_DIR="$T/om/Mac Files" sh run-omarchy.sh 2>&1); has "dry run: no session tools copied into the share" "$out" "DISK="
+has "the session helper and the share are handed to the window as two values (no shell line)" "$out" "SESSION_CMD=$W/tools/omarchy-session-mac.sh SESSION_SHARE=$T/om/Mac Files"
+grep -q 'launchedTaskWithExecutableURL:\[NSURL fileURLWithPath:helper\]' "$REPO/tools/qemu-runtime-patches/qemu-cocoa-size-buttons.patch" && rc=0 || rc=1
+is_rc "the window runs the session helper directly, not through /bin/sh" $rc 0
+file_absent "dry run leaves the share alone" "$T/om/Mac Files/mylinux-tools"
+(sh "$REPO/tools/omarchy-session-mac.sh" "$T/om/Mac Files" interval 5 >/dev/null 2>&1); rc=$?
+is_rc "omarchy-session-mac.sh drops a command file into the share" $rc 0
+c=$(cat "$T/om/Mac Files/mylinux-tools/control/"*.cmd 2>/dev/null); [ "$c" = "interval 5" ] && ok "the command file holds the words" || ko "the command file holds '$c'"
+(sh "$REPO/tools/omarchy-session-mac.sh" "$T/om/Mac Files" reboot >/dev/null 2>&1); rc=$?
+not_rc0 "unknown session commands are refused" $rc
+(python3 "$REPO/omarchy/session/omarchy-session" --selftest >/dev/null 2>&1); rc=$?
+is_rc "omarchy-session selftest (restore planning, terminal working directory)" $rc 0
+
+echo "run-debian.sh (DRYRUN, with the fake runtime)"
+out=$(cd / && DRYRUN=1 DISK="$T/deb/debian.raw" SHARE_DIR="$T/deb/Mac Files" NAME="Debian test" SSH_PORT=2299 FORWARD=8080:80 QMP="$T/q.sock" sh "$W/run-debian.sh" -qmp none 2>&1); rc=$?
+is_rc "dry run works from another directory" $rc 0
+has "boots the downloaded UEFI firmware" "$out" "$W/out/debian/edk2-aarch64-code.fd"
+has "root disk as a raw virtio disk" "$out" "file=$T/deb/debian.raw,format=raw"
+has "the cloud-init seed rides as a read-only disk" "$out" "file=$T/deb/seed.iso,format=raw,media=disk,readonly=on"
+has "SSH forwarded to the asked port" "$out" "hostfwd=tcp:127.0.0.1:2299-:22"
+has "more forwards after it" "$out" "hostfwd=tcp:127.0.0.1:8080-:80"
+has "no display: the serial console is the machine" "$out" "-display"
+has "share exported for the guest's user" "$out" "path=$T/deb/Mac Files,security_model=none,multidevs=remap,guest_owner_uid=1000"
+has "host name from the machine name" "$out" "HOSTNAME=debian-test"
+has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
+has "extra QEMU arguments pass through" "$out" "none"
+file_absent "a dry run creates no disk" "$T/deb/debian.raw"
+file_absent "a dry run makes no seed" "$T/deb/seed.iso"
+out=$(cd "$W" && DRYRUN=1 SSH_PORT=80 sh run-debian.sh 2>&1); rc=$?
+not_rc0 "a privileged SSH port is refused" $rc
+out=$(cd "$W" && DRYRUN=1 DISK="/a,b/debian.raw" sh run-debian.sh 2>&1); rc=$?
+not_rc0 "a comma in the disk path is refused" $rc
+out=$(cd "$W" && DRYRUN=1 SHARE_DIR="$HOME" sh run-debian.sh 2>&1); rc=$?
+not_rc0 "the whole home folder is refused as a share" $rc
+out=$(cd "$W" && DRYRUN=1 DISK_SIZE_GB=4 sh run-debian.sh 2>&1); rc=$?
+not_rc0 "a disk under 8 GB is refused" $rc
+echo "the Omarchy clipboard bridge"
+grep -q '"$MYLINUX_HELPER" --omarchy-clipboard "$CLIPSOCK"' "$REPO/run-omarchy.sh" && ok "run-omarchy.sh starts the launcher's own bridge when the app runs it" || ko "run-omarchy.sh does not use MYLINUX_HELPER"
+grep -q 'xcodebuild -license check' "$REPO/run-omarchy.sh" && ok "an unaccepted Xcode licence counts as no python3" || ko "the python3 guard ignores the Xcode licence"
+echo "no python3 on the start and download paths"
+# a Mac without Xcode's command line tools has only a python3 stub, which fails and pops an install dialog
+for f in run.sh run-debian.sh tools/get-debian.sh tools/get-omarchy.sh tools/get-image.sh tools/get-qemu-runtime.sh; do
+  grep -n 'python3' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -q . && ko "$f calls python3" || ok "$f does not call python3"
+done
+for f in run-omarchy.sh tools/make-app-bundle.sh; do
+  bad=$(grep -n 'python3 ' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -v 'have_python' | grep -v 'echo ' | grep -v '\[ -x ' || true)
+  [ -z "$bad" ] && ok "$f calls python3 only behind have_python" || ko "$f calls python3 unguarded: $bad"
+done
+printf '{"items":[{"data":{"info":{"arch":"arm64","version":"20260914-2601"},"packages":[{"name":"x","version":"9"}]}}]}' > "$T/image.json"
+v=$(plutil -extract items.0.data.info.version raw -o - "$T/image.json" 2>/dev/null)
+[ "$v" = "20260914-2601" ] && ok "get-debian.sh's plutil read finds the image version" || ko "plutil read gave '$v'"
+
+echo "mac/package-dmg.sh"
+FAKE="$T/Fake App.app"; mkdir -p "$FAKE/Contents/MacOS"; printf '#!/bin/sh\necho hi\n' > "$FAKE/Contents/MacOS/Fake App"; chmod +x "$FAKE/Contents/MacOS/Fake App"
+printf '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Fake App</string><key>CFBundleIdentifier</key><string>test.fake</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>' > "$FAKE/Contents/Info.plist"
+codesign --force --sign - "$FAKE" >/dev/null 2>&1
+(sh "$REPO/mac/package-dmg.sh" "$FAKE" "$T/fake.dmg" >/dev/null 2>&1); rc=$?
+is_rc "packages an app into a DMG" $rc 0
+[ -s "$T/fake.dmg.sha256" ] && rc=0 || rc=1; is_rc "writes the checksum beside it" $rc 0
+M="$T/mnt"; mkdir -p "$M"; hdiutil attach -quiet -nobrowse -readonly -mountpoint "$M" "$T/fake.dmg" >/dev/null 2>&1
+[ -d "$M/Fake App.app" ] && [ -L "$M/Applications" ] && rc=0 || rc=1; is_rc "the DMG holds the app and an Applications shortcut" $rc 0
+hdiutil detach -quiet "$M" >/dev/null 2>&1 || true
+(sh "$REPO/mac/package-dmg.sh" "$T/nowhere.app" "$T/x.dmg" >/dev/null 2>&1); rc=$?
+not_rc0 "refuses a path that is not an app" $rc
+(sh "$REPO/mac/package-dmg.sh" --notarize prof "$FAKE" "$T/y.dmg" >/dev/null 2>&1); rc=$?
+not_rc0 "refuses to notarise without a signing identity" $rc
+
+echo "tools/omarchy-bake-session.sh"
+grep -q 'tools/omarchy-bake-session.sh "$DISK.new"' "$W/run-omarchy.sh" && rc=0 || rc=1
+is_rc "run-omarchy.sh bakes the session tool into a new disk" $rc 0
+gunzip -c "$REPO/tools/tests/fixtures/ext4-mini.img.gz" > "$T/mini.img"
+(cd "$W" && MYLINUX_DEBUGFS=/nonexistent/debugfs sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
+is_rc "without a debugfs it says so and exits 3 (the caller carries on)" $rc 3
+DEBUGFS=""; for c in "${MYLINUX_DEBUGFS:-}" "$REPO/out/qemu-runtime/bin/debugfs" /opt/homebrew/opt/e2fsprogs/sbin/debugfs; do [ -n "$c" ] && [ -x "$c" ] && { DEBUGFS=$c; break; }; done
+if [ -n "$DEBUGFS" ]; then
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
+  is_rc "bakes into an ext4 image" $rc 0
+  out=$("$DEBUGFS" -R "stat /usr/local/bin/omarchy-session" "$T/mini.img" 2>/dev/null); has "the script is a 0755 file" "$out" "Mode:  0755"
+  out=$("$DEBUGFS" -R "cat /etc/systemd/user/omarchy-session-restore.service" "$T/mini.img" 2>/dev/null); has "the units run the system-wide script" "$out" "ExecStart=/usr/local/bin/omarchy-session restore"
+  out=$("$DEBUGFS" -R "stat /etc/systemd/user/graphical-session.target.wants/omarchy-session-agent.service" "$T/mini.img" 2>/dev/null); has "the units are enabled for graphical sessions" "$out" "Type: symlink"
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
+  is_rc "baking again replaces the files" $rc 0
+else echo "  skip debugfs bake (no debugfs here: runtime not installed)"; fi
+(python3 "$REPO/tools/omarchy-clipboard.py" --selftest >/dev/null 2>&1); rc=$?
+is_rc "omarchy-clipboard.py selftest (protocol, echo filtering)" $rc 0
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 AUDIO=0 CPUS=2 SSH=1 FORWARD=2222:22 sh run-omarchy.sh 2>&1)
+case "$out" in *audiodev*) ko "AUDIO=0 leaves the sound device out" ;; *) ok "AUDIO=0 leaves the sound device out" ;; esac
+has "SSH=1 asks the guest for its SSH server" "$out" "tryomarchy.ssh_access=1"
+has "and the port is forwarded on the loopback only" "$out" "hostfwd=tcp:127.0.0.1:2222-:22"
+has "CPUS reaches QEMU" "$out" "CPUS=2"
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 SHARE_DIR="$HOME" sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "sharing the whole home folder is refused" $rc
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 SHARE_DIR="$HOME/Library/Preferences" sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "sharing a Library folder is refused" $rc
+# the launcher's default: <Application Support>/myLinux/machines/<machine>/Mac (HOME is the scratch folder here, so nothing real is made)
+out=$(cd "$W" && HOME="$T/home" DRYRUN=1 RES=1600x1000 SHARE_DIR="$T/home/Library/Application Support/myLinux/machines/omarchy/Mac" sh run-omarchy.sh 2>&1); rc=$?
+is_rc "the launcher's machine folder under Application Support is shareable" $rc 0
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 DISK_SIZE_GB=4 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "a disk smaller than the factory image is refused" $rc
+out=$(cd "$W" && RES=1600x1000 DISK="$T/om2/omarchy.ext4" sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "a new machine without the downloaded guest fails" $rc
+has "and says how to get it" "$out" "get-omarchy.sh"
+file_absent "and leaves no half-made disk" "$T/om2/omarchy.ext4"
+out=$(cd "$W" && MYLINUX_QEMU=brew DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); has "Omarchy always uses the runtime" "$out" "virtio-gpu-gl-pci"
+(cd "$W" && sh tools/get-omarchy.sh --remove >/dev/null 2>&1); rc=$?
+is_rc "get-omarchy.sh --remove" $rc 0
+(cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1)
+file_exists "a second install keeps the previous runtime" "$W/out/qemu-runtime.prev"
+(cd "$W" && sh tools/get-qemu-runtime.sh --remove >/dev/null 2>&1); rc=$?
+is_rc "--remove" $rc 0
+file_absent "--remove: runtime gone" "$W/out/qemu-runtime"
+file_absent "--remove: previous runtime gone too" "$W/out/qemu-runtime.prev"
+out=$(cd "$W" && DRYRUN=1 MYLINUX_QEMU=runtime sh run.sh 2>&1); rc=$?
+not_rc0 "MYLINUX_QEMU=runtime without a runtime is refused" $rc
+out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); rc=$?
+not_rc0 "run-omarchy.sh without the runtime is refused" $rc
+has "and names the fix" "$out" "get-qemu-runtime.sh"
+
 echo "tools/make-app-bundle.sh"
 # fake qemu, failing brand-qemu (python3), no-op codesign/sips: the bundle must still get an (unbranded) binary
 printf '#!/bin/sh\necho fake qemu\n' > "$W/bin/qemu-system-aarch64"; chmod +x "$W/bin/qemu-system-aarch64"
@@ -144,6 +319,16 @@ out=$(sh "$W/out/myLinux.app/Contents/MacOS/myLinux" -version 2>&1); has "entry 
 (cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/bundle dir" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
 is_rc "MYLINUX_OUT: bundle in another directory" $rc 0
 [ -x "$T/bundle dir/myLinux.app/Contents/MacOS/qemu-myLinux" ] && ok "MYLINUX_OUT: QEMU copy in the data directory" || ko "MYLINUX_OUT: no binary in the data directory bundle"
+
+mkdir -p "$T/rt out/qemu-runtime/bin" "$T/rt out/qemu-runtime/lib"; printf '#!/bin/sh\necho runtime qemu\n' > "$T/rt out/qemu-runtime/bin/qemu-system-aarch64"; chmod +x "$T/rt out/qemu-runtime/bin/qemu-system-aarch64"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/rt out" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
+is_rc "with a runtime: bundle prepared" $rc 0
+out=$("$T/rt out/myLinux.app/Contents/MacOS/qemu-myLinux" 2>&1); has "with a runtime: the bundle's QEMU is the runtime's" "$out" "runtime qemu"
+[ -d "$T/rt out/myLinux.app/Contents/lib/" ] && ok "with a runtime: Contents/lib points at its libraries" || ko "with a runtime: no Contents/lib"
+rm -rf "$T/rt out/qemu-runtime"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/rt out" sh tools/make-app-bundle.sh >/dev/null 2>&1)
+out=$("$T/rt out/myLinux.app/Contents/MacOS/qemu-myLinux" 2>&1); has "runtime removed: the bundle goes back to Homebrew's QEMU" "$out" "fake qemu"
+file_absent "runtime removed: no dangling Contents/lib" "$T/rt out/myLinux.app/Contents/lib"
 
 echo "tools/host-window.sh"
 out=$(sh "$REPO/tools/host-window.sh" bogus 2>&1); rc=$?

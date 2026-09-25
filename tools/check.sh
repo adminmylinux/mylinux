@@ -1,27 +1,24 @@
 #!/bin/sh
-# Fast checks, one command: web typecheck + tests, shell syntax, Python syntax, QML lint (when the
-# Buildroot SDK is reachable through OrbStack). Exit status is the number of failed groups.
+# Fast checks, one command: shell syntax, Python syntax, QML lint (when the Buildroot SDK is reachable
+# through OrbStack), the script tests and the launcher's Swift tests. Exit status is the number of failed
+# groups. The website has its own checks in its own repository (adminmylinux/mylinux-web).
 cd "$(dirname "$0")/.."
 fail=0
 step() { printf '\n== %s\n' "$1"; }
-
-step "web: typecheck + tests"
-if command -v bun >/dev/null 2>&1; then
-  (cd web && bun run typecheck && bun test) || fail=$((fail + 1))
-else echo "bun not installed: skipped (verification gap)"; fi
+FAILED=$(mktemp); trap 'rm -f "$FAILED"' EXIT
 
 step "shell scripts: sh -n"
-find board/overlay tools -type f \( -name '*.sh' -o -path '*/usr/bin/*' -o -path '*/init.d/*' \) 2>/dev/null | while read -r f; do
-  head -1 "$f" | grep -q '^#!.*sh' && { sh -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> /tmp/mylinux-check-fail; }; }
+find board/overlay tools omarchy -type f \( -name '*.sh' -o -path '*/usr/bin/*' -o -path '*/init.d/*' \) 2>/dev/null | while read -r f; do
+  head -1 "$f" | grep -q '^#!.*sh' && { sh -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; }
 done
-for f in run.sh build.sh; do sh -n "$f" || echo "$f" >> /tmp/mylinux-check-fail; done
-if [ -f /tmp/mylinux-check-fail ]; then rm -f /tmp/mylinux-check-fail; fail=$((fail + 1)); else echo ok; fi
+for f in run.sh run-omarchy.sh run-debian.sh debian_install.sh build.sh mac/build-app.sh; do bash -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; done
+if [ -s "$FAILED" ]; then : > "$FAILED"; fail=$((fail + 1)); else echo ok; fi
 
 step "python: ast"
 python3 - <<'PY' || fail=$((fail + 1))
 import ast, glob, sys
 bad = 0
-for f in glob.glob("tools/**/*.py", recursive=True):
+for f in glob.glob("tools/**/*.py", recursive=True) + ["omarchy/session/omarchy-session"]:
     try: ast.parse(open(f).read(), f)
     except SyntaxError as e: print("SYNTAX:", f, e); bad += 1
 print("ok" if not bad else f"{bad} file(s) failed"); sys.exit(1 if bad else 0)
@@ -41,7 +38,8 @@ sh tools/tests/guest.sh || fail=$((fail + 1))
 
 step "mac launcher: swift tests"
 if command -v swift >/dev/null 2>&1; then
-  (cd mac && swift test 2>&1 | grep -E "error:|Executed [0-9]+ tests" | tail -3) || fail=$((fail + 1))
+  # the exit status is swift's, not the filter's
+  (cd mac && swift test > "$FAILED.swift" 2>&1; rc=$?; grep -E "error:|failed|Executed [0-9]+ tests" "$FAILED.swift" | tail -3; rm -f "$FAILED.swift"; exit $rc) || fail=$((fail + 1))
 else echo "swift not installed: skipped (verification gap)"; fi
 
 

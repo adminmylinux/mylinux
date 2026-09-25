@@ -20,9 +20,21 @@ enum Paths {
     /// GUI apps do not inherit the shell's PATH; Homebrew lives in one of these.
     static let toolPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+    /// Homebrew's QEMU, if installed.
     static func qemu() -> String? {
         ["/opt/homebrew/bin/qemu-system-aarch64", "/usr/local/bin/qemu-system-aarch64"]
             .first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    /// The accelerated runtime's QEMU inside an out folder, if tools/get-qemu-runtime.sh installed one there
+    /// (the same test as tools/qemu-flavour.sh: the binary and its lib folder).
+    static func runtimeQemu(in out: URL) -> String? {
+        let dir = out.appendingPathComponent("qemu-runtime", isDirectory: true)
+        let bin = dir.appendingPathComponent("bin/qemu-system-aarch64").path
+        var isDir: ObjCBool = false
+        guard FileManager.default.isExecutableFile(atPath: bin),
+              FileManager.default.fileExists(atPath: dir.appendingPathComponent("lib").path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        return bin
     }
 
     static func isCheckout(_ path: String) -> Bool {
@@ -79,6 +91,39 @@ final class AppSettings: ObservableObject {
         }
         return nonEmpty("Image") && nonEmpty("rootfs.cpio.gz")
     }
+    /// The accelerated QEMU runtime next to the image (run.sh prefers it over Homebrew's QEMU).
+    var runtimePresent: Bool { Paths.runtimeQemu(in: outDir) != nil }
+    var runtimeRevision: String? {
+        guard runtimePresent else { return nil }
+        return (try? String(contentsOf: outDir.appendingPathComponent("qemu-runtime/RUNTIME-REVISION"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// The Omarchy guest (tools/get-omarchy.sh): kernel, initramfs and the compressed factory disk.
+    var omarchyPresent: Bool {
+        let dir = outDir.appendingPathComponent("omarchy", isDirectory: true)
+        return ["vmlinuz-linux", "initramfs-linux.img", "rootfs.ext4.zst"].allSatisfy {
+            ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
+        }
+    }
+    var omarchyRevision: String? {
+        (try? String(contentsOf: outDir.appendingPathComponent("omarchy/OMARCHY-REVISION"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// The Debian cloud image and UEFI firmware (tools/get-debian.sh).
+    var debianPresent: Bool {
+        let dir = outDir.appendingPathComponent("debian", isDirectory: true)
+        return ["debian.raw", "edk2-aarch64-code.fd"].allSatisfy {
+            ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
+        }
+    }
+    var debianRevision: String? {
+        (try? String(contentsOf: outDir.appendingPathComponent("debian/DEBIAN-REVISION"), encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Some QEMU can start a machine: the runtime, or Homebrew's.
+    var qemuAvailable: Bool { runtimePresent || Paths.qemu() != nil }
+    static let qemuMissingText = "QEMU is missing. Download the accelerated QEMU in Settings, or in Terminal: brew install qemu"
+
     var imageRevision: String? {
         (try? String(contentsOf: outDir.appendingPathComponent("IMAGE-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)

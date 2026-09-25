@@ -1,0 +1,13 @@
+[Unit]
+Description=Take session commands from the Mac window (share folder) and keep its status file
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionPathIsMountPoint=/mnt/mac
+
+[Service]
+ExecStart=%h/.local/bin/omarchy-session agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

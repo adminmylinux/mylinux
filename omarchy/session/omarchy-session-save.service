@@ -1,0 +1,7 @@
+[Unit]
+Description=Save the Omarchy session layout
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/omarchy-session save

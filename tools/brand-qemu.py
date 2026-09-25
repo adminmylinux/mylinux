@@ -43,19 +43,29 @@ replacements = {"QEMU %s": "%s", "About QEMU": "About " + name, "Hide QEMU": "Hi
                 # Cmd+Q / window close confirmation: it is a power cut for the VM, so say so and name the clean way out
                 "Are you sure you want to quit QEMU?": "Quit " + name + " now? That cuts the power to the virtual machine, like pulling the plug. "
                 "To close cleanly, click Cancel and choose Shut Down... from the menu at the top left inside " + name + " instead."}
+# The accelerated runtime (tools/get-qemu-runtime.sh) is built with Try Omarchy's Cocoa identity patch, which says
+# "Try Omarchy" where stock QEMU says "QEMU" and titles the window with the machine name alone. Same treatment.
+quit_text = replacements["Are you sure you want to quit QEMU?"]
+replacements.update({"About Try Omarchy": "About " + name, "Hide Try Omarchy": "Hide " + name, "Quit Try Omarchy": "Quit " + name,
+                     "Try Omarchy": name, "Are you sure you want to quit Try Omarchy?": quit_text})
 # ASCII constants live in __cstring (8-bit CFStrings); anything with non-ASCII characters is UTF-16 in __ustring
 has_ustring = re.search(r"sectname __ustring\n\s+segname __TEXT", lc) is not None
 us_addr, us_size, us_off = section("__TEXT", "__ustring") if has_ustring else (0, 0, 0)
-cur = gap; done = 0
+cur = gap; done = 0; missing = []
 for old, new in replacements.items():
     if old.isascii():
         enc = lambda t: t.encode("ascii"); nul = b"\0"; lo, hi = cs_off, cs_off + cs_size
     else:
         enc = lambda t: t.encode("utf-16-le"); nul = b"\0\0"; lo, hi = us_off, us_off + us_size
         assert new.isascii() == old.isascii() or not new.isascii(), "cannot store UTF-16 text in an 8-bit CFString"
-    off = d.find(enc(old) + nul, lo, hi)
-    if off < 0: print("not found:", old); continue
-    e, ptr = cfstring_entry(off)
+    # the first CFString constant that points at this text; a match inside a longer string ("Try Omarchy" at the
+    # end of "About Try Omarchy") has none and is skipped
+    off = d.find(enc(old) + nul, lo, hi); e = None
+    if off < 0: missing.append(old); continue
+    while off >= 0:
+        e, ptr = cfstring_entry(off)
+        if e is not None: break
+        off = d.find(enc(old) + nul, off + 1, hi)
     if e is None: print("no CFString constant for", old); continue
     cur += cur % 2                      # UTF-16 data must be 2-byte aligned
     nb = enc(new) + nul
@@ -70,4 +80,8 @@ ent = subprocess.run(["codesign", "-d", "--entitlements", "-", "--xml", src], ca
 with tempfile.NamedTemporaryFile(suffix=".plist", delete=False) as f: f.write(ent); entf = f.name
 subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements", entf, dst], check=True, capture_output=True)
 os.unlink(entf)
+flavour = "Try Omarchy" if any("Try Omarchy" in k for k in replacements if k not in missing) else "QEMU"
+for m in missing:
+    if (flavour == "Try Omarchy") == ("Try Omarchy" in m): print("not found:", m)
+assert done, "no known Cocoa strings in this binary"
 print("branded %d strings, wrote %s" % (done, dst))

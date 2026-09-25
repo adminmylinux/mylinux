@@ -17,7 +17,7 @@ separate "apps disk" image that the system sets itself up on first boot.
 |---|---|
 | Build system | [Buildroot](https://buildroot.org) 2026.08, this repo is the `BR2_EXTERNAL` tree |
 | Target | arm64, Linux 6.18, glibc, busybox init, initramfs only (~110 MB kernel + rootfs) |
-| Graphics | virtio-gpu, Mesa llvmpipe, Qt 6.11 `eglfs_kms` |
+| Graphics | virtio-gpu, Qt 6.11 `eglfs_kms`; Mesa virgl on the accelerated QEMU runtime (the Mac's GPU through Metal), Mesa llvmpipe on Homebrew's QEMU |
 | Desktop | `shell/`: QML Qt Wayland Compositor ("myshell"), foot terminal, Inter font |
 | Apps disk | Debian trixie arm64 chroot with apt: Chromium, Firefox, Remmina (VNC/RDP), btop, git, Claude Code, Codex, wl-clipboard |
 | Host | QEMU 11 (Homebrew), HVF acceleration, 9p shared folder, macOS app bundle `myLinux.app` |
@@ -28,7 +28,8 @@ separate "apps disk" image that the system sets itself up on first boot.
 - [Homebrew](https://brew.sh) with `brew install qemu`.
 - To build the image: [OrbStack](https://orbstack.dev) with a Debian machine named `debian`
   (Buildroot needs a case-sensitive filesystem; the build tree lives inside Debian at `~/br`).
-  Prebuilt images are attached to the GitHub releases, so building is optional.
+  Prebuilt images are attached to the releases of the public
+  [mylinux-releases](https://github.com/adminmylinux/mylinux-releases) repository, so building is optional.
 
 ## Install and run (prebuilt image)
 
@@ -39,6 +40,79 @@ cd mylinux
 tools/get-image.sh      # downloads Image + rootfs.cpio.gz of the latest release into out/, checks SHA256
 ./run.sh
 ```
+
+Homebrew's QEMU is optional: `tools/get-qemu-runtime.sh` installs myLinux's own QEMU into `out/qemu-runtime`
+(about 10 MB), and `run.sh` uses it whenever it is there. That runtime is QEMU 11.1 with VirGL, so a guest whose
+Mesa has the `virgl` driver renders on the Mac's GPU (virtio-gpu-gl, virglrenderer, ANGLE, Metal): images built
+after 2026-09-19 do, and the desktop's compositor then costs a few percent of a core where software rendering took two
+and a half cores for a repainting terminal. `RENDER=soft ./run.sh` keeps the guest on software GL. `MYLINUX_QEMU=brew ./run.sh` insists on Homebrew's, `tools/get-qemu-runtime.sh --remove`
+goes back for good. It is built by `tools/build-qemu-runtime.sh` from a pinned commit of
+[Try Omarchy](https://github.com/omacom/try-omarchy)'s runtime build; sources and licences travel inside it (`NOTICES.md`).
+
+### Omarchy machines
+
+The same runtime also starts real [Omarchy](https://omarchy.org) (Arch Linux with Hyprland) as a second kind of
+machine: `tools/get-omarchy.sh` downloads the ARM64 guest that the [Try Omarchy](https://github.com/omacom/try-omarchy)
+project publishes (1.4 GB, one pinned release, checked against a pinned SHA-256, the publisher's signature and the
+guest's own checksums; nothing from it is run on the Mac), and `./run-omarchy.sh` boots it with Hyprland drawn by the
+Mac's GPU. A machine is a folder holding its root disk (unpacked on first start, `DISK_SIZE_GB=32`, grown by the guest)
+and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up inside as `~/Work`; `GRAB`, `MEM`, `RES`
+work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. The window's
+title bar has three buttons at the right: back to the starting size, 10% larger (Omarchy follows with a higher
+resolution), and full screen; Control+Command+F toggles full screen in every keyboard mode, and a small floating
+box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
+patch on the runtime. In the
+launcher it is **Add Omarchy**. Open windows come back after a restart: `omarchy/session` is written into a new
+machine's disk before its first boot (`tools/omarchy-bake-session.sh`, with the runtime's `debugfs`; nothing is mounted),
+system-wide and enabled for every account. The layout, each window's command line and a terminal's working directory, is
+saved every minute and at logout and reopened on the same workspaces at login. Apps that restore their own state come
+back complete, terminals come back empty in the right folder. `omarchy-session status|save|restore|interval|disable`
+inside Omarchy; on a machine made before this existed, `sh ~/<share>/mylinux-tools/install-session.sh` installs it into
+the account (run-omarchy.sh puts the files in the share folder as `mylinux-tools/`), and `install-session.sh --remove`
+takes it out. The Session menu in the middle of the window's title bar (and in the
+floating box in full screen) saves, restores and sets how often the layout is saved; it hands the command to the
+tool through the share folder. The clipboard is shared both ways, text and PNG images, through
+Omarchy's own clipboard agent and, on the Mac, the launcher's own binary in a helper mode
+(`myLinux Launcher --omarchy-clipboard <socket>`, which the app hands to run-omarchy.sh as `MYLINUX_HELPER`; from the
+command line without the app, `tools/omarchy-clipboard.py` when a working python3 is there). `CLIPBOARD=0` turns it
+off. New Omarchy machines in the launcher send every key to Omarchy with Command as Super (`GRAB=full`); the
+machine page switches to Option. Neither a machine's first start nor a download needs python3. Not there
+(they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output.
+
+### Debian server machines
+
+The third kind of machine is a plain Debian server with no window at all: the latest stable Debian (trixie) from
+its official arm64 cloud image, for anything that only needs a terminal. `tools/get-debian.sh` downloads the image
+(about 300 MB, checked against Debian's SHA512SUMS; the raw disk is kept sparse in `out/debian`) and the UEFI
+firmware it boots with (the edk2 build QEMU itself ships, from the runtime's pinned QEMU commit, by checksum), and
+`./run-debian.sh` boots it on the runtime or Homebrew's QEMU. Each machine has its own disk, copied from the image
+on the first start and grown to `DISK_SIZE_GB` (cloud-init grows the root filesystem into it), and is set up by
+cloud-init from a seed made on the Mac: the `debian` account with sudo, an SSH key generated for the machine
+(`ssh_key` beside the disk), a random console password (`console-password`, for the serial console), the machine's
+name as its host name, and the share folder mounted at `/mnt/mac` and linked from the home folder. SSH is forwarded
+to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
+and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
+page has the settings, the Console tab the serial console, and Start opens an SSH terminal with the machine's key
+as soon as its sshd answers (the Terminal button opens it again). That terminal window has a **myLinux** menu in the middle of its title bar; **Install Script…** opens
+[`debian_install.sh`](debian_install.sh), loaded from this repository on GitHub (the copy built into the launcher
+stands in when GitHub can't be reached), in an editable text field. Above it is a checkbox for each option the
+script declares (a `NAME=1   # option: Label` line: Claude Code, Codex, btop and Tailscale, all on). Ticking a box
+rewrites its line, so the text is always what runs. **Run in Terminal** copies the text into the machine
+(`~/.local/share/mylinux/debian_install.sh`, over the machine's SSH connection) and runs it in the terminal, in
+view. It installs git and tmux, the chosen tools, and the aliases `cc` (`claude update && claude
+--dangerously-skip-permissions`) and `cx` (`codex --full-auto`) in a marked block of `~/.bashrc`. With Tailscale on,
+it ends at Tailscale's sign-in link. The script can change on `main` without a new launcher. **Show
+Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
+(`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
+forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says
+localhost. ⌘-click a link in the terminal (the Claude login URL, say) and it opens there; **Open Last URL in
+Browser** finds the last address in the scrollback. **Screenshot Browser to Machine** and **Paste Screenshot
+Path** put a PNG of the page, or of the Mac clipboard, into the machine's share folder and type its path into the
+terminal, so an agent inside can look at it. The Omarchy keys work here too: ⌘↩ splits the tab with one more
+terminal (side by side; under the others once the browser is on the right), ⇧⌘↩ shows the browser with its address
+bar ready, and ⌘T opens another tab to the machine. A terminal leaves the tab when its shell ends. So one tab can
+hold Claude in one terminal, Codex in another below it, and the result in the browser beside them. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
+`SERIAL`, `QMP`, `DRYRUN=1`.
 
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
 size of the display under your mouse pointer; if the first start puts it on another display, give your
@@ -52,7 +126,7 @@ about 1.3 GB. Everything you install or save afterwards persists on that disk.
 Useful environment variables for `run.sh`: `RES=1600x1000` guest resolution (default is your
 screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,
 `MOUSE=tablet|relative` (relative: a click captures the Mac pointer for the guest, hidden and confined,
-until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `PLACER=0` (leave the
+until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `MYLINUX_QEMU=brew|runtime` (which QEMU, see above), `RENDER=soft` (software GL in the guest), `PLACER=0` (leave the
 window where macOS puts it), `MYLINUX_OUT=dir` (kernel, rootfs, apps disk and the QEMU wrapper elsewhere
 than `out/`).
 
@@ -83,13 +157,38 @@ keyboard back; needs Accessibility permission once) — plus a list of shortcuts
 the Mac's `ssh` in a SwiftTerm view: your keys and agent work as in Terminal, a saved password is handed to ssh
 through an askpass helper that reads the Keychain, and a tmux session name attaches on login. Connections open as
 native window tabs and can go fullscreen per display. Passwords live in the Keychain, profiles in
-`~/Library/Application Support/myLinux/remote.json`, certificate pins next to it.
+`~/Library/Application Support/myLinux/remote.json`, certificate pins next to it. The launcher's menu bar item is
+the way back when a remote window holds every key: *Release Keyboard to the Mac*. Remote windows open at quit come
+back at the next launch (close them yourself and they do not); ⌘K is a quick-connect field over any window;
+`open mylinux://vnc/<name>` or `mylinux://ssh/<name>` opens a machine from Shortcuts or a script; *Import from
+machines.json…* reads the guest viewer's saved machines (copy `~/.config/mylinux/vnc/machines.json` and, for the
+passwords, `~/.config/mylinux/secrets.env` to the share first).
 
 Without this checkout the app works on its own: it downloads the release image into
-`~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`. It
-still needs Homebrew's QEMU (`brew install qemu`). Point Settings › Developer at a checkout to start from
-that checkout's `run.sh`, `out/` and `share/` instead, which is what you want while working on myLinux
-itself. The bundle is signed ad hoc, so on another Mac Gatekeeper needs right-click › Open once.
+`~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`, and
+libvncclient with its libraries travel inside the bundle (`Contents/Frameworks`), so Homebrew is not needed.
+QEMU is the accelerated runtime (Settings › QEMU downloads it) or Homebrew's. Point Settings › Developer at a
+checkout to start from that checkout's `run.sh`, `out/` and `share/` instead, which is what you want while
+working on myLinux itself. A local build is signed ad hoc, so on another Mac Gatekeeper needs right-click › Open once.
+
+**A release for other Macs** is a notarised DMG with the QEMU runtime inside, installed on the app's first start:
+
+```sh
+tools/build-libvncclient.sh      # libvncclient, libjpeg-turbo and OpenSSL from pinned sources, built for macOS 15 (once)
+tools/build-qemu-runtime.sh      # out/qemu-runtime-macos-arm64.tar.gz at the version in tools/qemu-runtime.version
+mac/release.sh --notarize <notarytool keychain profile>   # Developer ID from the keychain; out/mac/myLinux-Launcher-<version>.dmg
+mac/publish-release.sh notes.md  # releases launcher-<version> and updates launcher-latest
+```
+
+`mac/release.sh` builds the app with `MYLINUX_RELEASE=1` (the runtime tarball rides in `Contents/Resources/runtime`,
+no checkout path in Info.plist), signs it inside out with the hardened runtime, and `mac/package-dmg.sh` has Apple
+notarise the app and the disk image and staples both tickets. Homebrew's libvncclient is built for the macOS it was
+installed on (26 here), which is why the release uses the libraries from `tools/build-libvncclient.sh` in `out/libvnc`;
+`mac/build-app.sh` prefers them whenever they are there. `mac/publish-release.sh` puts the DMG into
+`adminmylinux/mylinux-releases` twice: as `launcher-<version>`, and over the files of `launcher-latest`, so
+[`releases/download/launcher-latest/myLinux-Launcher.dmg`](https://github.com/adminmylinux/mylinux-releases/releases/download/launcher-latest/myLinux-Launcher.dmg)
+(the website's link) is always the newest launcher. Neither is the repository's "latest" release: that stays the
+Linux image, which `tools/get-image.sh` resolves.
 
 ## Keys
 
@@ -283,6 +382,7 @@ patches/                    Qt Wayland compositor patch (wl_seat v5, data device
 tools/                      build, SDK, apps-disk, automation helpers
 mac/                        the Mac launcher app (SwiftUI; mac/build-app.sh bundles it)
 run.sh / build.sh           run on the Mac / build inside Debian
+run-omarchy.sh, run-debian.sh   the other two kinds of machine (Omarchy desktop, Debian server)
 ```
 
 ## Checks and tests
@@ -308,3 +408,6 @@ instead of starting it.
 GPL-3.0-or-later (see `LICENSE`). The desktop shell links the Qt Wayland Compositor module,
 which Qt offers under the GPL v3 only. Theme palettes are from Omarchy (MIT, see
 `board/overlay/usr/share/mylinux/themes/LICENSE.omarchy`); the Inter font is under the SIL OFL.
+The launcher's welcome sheet shows two marks in `tools/icons/`: `debian.png` is the Debian Open Use Logo,
+Copyright (c) 1999 Software in the Public Interest, Inc., under LGPL-3 or CC-BY-SA 3.0; `omarchy.png` is the
+Omarchy mark from Omarchy's brand kit (as used by Try Omarchy), a pending trademark of the Omarchy project.

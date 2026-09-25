@@ -84,10 +84,12 @@ BR2_PACKAGE_QT6SHADERTOOLS=y
 BR2_PACKAGE_DEJAVU=y
 BR2_PACKAGE_DEJAVU_SANS=y
 
-# --- Mesa: software GL (llvmpipe) rendered into KMS dumb buffers on the virtio-gpu ---
+# --- Mesa: virgl when the host offers 3D (the accelerated QEMU runtime: virtio-gpu-gl -> virglrenderer -> ANGLE ->
+#     Metal), else software GL (llvmpipe) rendered into KMS dumb buffers on the plain virtio-gpu (Homebrew's QEMU) ---
 BR2_PACKAGE_MESA3D=y
 BR2_PACKAGE_MESA3D_LLVM=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_LLVMPIPE=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL=y
 BR2_PACKAGE_MESA3D_OPENGL_EGL=y
 BR2_PACKAGE_MESA3D_OPENGL_ES=y
 BR2_PACKAGE_MESA3D_GBM=y

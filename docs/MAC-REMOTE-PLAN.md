@@ -142,5 +142,25 @@ handshake in Network.framework, the certificate read through SecureTransport's b
 HUD, trust and password sheets), `RemoteEditor` (SwiftUI form). `myLinux --remote <id>` and
 `mylinux-launcher://remote/<id>` open a profile. Tests: 17 XCTests (key map, profile format, certificate parsing, a
 gated probe against a real VeNCrypt server) and `tools/mac-remote-test.sh` end to end against the test VM.
-Not yet: phase 4 (session restore, ⌘K palette, import from the guest's machines.json) and 5 (H.264). Open question
-from the spike: whether ⌘Tab/⌘Space are swallowed by the tap on this macOS — the user's test decides.
+Menu bar item (2026-09-15, `StatusMenu`): there from launch, because "Everything to the remote" swallows every key and
+a user with the mouse alone had no way back. "Release Keyboard to the Mac" (the icon is a filled keyboard while a
+grab is on), Quick Connect…, Machines…, the remote profiles, Close Remote Windows, Quit; keys pass through to the
+menu while it is open. Open question from the spike: whether ⌘Tab/⌘Space are swallowed by the tap on this macOS —
+the user's test decides.
+
+## Status (2026-09-15): phase 4 implemented
+
+`RemoteSession`: the open remote windows are remembered in `remote-session.json` next to remote.json, written on
+every open and close, removed when the last one is closed on purpose, left alone by a quit or a crash; the next
+launch (without `--remote`) opens them again. `RemoteLink`: `mylinux://vnc/<name>`, `mylinux://ssh/<name>`,
+`mylinux://remote/<name or id>` (the bundle registers the `mylinux` scheme next to `mylinux-launcher`; the older
+`mylinux-launcher://remote/<id>` still works); the name matches a profile's name, then its host, or its id.
+`QuickConnect`: ⌘K (also in the menu bar item) — a floating field over every window, every word of the query must
+match the name or the host, ↑↓ and Return open a remote machine or start a myLinux machine. `RemoteImport`: "Import
+from machines.json…" under the sidebar reads the viewer's file (name, type, host, port, username, quality, keyFile,
+tmux; entries without a type are VNC) and a `secrets.env` next to it or one folder up for the passwords
+(`VNC_<NAME>_PASSWORD` / `SSH_<NAME>_PASSWORD`, the viewer's key rule), merging by name and kind so a re-import
+updates the address but keeps the id, the keyboard mode and the window position; the guest keeps both files on its
+apps disk, so they are copied to the share first. Tests: session file round trip, link parsing, find by
+name/host/id, import parsing and secrets, merge, the ⌘K filter (26 XCTests in all).
+Not yet: phase 5 (H.264, optional after the spike's numbers) and 6 (polish).

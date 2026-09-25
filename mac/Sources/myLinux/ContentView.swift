@@ -2,11 +2,13 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    @State private var showWelcome = false
     @EnvironmentObject var store: ProfileStore
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var runs: RunManager
     @EnvironmentObject var remote: RemoteStore
     @StateObject private var images = ImageManager.shared
+    @StateObject private var runtime = RuntimeManager.shared      // observed so the QEMU warning goes when a download lands
     @State private var selection: UUID?
 
     private var selected: Profile? { store.profiles.first { $0.id == selection } }
@@ -48,46 +50,106 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 210, ideal: 230)
             .safeAreaInset(edge: .bottom) { sidebarFooter }
+            // in the sidebar's toolbar, not the section header: a click anywhere in a sidebar header folds the section
+            .toolbar { ToolbarItem(placement: .automatic) { addMenu } }
         } detail: {
             if let p = selected {
                 MachineView(profile: p, runner: runs.runner(for: p.id))
                     .id(p.id)
             } else if let r = selectedRemote {
                 RemoteEditor(profile: r).id(r.id)
+                    .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
             } else {
                 ContentUnavailableView("No machine selected", systemImage: "desktopcomputer",
                                        description: Text("Pick a machine on the left, or add one."))
+                    .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
             }
         }
         .onAppear {
             if selection == nil { selection = store.profiles.first?.id }
-            images.refresh(settings)
+            images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
+            // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
+            OmarchyManager.shared.refresh(settings); DebianManager.shared.refresh(settings)
+            if !settings.developerMode, !images.present, !OmarchyManager.shared.present, !DebianManager.shared.present,
+               !UserDefaults.standard.bool(forKey: "welcomeShown") {
+                UserDefaults.standard.set(true, forKey: "welcomeShown"); showWelcome = true
+            }
         }
-        .frame(minWidth: 820, minHeight: 560)
+        .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
+        .sheet(isPresented: $showWelcome) {
+            WelcomeSheet(images: images, omarchy: .shared, debian: .shared, runtime: runtime, done: { kinds in
+                showWelcome = false
+                // a machine of each downloaded kind that has none yet, and the first of them selected
+                var first: UUID?
+                for kind in kinds where !store.profiles.contains(where: { $0.kind == kind }) {
+                    let p = store.add(kind: kind); if first == nil { first = p.id }
+                }
+                if let first { selection = first }
+                else if let k = kinds.first, let p = store.profiles.first(where: { $0.kind == k }) { selection = p.id }
+            })
+            .environmentObject(settings)
+        }
+        .frame(minWidth: 860, minHeight: 720)
+    }
+
+    /// Everything that can be added, behind one + above the list: the two kinds of machine, the two kinds of remote
+    /// connection, and the import of the guest viewer's saved machines.
+    private var addMenu: some View {
+        Menu {
+            Button { selection = store.add(copying: selected?.kind == .mylinux ? selected : nil, kind: .mylinux).id } label: {
+                Label("myLinux Machine", systemImage: "desktopcomputer")
+            }
+            Button { selection = store.add(copying: selected?.kind == .omarchy ? selected : nil, kind: .omarchy).id } label: {
+                Label("Omarchy Machine", systemImage: "cube")
+            }
+            Button { selection = store.add(copying: selected?.kind == .debian ? selected : nil, kind: .debian).id } label: {
+                Label("Debian Server", systemImage: "server.rack")
+            }
+            Divider()
+            Button { selection = remote.add(.vnc).id } label: { Label("VNC Desktop", systemImage: "display") }
+            Button { selection = remote.add(.ssh).id } label: { Label("SSH Terminal", systemImage: "terminal") }
+            Divider()
+            Button { importMachines() } label: { Label("Import from machines.json…", systemImage: "square.and.arrow.down") }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .help("Add a machine or a remote connection")
+        .accessibilityLabel("Add")
     }
 
     private var sidebarFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            if Paths.qemu() == nil { Banner(text: "QEMU is missing. In Terminal: brew install qemu", kind: .warning) }
+            if !settings.qemuAvailable { Banner(text: AppSettings.qemuMissingText, kind: .warning) }
             if settings.developerMode {
                 Label("Developer: \(URL(fileURLWithPath: settings.repoPath).lastPathComponent)", systemImage: "hammer")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     .help(settings.repoPath + " — run.sh, tools/ and out/ come from this checkout")
             }
             ImageStatusView(images: images)
-            Button { selection = store.add(copying: selected).id } label: {
-                Label("Add machine", systemImage: "plus")
-            }
-            .buttonStyle(.link)
-            HStack(spacing: 12) {
-                Button { selection = remote.add(.vnc).id } label: { Label("Add VNC", systemImage: "display") }
-                Button { selection = remote.add(.ssh).id } label: { Label("Add SSH", systemImage: "terminal") }
-            }
-            .buttonStyle(.link)
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
+    }
+
+    /// The guest's machines.json, picked with a panel that starts in the selected machine's share folder.
+    private func importMachines() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.message = "Pick the viewer's machines.json (in the guest: ~/.config/mylinux/vnc/, copy it to the share)."
+        if let share = (selected ?? store.profiles.first)?.shareDir, !share.isEmpty { panel.directoryURL = URL(fileURLWithPath: share, isDirectory: true) }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let entries = try RemoteImport.load(url)
+            let r = remote.merge(entries)
+            let alert = NSAlert(); alert.messageText = "Imported \(entries.count) machine\(entries.count == 1 ? "" : "s")"
+            alert.informativeText = "\(r.added) added, \(r.updated) updated" + (entries.contains { $0.password != nil } ? "; passwords went to the Keychain." : ".")
+            alert.runModal()
+            if let first = entries.first, let p = remote.find(first.profile.name, kind: first.profile.kind) { selection = p.id }
+        } catch {
+            let alert = NSAlert(error: error); alert.messageText = "Could not import \(url.lastPathComponent)"; alert.runModal()
+        }
     }
 
     private func removeRemote(_ r: RemoteProfile) {
@@ -144,7 +206,9 @@ private struct MachineRow: View {
         case .stopping: return "Shutting down…"
         case .inUseElsewhere: return "Running outside the app"
         case .failed: return "Failed"
-        case .stopped: return "\(profile.memoryGB) GB · \(profile.grab == "opt" ? "Option as ⌘" : profile.grab == "full" ? "All keys" : "No key grab")"
+        case .stopped:
+            if profile.kind == .debian { return "Debian server · \(profile.memoryGB) GB · ssh port \(String(profile.sshPort))" }
+            return "\(profile.memoryGB) GB · \(profile.grab == "opt" ? "Option as ⌘" : profile.grab == "full" ? "All keys" : "No key grab")"
         }
     }
 }
@@ -186,5 +250,27 @@ struct Banner: View {
             .font(.caption)
             .foregroundStyle(kind == .error ? Color.red : kind == .warning ? Color.orange : Color.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Top right of the window: which launcher this is, then the way to its settings.
+struct VersionAndSettings: View {
+    var body: some View {
+        Text(AppInfo.shortVersion).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+            .padding(.leading, 8)
+            .help(AppInfo.versionText).accessibilityLabel(AppInfo.versionText)
+        SettingsLink { Image(systemName: "gearshape") }.help("Settings")
+    }
+}
+
+/// What the app bundle says about itself.
+enum AppInfo {
+    /// "0.3.4" for the toolbar.
+    static var shortVersion: String { (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).map { "v\($0)" } ?? "dev" }
+    /// "Version 0.3.2" from Info.plist (mac/build-app.sh takes it from the v* tag); a development build shows the
+    /// commit too, "Version 0.3.2-4-gabc1234".
+    static var versionText: String {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        return v.isEmpty ? "Development build" : "Version \(v)"
     }
 }

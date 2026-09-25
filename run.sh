@@ -6,6 +6,9 @@
 #              GRAB=opt|full|none, MOUSE=tablet|relative, CLIPBOARD=0, DRYRUN=1 (print the QEMU command and exit),
 #              PLACER=0 (do not move the window onto the current display; no Automation permission needed),
 #              FORWARD=host:guest[,host:guest...] (TCP ports on 127.0.0.1 forwarded into the guest, for tests),
+#              RENDER=soft (software GL in the guest even on the accelerated runtime),
+#              MYLINUX_QEMU=brew|runtime (default: the accelerated runtime in $MYLINUX_OUT/qemu-runtime when
+#              tools/get-qemu-runtime.sh installed one, else Homebrew's QEMU),
 #              MYLINUX_OUT=dir holding Image, rootfs.cpio.gz, the default apps.img and the myLinux.app wrapper
 #              (default: out/ of the repository; the Mac launcher app points it at its Application Support folder).
 # Works from any directory: paths are resolved against the repository, relative overrides against
@@ -54,8 +57,10 @@ APPS_SIZE_GB="${APPS_SIZE_GB:-16}"
 case "$APPS_SIZE_GB" in ''|*[!0-9]*) die "APPS_SIZE_GB must be a whole number of GB" ;; esac
 [ "$APPS_SIZE_GB" -ge 4 ] && [ "$APPS_SIZE_GB" -le 2000 ] || die "APPS_SIZE_GB out of range: $APPS_SIZE_GB"
 if [ ! -f "$APPS_IMG" ]; then   # blank sparse disk; the VM formats and populates it on first boot (apps-setup)
-  python3 -c 'import sys; open(sys.argv[1], "wb").truncate(int(sys.argv[2]) * 2**30)' "$APPS_IMG" "$APPS_SIZE_GB" \
-    && echo "created blank apps disk $APPS_IMG ($APPS_SIZE_GB GB, sparse)"
+  mkdir -p "$(dirname "$APPS_IMG")"
+  dd if=/dev/zero of="$APPS_IMG" bs=1 count=0 seek=$(( APPS_SIZE_GB * 1024 * 1024 * 1024 )) 2>/dev/null \
+    || die "could not create the apps disk $APPS_IMG"
+  echo "created blank apps disk $APPS_IMG ($APPS_SIZE_GB GB, sparse)"
 fi
 SHARE_DIR=$(abs "${SHARE_DIR:-share}"); mkdir -p "$SHARE_DIR"
 NAME="${NAME:-myLinux}"
@@ -86,22 +91,37 @@ for fw in $(printf '%s' "${FORWARD:-}" | tr ',' ' '); do
   case "$fw" in [0-9]*:[0-9]*) NETDEV="$NETDEV,hostfwd=tcp:127.0.0.1:${fw%%:*}-:${fw##*:}" ;; *) die "FORWARD entries look like hostport:guestport (got '$fw')" ;; esac
 done
 
+# ---- which QEMU: the accelerated runtime in $OUT/qemu-runtime when installed, else Homebrew's -------
+# The runtime (tools/get-qemu-runtime.sh) is QEMU with VirGL: the guest's OpenGL runs on the Mac's GPU through
+# virtio-gpu-gl -> virglrenderer -> ANGLE -> Metal, given a guest Mesa with the virgl driver (one without keeps
+# rendering in software on the same device). It carries no ROM or data files, hence romfile= on every PCI device,
+# and under HVF it has the in-kernel GICv3 only. MYLINUX_QEMU=brew|runtime overrides the choice.
+FLAVOUR=$(sh tools/qemu-flavour.sh "$OUT") || die "no usable QEMU"
+if [ "$FLAVOUR" = runtime ]; then
+  MACHINE="virt,gic-version=3"; ROM=",romfile="; GPU="virtio-gpu-gl-pci,max_outputs=1"; GL=",gl=es"
+else
+  MACHINE="virt"; ROM=""; GPU="virtio-gpu-pci"; GL=""
+fi
+
+# RENDER=soft keeps the guest on software GL even when the runtime offers 3D (the way back if virgl misbehaves).
+case "${RENDER:-auto}" in auto) GLARG="" ;; soft) GLARG=" mylinux.gl=soft" ;; *) die "RENDER must be auto or soft" ;; esac
+
 # ---- the QEMU command, built as a proper argument list (no word splitting of paths) ---------------
 QEMU="$OUT/myLinux.app/Contents/MacOS/qemu-myLinux"
 set -- \
-  -name "$NAME" -M virt -accel hvf -cpu host -smp 4 -m "$MEM" \
+  -name "$NAME" -M "$MACHINE" -accel hvf -cpu host -smp 4 -m "$MEM" \
   -kernel "$OUT/Image" -initrd "$OUT/rootfs.cpio.gz" \
-  -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60" \
-  -device "virtio-gpu-pci,xres=$XRES,yres=$YRES" \
-  -device virtio-keyboard-pci -device "$POINTER" \
-  -netdev "$NETDEV" -device virtio-net-pci,netdev=n0 \
-  -drive "file=$APPS_IMG,if=none,format=raw,id=apps" -device "virtio-blk-pci,drive=apps,serial=mylinux-apps" \
-  -display "cocoa,show-cursor=on,zoom-to-fit=off,zoom-interpolation=on,left-command-key=on,$KEYS" \
+  -append "console=ttyAMA0 quiet loglevel=3 mylinux.res=$RES video=Virtual-1:${RES}@60$GLARG" \
+  -device "$GPU,xres=$XRES,yres=$YRES$ROM" \
+  -device "virtio-keyboard-pci$ROM" -device "$POINTER$ROM" \
+  -netdev "$NETDEV" -device "virtio-net-pci,netdev=n0$ROM" \
+  -drive "file=$APPS_IMG,if=none,format=raw,id=apps" -device "virtio-blk-pci,drive=apps,serial=mylinux-apps$ROM" \
+  -display "cocoa$GL,show-cursor=on,zoom-to-fit=off,zoom-interpolation=on,left-command-key=on,$KEYS" \
   -serial "${SERIAL:-mon:stdio}" \
   -virtfs "local,path=$SHARE_DIR,mount_tag=share,security_model=none,id=share" \
   "$@"
 if [ "${DRYRUN:-0}" = 1 ]; then
-  echo "RES=$RES APPS_IMG=$APPS_IMG SHARE_DIR=$SHARE_DIR NAME=$NAME"
+  echo "RES=$RES APPS_IMG=$APPS_IMG SHARE_DIR=$SHARE_DIR NAME=$NAME QEMU=$FLAVOUR"
   for a in "$@"; do printf '%s\n' "$a"; done
   exit 0
 fi

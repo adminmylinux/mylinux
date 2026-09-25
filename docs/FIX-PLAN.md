@@ -5,7 +5,7 @@ dash has no `PIPESTATUS` (build.sh reports success after a failed make), `Launch
 compositor for up to 3 s, `toggleTiling` sweeps helper and scratchpad windows into the tree, `finishAdd`
 inserts into the current workspace's tree rather than the window's, `MacWindow.onTitleHeightChanged`
 relayouts the wrong tree, run.sh prefixes `$PWD/` to `SHARE_DIR` and interpolates `APPS_IMG` into Python,
-`fromIni` writes into inherited objects, and `web/` has no tests.
+`fromIni` writes into inherited objects, and the website (now the separate mylinux-web repository) has no tests.
 
 ## Ground rules for the work
 

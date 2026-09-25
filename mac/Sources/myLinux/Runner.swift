@@ -32,43 +32,70 @@ final class Runner: ObservableObject {
 
     /// Short socket path: unix socket paths are limited to 104 bytes, Application Support paths are long.
     var serialSocket: String { "/tmp/mylinux-\(getuid())-\(profileID.uuidString.prefix(8).lowercased()).serial" }
+    /// QEMU's control socket for an Omarchy machine: its console is a login prompt, not a root shell, so Stop is a
+    /// press of the virtual power button there instead of "poweroff" typed into the console.
+    var qmpSocket: String { "/tmp/mylinux-\(getuid())-\(profileID.uuidString.prefix(8).lowercased()).qmp" }
     var logFile: URL { Paths.logs.appendingPathComponent("\(profileID.uuidString).log") }
 
     // ---- start ----------------------------------------------------------------------------------------------
     func start(_ p: Profile, settings: AppSettings = .shared) {
         guard !isActive else { return }
         if let problem = p.problems.first { state = .failed(problem); return }
-        guard Paths.qemu() != nil else { state = .failed("QEMU is not installed. In Terminal: brew install qemu"); return }
-        guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent("run.sh").path) else {
-            state = .failed("run.sh was not found (developer checkout moved, or the app bundle is incomplete)."); return
-        }
-        guard settings.imagePresent else {
-            state = .failed(settings.developerMode ? "No image in \(settings.outDir.path): run ./build.sh or tools/get-image.sh in the checkout."
-                                                   : "The myLinux image is not downloaded yet (Download in the sidebar).")
+        // "every key to the machine": QEMU's event tap needs Accessibility, which macOS credits to this app and
+        // checks once, when the machine starts. Ask first, and start after it is granted.
+        if p.kind != .debian, p.grab == "full", !KeyboardGrab.permitted {
+            KeyboardGrab.askPermission()
+            state = .failed("Sending every key to the machine needs Accessibility permission for myLinux Launcher. Turn it on in System Settings › Privacy & Security › Accessibility, then press Start again.")
             return
+        }
+        guard settings.qemuAvailable else { state = .failed(AppSettings.qemuMissingText); return }
+        guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent(p.script).path) else {
+            state = .failed("\(p.script) was not found (developer checkout moved, or the app bundle is incomplete)."); return
+        }
+        if p.kind == .debian {
+            // an existing machine has its disk and seed; only a new one needs the downloaded image and firmware
+            let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: p.machineFolder.appendingPathComponent("seed.iso").path)
+            guard created || settings.debianPresent else { state = .failed("Debian is not downloaded yet (Download on this page)."); return }
+            guard settings.debianPresent || FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("debian/edk2-aarch64-code.fd").path) else {
+                state = .failed("The UEFI firmware is missing (Download Debian on this page)."); return
+            }
+        } else if p.kind == .omarchy {
+            guard settings.runtimePresent else { state = .failed("Omarchy needs the accelerated QEMU (Settings › QEMU › Download)."); return }
+            // an existing machine has its own disk and boot files; only a new one needs the downloaded guest
+            let machine = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
+            let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: machine.appendingPathComponent("boot/vmlinuz-linux").path)
+            guard created || settings.omarchyPresent else { state = .failed("Omarchy is not downloaded yet (Download on this page)."); return }
+        } else {
+            guard settings.imagePresent else {
+                state = .failed(settings.developerMode ? "No image in \(settings.outDir.path): run ./build.sh or tools/get-image.sh in the checkout."
+                                                       : "The myLinux image is not downloaded yet (Download in the sidebar).")
+                return
+            }
         }
         if Runner.diskInUse(p.appsDisk) { state = .inUseElsewhere; return }
 
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent(), withIntermediateDirectories: true)
-            try fm.createDirectory(atPath: p.shareDir, withIntermediateDirectories: true)
+            if !p.shareDir.isEmpty { try fm.createDirectory(atPath: p.shareDir, withIntermediateDirectories: true) }
             try fm.createDirectory(at: settings.outDir, withIntermediateDirectories: true)
             try fm.createDirectory(at: Paths.logs, withIntermediateDirectories: true)
         } catch {
             state = .failed("Could not create folders: \(error.localizedDescription)"); return
         }
-        unlink(serialSocket)
+        unlink(serialSocket); unlink(qmpSocket)
         fm.createFile(atPath: logFile.path, contents: nil)
         console = ""
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = [scripts.appendingPathComponent("run.sh").path]
+        proc.arguments = [scripts.appendingPathComponent(p.script).path]
         proc.currentDirectoryURL = scripts
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = Paths.toolPath
-        for (k, v) in p.environment(outDir: settings.outDir, serialSocket: serialSocket) { env[k] = v }
+        for (k, v) in p.environment(outDir: settings.outDir, serialSocket: serialSocket, qmpSocket: qmpSocket) { env[k] = v }
+        // the launcher's own binary does the Omarchy clipboard bridge (--omarchy-clipboard), no python3 needed
+        if let helper = Bundle.main.executablePath { env["MYLINUX_HELPER"] = helper }
         env["PLACER"] = settings.placeWindow ? "1" : "0"
         proc.environment = env
         // straight into the log file, not a pipe: a machine outlives the launcher, and writing to the pipe of a
@@ -85,12 +112,13 @@ final class Runner: ObservableObject {
         do {
             try proc.run()
         } catch {
-            state = .failed("Could not start run.sh: \(error.localizedDescription)"); return
+            state = .failed("Could not start \(p.script): \(error.localizedDescription)"); return
         }
         process = proc; profile = p
         state = .starting
         UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
         connectSerial()
+        if p.kind == .debian { openTerminalWhenReady(p) }
     }
 
     /// The last lines run.sh wrote, for the message on an unexpected exit.
@@ -105,7 +133,7 @@ final class Runner: ObservableObject {
         try? logHandle?.close(); logHandle = nil
         let wasStopping = state == .stopping
         process = nil; stoppingSince = nil
-        unlink(serialSocket)
+        unlink(serialSocket); unlink(qmpSocket)
         if wasStopping || status == 0 {
             state = .stopped
         } else {
@@ -194,9 +222,37 @@ final class Runner: ObservableObject {
         }
     }
 
+    /// A Debian machine is a terminal: once its sshd answers after a start, the terminal window opens on its own.
+    /// The forwarded port accepts connections before the guest listens, so a real ssh login is the test.
+    private func openTerminalWhenReady(_ p: Profile) {
+        let profile = p.terminalProfile
+        let args = SshTerminal.arguments(for: profile) + ["true"]
+        let startedAt = Date()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            while Date().timeIntervalSince(startedAt) < 240 {
+                guard let self, self.isActive, self.profileID == p.id else { return }
+                let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+                t.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=3"] + args
+                var env = ProcessInfo.processInfo.environment; env["PATH"] = Paths.toolPath; t.environment = env
+                t.standardInput = FileHandle.nullDevice; t.standardOutput = FileHandle.nullDevice; t.standardError = FileHandle.nullDevice
+                if (try? t.run()) != nil { t.waitUntilExit(); if t.terminationStatus == 0 { DispatchQueue.main.async { RemoteWindowController.show(profile) }; return } }
+                Thread.sleep(forTimeInterval: 3)
+            }
+        }
+    }
+
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
         guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) else { return }
+        if profile?.kind == .omarchy || profile?.kind == .debian {
+            state = .stopping; stoppingSince = Date()
+            let path = qmpSocket
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let ok = Runner.qmp(path, execute: "system_powerdown")
+                if !ok { DispatchQueue.main.async { self?.forceQuit() } }
+            }
+            return
+        }
         guard consoleConnected else { forceQuit(); return }
         state = .stopping; stoppingSince = Date()
         send("\u{03}")                       // interrupt whatever the console shell is running
@@ -248,6 +304,28 @@ final class Runner: ObservableObject {
         return fd
     }
 
+    /// One QMP command on QEMU's control socket: read the greeting, negotiate, send, and wait for the reply.
+    static func qmp(_ path: String, execute command: String) -> Bool {
+        let fd = connectUnix(path)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var tv = timeval(tv_sec: 3, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        func readLine() -> String? {
+            var line = [UInt8](); var b: UInt8 = 0
+            while Darwin.read(fd, &b, 1) == 1 { if b == 0x0A { return String(decoding: line, as: UTF8.self) }; line.append(b) }
+            return nil
+        }
+        func send(_ text: String) -> Bool { text.withCString { Darwin.write(fd, $0, strlen($0)) } > 0 }
+        /// the reply to a command, skipping the events QEMU interleaves
+        func reply() -> Bool {
+            for _ in 0..<20 { guard let l = readLine() else { return false }; if l.contains("\"return\"") { return true }; if l.contains("\"error\"") { return false } }
+            return false
+        }
+        guard readLine() != nil, send("{\"execute\":\"qmp_capabilities\"}\n"), reply() else { return false }
+        return send("{\"execute\":\"\(command)\"}\n") && reply()
+    }
+
     static func readLoop(fd: Int32, _ deliver: (String) -> Void) {
         var buf = [UInt8](repeating: 0, count: 8192)
         var pending = [UInt8]()
@@ -279,14 +357,22 @@ final class Runner: ObservableObject {
             .map(String.init).joined()
     }
 
+    /// The command-line pattern of a QEMU that has this disk open. Both scripts pass the disk as a -drive option
+    /// ("file=<disk>,..."); run.sh puts file= first, run-omarchy.sh after if=none,id=root, so only the option's
+    /// own text is matched, not its neighbours.
+    static func diskPattern(_ disk: String) -> String {
+        "(^|[ ,])file=" + NSRegularExpression.escapedPattern(for: disk) + "(,|$)"
+    }
+
     /// Whether a QEMU process has this disk on its command line.
     static func diskInUse(_ disk: String) -> Bool {
         guard !disk.isEmpty else { return false }
-        return run("/usr/bin/pgrep", ["-f", "file=" + NSRegularExpression.escapedPattern(for: disk) + ",if=none"]) == 0
+        return run("/usr/bin/pgrep", ["-f", diskPattern(disk)]) == 0
     }
 
     static func killDiskUsers(_ disk: String) {
-        _ = run("/usr/bin/pkill", ["-f", "file=" + NSRegularExpression.escapedPattern(for: disk) + ",if=none"])
+        guard !disk.isEmpty else { return }
+        _ = run("/usr/bin/pkill", ["-f", diskPattern(disk)])
     }
 
     @discardableResult

@@ -10,3 +10,4 @@ __pycache__/
 # Swift package build output of the Mac launcher app
 mac/.build/
 mac/spike/.build/
+.env
