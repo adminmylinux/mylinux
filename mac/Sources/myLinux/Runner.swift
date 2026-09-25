@@ -43,7 +43,7 @@ final class Runner: ObservableObject {
         if let problem = p.problems.first { state = .failed(problem); return }
         // "every key to the machine": QEMU's event tap needs Accessibility, which macOS credits to this app and
         // checks once, when the machine starts. Ask first, and start after it is granted.
-        if p.kind != .debian, p.grab == "full", !KeyboardGrab.permitted {
+        if !p.isServer, p.grab == "full", !KeyboardGrab.permitted {
             KeyboardGrab.askPermission()
             state = .failed("Sending every key to the machine needs Accessibility permission for myLinux Launcher. Turn it on in System Settings › Privacy & Security › Accessibility, then press Start again.")
             return
@@ -52,12 +52,13 @@ final class Runner: ObservableObject {
         guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent(p.script).path) else {
             state = .failed("\(p.script) was not found (developer checkout moved, or the app bundle is incomplete)."); return
         }
-        if p.kind == .debian {
+        if p.isServer {
             // an existing machine has its disk and seed; only a new one needs the downloaded image and firmware
             let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: p.machineFolder.appendingPathComponent("seed.iso").path)
-            guard created || settings.debianPresent else { state = .failed("Debian is not downloaded yet (Download on this page)."); return }
-            guard settings.debianPresent || FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("debian/edk2-aarch64-code.fd").path) else {
-                state = .failed("The UEFI firmware is missing (Download Debian on this page)."); return
+            let downloaded = settings.serverImagePresent(p.kind)
+            guard created || downloaded else { state = .failed("\(p.kind.title) is not downloaded yet (Download on this page)."); return }
+            guard downloaded || FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("\(p.kind.rawValue)/edk2-aarch64-code.fd").path) else {
+                state = .failed("The UEFI firmware is missing (Download \(p.kind.title) on this page)."); return
             }
         } else if p.kind == .omarchy {
             guard settings.runtimePresent else { state = .failed("Omarchy needs the accelerated QEMU (Settings › QEMU › Download)."); return }
@@ -118,7 +119,7 @@ final class Runner: ObservableObject {
         state = .starting
         UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
         connectSerial()
-        if p.kind == .debian { openTerminalWhenReady(p) }
+        if p.isServer { openTerminalWhenReady(p) }
     }
 
     /// The last lines run.sh wrote, for the message on an unexpected exit.
@@ -222,7 +223,7 @@ final class Runner: ObservableObject {
         }
     }
 
-    /// A Debian machine is a terminal: once its sshd answers after a start, the terminal window opens on its own.
+    /// A server is a terminal: once its sshd answers after a start, the terminal window opens on its own.
     /// The forwarded port accepts connections before the guest listens, so a real ssh login is the test.
     private func openTerminalWhenReady(_ p: Profile) {
         let profile = p.terminalProfile
@@ -244,7 +245,7 @@ final class Runner: ObservableObject {
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
         guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) else { return }
-        if profile?.kind == .omarchy || profile?.kind == .debian {
+        if profile?.kind == .omarchy || profile?.isServer == true {
             state = .stopping; stoppingSince = Date()
             let path = qmpSocket
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in

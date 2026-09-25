@@ -48,8 +48,11 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
         guard !lines.isEmpty, lines.allSatisfy({ $0.range(of: #"^\[127\.0\.0\.1\]:[0-9]+ \S+ \S+"#, options: .regularExpression) != nil }) else { return false }
         return (try? FileManager.default.removeItem(at: url)) != nil
     }
-    /// The terminal of one of the launcher's own machines (a Debian server): its window carries the myLinux menu.
+    /// The terminal of one of the launcher's own machines (a Debian or Alpine server): its window carries the myLinux menu.
     var launcherMachine = false
+    /// Such a server's install script (debian_install.sh, alpine_install.sh); not saved, like launcherMachine.
+    var installScript = ""
+    var installScriptFile: String { installScript.isEmpty ? InstallScript.defaultFile : installScript }
     /// The machine's share folder on the Mac and its path inside the machine ("~/Mac"); not saved.
     var shareMacPath = ""
     var shareGuestPath = ""

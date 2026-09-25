@@ -11,11 +11,14 @@ struct MachineView: View {
     @State private var showConsole = false
     @StateObject private var runtime = RuntimeManager.shared
     @StateObject private var omarchy = OmarchyManager.shared
-    @StateObject private var debian = DebianManager.shared
+    @StateObject private var debian = ServerImageManager.debian
+    @StateObject private var alpine = ServerImageManager.alpine
     @StateObject private var images = ImageManager.shared
     private var isOmarchy: Bool { draft.kind == .omarchy }
-    private var isDebian: Bool { draft.kind == .debian }
-    private var guestName: String { isOmarchy ? "Omarchy" : isDebian ? "Debian" : "myLinux" }
+    private var isServer: Bool { draft.isServer }
+    private var guestName: String { draft.kind.title }
+    /// A server's download: Debian's image or Alpine's.
+    private var server: ServerImageManager { draft.kind == .alpine ? alpine : debian }
 
     init(profile: Profile, runner: Runner) {
         self.runner = runner
@@ -34,10 +37,10 @@ struct MachineView: View {
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             if !runtime.present { return "Download the accelerated QEMU first" }
             return created || omarchy.present ? nil : "Download Omarchy first"
-        case .debian:
+        case .debian, .alpine:
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
             if !settings.qemuAvailable { return "Download the accelerated QEMU first" }
-            return created || debian.present ? nil : "Download Debian first"
+            return created || server.present ? nil : "Download \(guestName) first"
         }
     }
 
@@ -52,7 +55,7 @@ struct MachineView: View {
             }
         }
         .onChange(of: draft) { _, new in store.update(new) }
-        .onAppear { runtime.refresh(settings); images.refresh(settings); if isOmarchy { omarchy.refresh(settings) }; if isDebian { debian.refresh(settings) } }
+        .onAppear { runtime.refresh(settings); images.refresh(settings); if isOmarchy { omarchy.refresh(settings) }; if isServer { server.refresh(settings) } }
         .onChange(of: runner.state) { _, new in
             if new == .running { showConsole = false }
         }
@@ -88,7 +91,7 @@ struct MachineView: View {
                     ProgressView().controlSize(.small)
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }
                 case .running:
-                    if isDebian {
+                    if isServer {
                         Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
                             .buttonStyle(.borderedProminent)
                         Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
@@ -126,13 +129,13 @@ struct MachineView: View {
 
     // ---- settings ---------------------------------------------------------------------------------------------
     private var form: some View {
-        if isDebian { AnyView(debianForm) } else { AnyView(desktopForm) }
+        if isServer { AnyView(serverForm) } else { AnyView(desktopForm) }
     }
 
-    /// A Debian server: no window, no keyboard settings; the terminal is the machine.
-    private var debianForm: some View {
+    /// A server: no window, no keyboard settings; the terminal is the machine.
+    private var serverForm: some View {
         Form {
-            debianDownloads
+            serverDownloads
             Section("Machine") {
                 memoryPicker
                 Picker("Processor cores", selection: $draft.cpus) {
@@ -153,21 +156,23 @@ struct MachineView: View {
                 LabeledContent("SSH port on this Mac") {
                     HStack {
                         TextField("", value: $draft.sshPort, format: .number.grouping(.never)).frame(width: 80).multilineTextAlignment(.trailing)
-                        Text("ssh -p \(String(draft.sshPort)) debian@127.0.0.1").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text("ssh -p \(String(draft.sshPort)) \(draft.kind.serverUser)@127.0.0.1").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                 }
-                Text("The Terminal button opens an SSH terminal with the key made for this machine (ssh_key in its folder). The account is \"debian\" with sudo; reachable from this Mac only.")
+                Text(draft.kind == .alpine
+                     ? "The Terminal button opens an SSH terminal with the key made for this machine (ssh_key in its folder). The account is Alpine's own \"alpine\", with doas for root (Install Script… adds bash); reachable from this Mac only."
+                     : "The Terminal button opens an SSH terminal with the key made for this machine (ssh_key in its folder). The account is \"debian\" with sudo; reachable from this Mac only.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let pw = consolePassword {
                     LabeledContent("Console login") {
-                        Text("debian / \(pw)").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text("\(draft.kind.serverUser) / \(pw)").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                     Text("For the serial console (the Console tab) when SSH is not up; made on the first start.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("Files") {
                 PathRow(title: "Disk", path: $draft.appsDisk, isDirectory: false,
-                        help: "The whole Debian install. Its SSH key, console password and cloud-init seed live in the same folder.")
+                        help: "The whole \(guestName) install. Its SSH key, console password and cloud-init seed live in the same folder.")
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
                         help: "Mounted inside as /mnt/mac and linked from the home folder under its own name. Leave empty for none.")
             }
@@ -193,22 +198,22 @@ struct MachineView: View {
     /// brings the same window forward.
     private func openTerminal() { RemoteWindowController.show(draft.terminalProfile) }
 
-    /// What a Debian machine needs before its first start.
-    @ViewBuilder private var debianDownloads: some View {
+    /// What a server needs before its first start.
+    @ViewBuilder private var serverDownloads: some View {
         let needQemu = !settings.qemuAvailable
-        let needImage = !debian.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
-        if needQemu || needImage || runtime.busy || debian.busy || runtime.lastError != nil || debian.lastError != nil {
+        let needImage = !server.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
+        if needQemu || needImage || runtime.busy || server.busy || runtime.lastError != nil || server.lastError != nil {
             Section("Before the first start") {
                 if needQemu || runtime.busy {
                     downloadRow(title: "Accelerated QEMU", detail: "about 10 MB", busy: runtime.busy, progress: runtime.progress,
                                 start: { runtime.download(settings) }, cancel: { runtime.cancel() })
                 }
                 if let e = runtime.lastError { Banner(text: e, kind: .error) }
-                if needImage || debian.busy {
-                    downloadRow(title: "Debian", detail: "about 300 MB, the latest stable cloud image from cloud.debian.org", busy: debian.busy, progress: debian.progress,
-                                start: { debian.download(settings) }, cancel: { debian.cancel() })
+                if needImage || server.busy {
+                    downloadRow(title: guestName, detail: server.detail, busy: server.busy, progress: server.progress,
+                                start: { server.download(settings) }, cancel: { server.cancel() })
                 }
-                if let e = debian.lastError { Banner(text: e, kind: .error) }
+                if let e = server.lastError { Banner(text: e, kind: .error) }
             }
         }
     }
@@ -372,7 +377,7 @@ struct MachineView: View {
     }
 
     private var memoryChoices: [Int] {
-        [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64].filter { $0 <= max(4, Profile.macMemoryGB - 2) }
+        [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64].filter { $0 >= (isServer ? 1 : 2) && $0 <= max(4, Profile.macMemoryGB - 2) }
     }
     /// Automatic (0 here) follows the Mac's memory at every launcher start; a size is kept as chosen.
     private var memoryPicker: some View {

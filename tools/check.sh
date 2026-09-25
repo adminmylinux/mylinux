@@ -11,7 +11,7 @@ step "shell scripts: sh -n"
 find board/overlay tools omarchy -type f \( -name '*.sh' -o -path '*/usr/bin/*' -o -path '*/init.d/*' \) 2>/dev/null | while read -r f; do
   head -1 "$f" | grep -q '^#!.*sh' && { sh -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; }
 done
-for f in run.sh run-omarchy.sh run-debian.sh debian_install.sh build.sh mac/build-app.sh; do bash -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; done
+for f in run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh debian_install.sh alpine_install.sh build.sh mac/build-app.sh; do bash -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; done
 if [ -s "$FAILED" ]; then : > "$FAILED"; fail=$((fail + 1)); else echo ok; fi
 
 step "python: ast"

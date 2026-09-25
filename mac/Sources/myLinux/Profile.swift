@@ -6,10 +6,21 @@ struct Profile: Codable, Identifiable, Hashable {
     /// What runs in the machine. myLinux is run.sh: the RAM-resident image plus an apps disk. Omarchy is
     /// run-omarchy.sh: the Try Omarchy guest on the accelerated QEMU runtime, where `appsDisk` is the machine's root
     /// disk (its kernel and initramfs sit in boot/ beside it) and `appsSizeGB` the size that disk is created with.
-    /// Debian is run-debian.sh: a terminal-only Debian server from the cloud image, `appsDisk` its root disk, no
-    /// window; the launcher reaches it through the serial console and an SSH terminal on `sshPort`.
-    enum Kind: String, Codable { case mylinux, omarchy, debian }
-    var isServer: Bool { kind == .debian }
+    /// Debian and Alpine are servers (run-debian.sh, run-alpine.sh, both run-server.sh): terminal-only machines from
+    /// the distribution's cloud image, `appsDisk` their root disk, no window; the launcher reaches them through the
+    /// serial console and an SSH terminal on `sshPort`.
+    enum Kind: String, Codable {
+        case mylinux, omarchy, debian, alpine
+        var isServer: Bool { self == .debian || self == .alpine }
+        var title: String {
+            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine" }
+        }
+        /// A server's account inside: "debian" (bash, sudo) or Alpine's own "alpine" (ash until the install script, doas).
+        var serverUser: String { rawValue }
+        /// What Install Script… loads for a server: debian_install.sh, alpine_install.sh.
+        var installScriptName: String { "\(rawValue)_install.sh" }
+    }
+    var isServer: Bool { kind.isServer }
 
     var id = UUID()
     var kind = Kind.mylinux
@@ -64,6 +75,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case .mylinux: return [3, 4, 6][tier]
         case .omarchy: return [4, 6, 8][tier]
         case .debian: return [2, 2, 4][tier]
+        case .alpine: return [1, 1, 2][tier]
         }
     }
     static var macMemoryGB: Int { Int((ProcessInfo.processInfo.physicalMemory + (1 << 29)) >> 30) }
@@ -82,17 +94,17 @@ struct Profile: Codable, Identifiable, Hashable {
         return name == "myLinux" ? "myLinux" : "myLinux (\(name))"
     }
     /// The script that starts this kind of machine, relative to the scripts folder.
-    var script: String { kind == .omarchy ? "run-omarchy.sh" : kind == .debian ? "run-debian.sh" : "run.sh" }
-    /// The Debian machine's folder (its disk, SSH key, console password and seed live there).
+    var script: String { kind == .omarchy ? "run-omarchy.sh" : kind.isServer ? "run-\(kind.rawValue).sh" : "run.sh" }
+    /// A server's folder (its disk, SSH key, console password and seed live there).
     var machineFolder: URL { URL(fileURLWithPath: appsDisk).deletingLastPathComponent() }
-    /// The SSH terminal to a Debian machine: keyed by the machine's id, so a second request brings the same window
+    /// The SSH terminal to a server: keyed by the machine's id, so a second request brings the same window
     /// forward; the machine's own key and known_hosts; the share, for screenshots into it.
     var terminalProfile: RemoteProfile {
         var p = RemoteProfile(kind: .ssh)
-        p.id = id; p.name = "\(name) terminal"; p.host = "127.0.0.1"; p.port = sshPort; p.username = "debian"
+        p.id = id; p.name = "\(name) terminal"; p.host = "127.0.0.1"; p.port = sshPort; p.username = kind.serverUser
         p.keyFile = machineFolder.appendingPathComponent("ssh_key").path
         p.sshOptions = [RemoteProfile.knownHostsOption(machineFolder.appendingPathComponent("known_hosts").path), "ConnectTimeout=10"]
-        p.keyboard = .mac; p.launcherMachine = true
+        p.keyboard = .mac; p.launcherMachine = true; p.installScript = kind.installScriptName
         if !shareDir.isEmpty { p.shareMacPath = shareDir; p.shareGuestPath = "~/" + URL(fileURLWithPath: shareDir).lastPathComponent }
         return p
     }
@@ -107,7 +119,7 @@ struct Profile: Codable, Identifiable, Hashable {
                 && (Int(parts[0]) ?? 0) >= 640
             if !ok { p.append("Resolution must look like 1920x1200 (640–8192 wide, 480–8192 high).") }
         }
-        if kind == .debian {
+        if isServer {
             if appsDisk.isEmpty { p.append("Choose where the machine's disk lives.") }
             if !(8...2000).contains(appsSizeGB) { p.append("Disk size must be 8–2000 GB.") }
             if shareDir.contains(",") || appsDisk.contains(",") { p.append("Paths must not contain a comma.") }
@@ -131,7 +143,7 @@ struct Profile: Codable, Identifiable, Hashable {
 
     /// run.sh's environment for this profile.
     func environment(outDir: URL, serialSocket: String, qmpSocket: String = "") -> [String: String] {
-        if kind == .debian {
+        if isServer {
             var env: [String: String] = [
                 "MYLINUX_OUT": outDir.path,
                 "DISK": appsDisk,
@@ -216,10 +228,10 @@ final class ProfileStore: ObservableObject {
 
     static func newProfile(named name: String, kind: Profile.Kind = .mylinux, folder: URL? = nil) -> Profile {
         let dir = folder ?? Paths.machines.appendingPathComponent(Paths.slug(name), isDirectory: true)
-        if kind == .debian {
-            var p = Profile(name: name, appsDisk: dir.appendingPathComponent("debian.raw").path,
+        if kind.isServer {
+            var p = Profile(name: name, appsDisk: dir.appendingPathComponent("\(kind.rawValue).raw").path,
                             shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
-            p.kind = .debian; p.memoryGB = Profile.recommendedMemoryGB(.debian); p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
+            p.kind = kind; p.memoryGB = Profile.recommendedMemoryGB(kind); p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
             return p
         }
         if kind == .omarchy {
@@ -249,15 +261,15 @@ final class ProfileStore: ObservableObject {
     func add(copying template: Profile? = nil, kind: Profile.Kind? = nil) -> Profile {
         let kind = kind ?? template?.kind ?? .mylinux
         let template = template?.kind == kind ? template : nil      // settings carry over within a kind only
-        let name = uniqueName(template.map { "\($0.name) copy" } ?? (kind == .omarchy ? "Omarchy" : kind == .debian ? "Debian" : "Machine"))
+        let name = uniqueName(template.map { "\($0.name) copy" } ?? (kind == .mylinux ? "Machine" : kind.title))
         var p = ProfileStore.newProfile(named: name, kind: kind)
         if let t = template {
             p.grab = t.grab; p.mouse = t.mouse; p.clipboard = t.clipboard
             p.memoryGB = t.memoryGB; p.memoryAuto = t.memoryAuto; p.resolution = t.resolution; p.appsSizeGB = t.appsSizeGB
             p.cpus = t.cpus; p.sound = t.sound      // not the SSH port: two machines cannot listen on one
         }
-        // a Debian machine always listens: the next free port after the other machines'
-        if kind == .debian {
+        // a server always listens: the next free port after the other machines'
+        if kind.isServer {
             let used = Set(profiles.map(\.sshPort))
             var port = 2223
             while used.contains(port) { port += 1 }

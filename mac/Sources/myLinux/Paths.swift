@@ -109,15 +109,15 @@ final class AppSettings: ObservableObject {
         (try? String(contentsOf: outDir.appendingPathComponent("omarchy/OMARCHY-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    /// The Debian cloud image and UEFI firmware (tools/get-debian.sh).
-    var debianPresent: Bool {
-        let dir = outDir.appendingPathComponent("debian", isDirectory: true)
-        return ["debian.raw", "edk2-aarch64-code.fd"].allSatisfy {
+    /// A server's cloud image and UEFI firmware (tools/get-debian.sh, tools/get-alpine.sh), in <out>/<distro>.
+    func serverImagePresent(_ kind: Profile.Kind) -> Bool {
+        let dir = outDir.appendingPathComponent(kind.rawValue, isDirectory: true)
+        return ["\(kind.rawValue).raw", "edk2-aarch64-code.fd"].allSatisfy {
             ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
         }
     }
-    var debianRevision: String? {
-        (try? String(contentsOf: outDir.appendingPathComponent("debian/DEBIAN-REVISION"), encoding: .utf8))?
+    func serverRevision(_ kind: Profile.Kind) -> String? {
+        (try? String(contentsOf: outDir.appendingPathComponent("\(kind.rawValue)/\(kind.rawValue.uppercased())-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     /// Some QEMU can start a machine: the runtime, or Homebrew's.

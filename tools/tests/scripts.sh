@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-debian.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -219,12 +219,30 @@ out=$(cd "$W" && DRYRUN=1 SHARE_DIR="$HOME" sh run-debian.sh 2>&1); rc=$?
 not_rc0 "the whole home folder is refused as a share" $rc
 out=$(cd "$W" && DRYRUN=1 DISK_SIZE_GB=4 sh run-debian.sh 2>&1); rc=$?
 not_rc0 "a disk under 8 GB is refused" $rc
+echo "run-alpine.sh (DRYRUN, with the fake runtime)"
+out=$(cd / && DRYRUN=1 DISK="$T/alp/alpine.raw" SHARE_DIR="$T/alp/Mac" NAME="Alpine test" SSH_PORT=2298 sh "$W/run-alpine.sh" 2>&1); rc=$?
+is_rc "dry run works from another directory" $rc 0
+has "Alpine's own account" "$out" "DISTRO=alpine USER=alpine"
+has "boots the firmware downloaded beside the Alpine image" "$out" "$W/out/alpine/edk2-aarch64-code.fd"
+has "root disk as a raw virtio disk" "$out" "file=$T/alp/alpine.raw,format=raw"
+has "the disk says what it is" "$out" "serial=alpine-root"
+has "a gigabyte by default" "$out" "MEM=1G"
+has "SSH forwarded to the asked port" "$out" "hostfwd=tcp:127.0.0.1:2298-:22"
+has "host name from the machine name" "$out" "HOSTNAME=alpine-test"
+out=$(cd "$W" && DRYRUN=1 sh run-debian.sh 2>&1); rc=$?
+has "run-debian.sh is still Debian by default" "$out" "DISTRO=debian USER=debian"
+out=$(cd "$W" && DRYRUN=1 DISTRO=fedora sh run-server.sh 2>&1); rc=$?
+not_rc0 "an unknown distribution is refused" $rc
+# what Alpine's first boot changes (found booting it: each broke something)
+grep -q 'AllowTcpForwarding local' "$REPO/run-server.sh" && ok "Alpine allows the local forwarding the browser pane uses" || ko "Alpine's sshd keeps forwarding off"
+grep -q 'rc-update add netmount default' "$REPO/run-server.sh" && ok "Alpine mounts the share on every start (netmount)" || ko "Alpine's share is mounted on the first start only"
+grep -q "timeout: 0/' /boot/limine/limine.conf" "$REPO/run-server.sh" && ok "Alpine skips Limine's 10 s countdown" || ko "Alpine waits for Limine's menu"
 echo "the Omarchy clipboard bridge"
 grep -q '"$MYLINUX_HELPER" --omarchy-clipboard "$CLIPSOCK"' "$REPO/run-omarchy.sh" && ok "run-omarchy.sh starts the launcher's own bridge when the app runs it" || ko "run-omarchy.sh does not use MYLINUX_HELPER"
 grep -q 'xcodebuild -license check' "$REPO/run-omarchy.sh" && ok "an unaccepted Xcode licence counts as no python3" || ko "the python3 guard ignores the Xcode licence"
 echo "no python3 on the start and download paths"
 # a Mac without Xcode's command line tools has only a python3 stub, which fails and pops an install dialog
-for f in run.sh run-debian.sh tools/get-debian.sh tools/get-omarchy.sh tools/get-image.sh tools/get-qemu-runtime.sh; do
+for f in run.sh run-server.sh tools/get-debian.sh tools/get-alpine.sh tools/get-edk2.sh tools/get-omarchy.sh tools/get-image.sh tools/get-qemu-runtime.sh; do
   grep -n 'python3' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -q . && ko "$f calls python3" || ok "$f does not call python3"
 done
 for f in run-omarchy.sh tools/make-app-bundle.sh; do

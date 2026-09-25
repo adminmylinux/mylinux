@@ -214,7 +214,15 @@ final class InstallScriptTests: XCTestCase {
         XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Tailscale"])
         XCTAssertTrue(InstallScript.options(in: s).allSatisfy(\.on), "everything is on by default")
         XCTAssertFalse(InstallScript.plausible("<html>404</html>"))
-        XCTAssertTrue(InstallScript.command.hasPrefix(" bash ~/.local/share/mylinux/debian_install.sh"))
+        XCTAssertEqual(InstallScript.command(file: "debian_install.sh", script: s), " bash ~/.local/share/mylinux/debian_install.sh && exec bash -l\n")
+    }
+    func testAlpinesScriptRunsWithShAndLeavesBash() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../alpine_install.sh").standardized
+        let s = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(s.hasPrefix("#!/bin/sh\n"), "Alpine has no bash until the script installs it")
+        XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Tailscale"])
+        XCTAssertEqual(InstallScript.command(file: "alpine_install.sh", script: s), " sh ~/.local/share/mylinux/alpine_install.sh && exec bash -l\n")
+        XCTAssertEqual(InstallScript.url("alpine_install.sh").absoluteString, "https://raw.githubusercontent.com/adminmylinux/mylinux/main/alpine_install.sh")
     }
 }
 
@@ -246,6 +254,31 @@ final class DebianProfileTests: XCTestCase {
         XCTAssertEqual(a.sshPort, 2223); XCTAssertEqual(b.sshPort, 2224)
         XCTAssertEqual(a.name, "Debian"); XCTAssertEqual(b.name, "Debian 2")
         try? FileManager.default.removeItem(at: dir)
+    }
+}
+
+final class AlpineServerTests: XCTestCase {
+    func testAnAlpineMachineMapsOntoRunAlpineSh() {
+        let p = ProfileStore.newProfile(named: "Alpine", kind: .alpine, folder: URL(fileURLWithPath: "/m/alpine"))
+        XCTAssertTrue(p.isServer)
+        XCTAssertEqual(p.script, "run-alpine.sh")
+        XCTAssertEqual(p.appsDisk, "/m/alpine/alpine.raw")
+        XCTAssertEqual(p.memoryGB, Profile.recommendedMemoryGB(.alpine))
+        XCTAssertEqual([8, 16, 32].map { Profile.recommendedMemoryGB(.alpine, macGB: $0) }, [1, 1, 2])
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        let env = p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/s.sock", qmpSocket: "/q.sock")
+        XCTAssertEqual(env["DISK"], "/m/alpine/alpine.raw"); XCTAssertEqual(env["SSH_PORT"], "2223"); XCTAssertEqual(env["QMP"], "/q.sock")
+        let t = p.terminalProfile
+        XCTAssertEqual(t.username, "alpine"); XCTAssertEqual(t.installScriptFile, "alpine_install.sh"); XCTAssertTrue(t.launcherMachine)
+        XCTAssertEqual(ProfileStore.newProfile(named: "D", kind: .debian, folder: URL(fileURLWithPath: "/m/d")).terminalProfile.installScriptFile, "debian_install.sh")
+    }
+    func testServersShareThePortRange() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-alpine-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = ProfileStore(file: dir.appendingPathComponent("profiles.json"))
+        let d = store.add(kind: .debian), a = store.add(kind: .alpine)
+        XCTAssertEqual(d.sshPort, 2223); XCTAssertEqual(a.sshPort, 2224, "two servers cannot listen on one port")
+        XCTAssertEqual(a.name, "Alpine")
     }
 }
 

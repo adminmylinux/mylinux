@@ -443,7 +443,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: InstallScriptSheet(
             profile: profile,
             dismiss: { [weak self] in self?.endSheet() },
-            run: { [weak self] in guard let self, let t = self.ssh else { return }; t.type(InstallScript.command); self.window?.makeFirstResponder(t) })))
+            run: { [weak self] command in guard let self, let t = self.ssh else { return }; t.type(command); self.window?.makeFirstResponder(t) })))
         sheet.styleMask = [.titled]
         sheetWindow = sheet
         window.beginSheet(sheet) { _ in }

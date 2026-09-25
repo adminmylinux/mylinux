@@ -156,21 +156,33 @@ final class OmarchyManager: ScriptDownloader {
     override func finished() { refresh() }
 }
 
-/// The Debian cloud image and its UEFI firmware (tools/get-debian.sh): the latest stable image from cloud.debian.org
-/// (about 300 MB) kept in <out>/debian; every Debian machine's disk is copied from it on its first start.
-final class DebianManager: ScriptDownloader {
-    static let shared = DebianManager()
+/// A server's cloud image and its UEFI firmware: Debian's latest stable image (tools/get-debian.sh, about 300 MB) or
+/// Alpine's (tools/get-alpine.sh, about 100 MB), kept in <out>/<distro>; every machine of that kind has its disk
+/// copied from it on its first start.
+final class ServerImageManager: ScriptDownloader {
+    static let debian = ServerImageManager(.debian)
+    static let alpine = ServerImageManager(.alpine)
+    static func shared(_ kind: Profile.Kind) -> ServerImageManager { kind == .alpine ? alpine : debian }
 
+    let kind: Profile.Kind
     @Published private(set) var revision: String?
     @Published private(set) var present = false
 
+    init(_ kind: Profile.Kind) { self.kind = kind; super.init() }
+
+    /// For the download rows: the size and where it comes from.
+    var detail: String {
+        kind == .alpine ? "about 100 MB, the latest stable cloud image from alpinelinux.org"
+                        : "about 300 MB, the latest stable cloud image from cloud.debian.org"
+    }
+
     func refresh(_ settings: AppSettings = .shared) {
-        present = settings.debianPresent
-        revision = settings.debianRevision
+        present = settings.serverImagePresent(kind)
+        revision = settings.serverRevision(kind)
     }
 
     func download(_ settings: AppSettings = .shared) {
-        run("tools/get-debian.sh", starting: "Looking up the latest Debian image…", settings: settings)
+        run("tools/get-\(kind.rawValue).sh", starting: "Looking up the latest \(kind.title) image…", settings: settings)
     }
 
     override func finished() { refresh() }

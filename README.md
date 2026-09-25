@@ -114,6 +114,23 @@ bar ready, and ⌘T opens another tab to the machine. A terminal leaves the tab 
 hold Claude in one terminal, Codex in another below it, and the result in the browser beside them. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
 `SERIAL`, `QMP`, `DRYRUN=1`.
 
+### Alpine server machines
+
+**Alpine Server** is the smallest machine: Alpine Linux's official aarch64 cloud-init image, the same kind of
+terminal server as Debian with the same window, browser pane and Install Script… menu. `tools/get-alpine.sh`
+finds the newest stable release in Alpine's cloud folder and downloads its raw disk (about 100 MB, checked against
+the `.sha512` beside it; kept sparse in `out/alpine`, about 230 MB of a 1 GB disk) and the same UEFI firmware
+(`tools/get-edk2.sh`, shared with Debian). `./run-alpine.sh` is `run-server.sh` with `DISTRO=alpine`
+(`run-debian.sh` is the same with `DISTRO=debian`). The machine keeps Alpine's own `alpine` account (BusyBox ash,
+`doas` for root) and is given the machine's key, the console password and the share. Three things are changed on
+its first boot, each found by booting it: sshd is allowed local TCP forwarding (Alpine turns it off; the browser
+pane's SOCKS tunnel and port forwards need it), the share is mounted through `netmount` (OpenRC does not start it,
+so the `_netdev` mount was missing after a restart), and the Limine boot menu's 10-second countdown is set to 0.
+It idles in about 60 MB of memory and answers SSH about 13 seconds after Start (25 on the first start). Its install
+script is [`alpine_install.sh`](alpine_install.sh): plain `sh`, `apk` and `doas`; it adds bash and makes it the
+login shell, and Claude Code's musl needs (`libgcc`, `libstdc++`, `ripgrep`). Memory defaults to 1 GB (2 GB on a
+Mac with 24 GB or more).
+
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
 size of the display under your mouse pointer; if the first start puts it on another display, give your
 terminal app Accessibility permission (System Settings › Privacy & Security) and it is moved automatically.
@@ -384,7 +401,8 @@ patches/                    Qt Wayland compositor patch (wl_seat v5, data device
 tools/                      build, SDK, apps-disk, automation helpers
 mac/                        the Mac launcher app (SwiftUI; mac/build-app.sh bundles it)
 run.sh / build.sh           run on the Mac / build inside Debian
-run-omarchy.sh, run-debian.sh   the other two kinds of machine (Omarchy desktop, Debian server)
+run-omarchy.sh               the Omarchy desktop machine
+run-server.sh               the server machines: run-debian.sh and run-alpine.sh set DISTRO
 ```
 
 ## Checks and tests
@@ -410,6 +428,6 @@ instead of starting it.
 GPL-3.0-or-later (see `LICENSE`). The desktop shell links the Qt Wayland Compositor module,
 which Qt offers under the GPL v3 only. Theme palettes are from Omarchy (MIT, see
 `board/overlay/usr/share/mylinux/themes/LICENSE.omarchy`); the Inter font is under the SIL OFL.
-The launcher's welcome sheet shows two marks in `tools/icons/`: `debian.png` is the Debian Open Use Logo,
+The launcher's welcome sheet shows two marks in `tools/icons/` (Alpine gets a plain mountain tile, not its logo): `debian.png` is the Debian Open Use Logo,
 Copyright (c) 1999 Software in the Public Interest, Inc., under LGPL-3 or CC-BY-SA 3.0; `omarchy.png` is the
 Omarchy mark from Omarchy's brand kit (as used by Try Omarchy), a pending trademark of the Omarchy project.

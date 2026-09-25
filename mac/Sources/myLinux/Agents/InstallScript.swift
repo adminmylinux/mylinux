@@ -1,15 +1,15 @@
 import Foundation
 
-/// What "Install Script…" in a Debian terminal's myLinux menu runs: debian_install.sh from the public repo, so it can
-/// change without a new launcher (a copy built into the app stands in when GitHub can't be reached). A line of the form
+/// What "Install Script…" in a server's terminal runs: <distro>_install.sh (debian_install.sh, alpine_install.sh) from
+/// the public repo, so it can change without a new launcher (a copy built into the app stands in when GitHub can't be reached). A line of the form
 /// `NAME=1   # option: Label` is a checkbox in the dialog; ticking it rewrites that line in the text, and editing the
 /// line by hand moves the checkbox, so the text is always exactly what runs.
 enum InstallScript {
-    static let url = URL(string: "https://raw.githubusercontent.com/adminmylinux/mylinux/main/debian_install.sh")!
-    static let fileName = "debian_install.sh"
+    static let defaultFile = "debian_install.sh"
+    static func url(_ file: String) -> URL { URL(string: "https://raw.githubusercontent.com/adminmylinux/mylinux/main/\(file)")! }
     /// Where it lands in the machine before the terminal runs it.
     static let guestDir = "~/.local/share/mylinux"
-    static var guestPath: String { guestDir + "/" + fileName }
+    static func guestPath(_ file: String) -> String { guestDir + "/" + file }
 
     struct Option: Equatable, Identifiable {
         let name: String
@@ -45,16 +45,20 @@ enum InstallScript {
     static func plausible(_ text: String) -> Bool { text.hasPrefix("#!") && text.utf8.count < 1_000_000 }
 
     /// The copy built into the app (Contents/Resources), or the checkout's when run from a build folder.
-    static var bundled: String? {
-        let candidates = [Bundle.main.url(forResource: "debian_install", withExtension: "sh"),
-                          Paths.buildRepo.map { URL(fileURLWithPath: $0).appendingPathComponent(fileName) }]
+    static func bundled(_ file: String) -> String? {
+        let candidates = [Bundle.main.resourceURL?.appendingPathComponent(file),
+                          Paths.buildRepo.map { URL(fileURLWithPath: $0).appendingPathComponent(file) }]
         for case let url? in candidates { if let s = try? String(contentsOf: url, encoding: .utf8), plausible(s) { return s } }
         return nil
     }
 
-    /// The line typed into the terminal: run the uploaded script, then read the new aliases into this shell. The
-    /// leading space keeps it out of the history.
-    static var command: String { " bash \(guestPath) && source ~/.bashrc\n" }
+    /// The line typed into the terminal: run the uploaded script with the shell its #! line names (Alpine's is sh:
+    /// bash is what it installs), then a fresh bash login, which reads the new aliases (and on Alpine is the new login
+    /// shell). The leading space keeps it out of the history.
+    static func command(file: String, script: String) -> String {
+        let first = script.prefix(while: { $0 != "\n" })
+        return " \(first.contains("bash") ? "bash" : "sh") \(guestPath(file)) && exec bash -l\n"
+    }
 }
 
 /// Loads the script from GitHub, falling back to the bundled copy.
@@ -64,32 +68,36 @@ final class InstallScriptLoader: ObservableObject {
     @Published private(set) var state = State.loading
     @Published var text = ""
 
+    let file: String
     /// With text already in hand (a picture of the dialog), as if it had come from GitHub, and nothing to load.
-    init(preset: String? = nil) { if let preset { text = preset; state = .loaded(fromGitHub: true) } }
+    init(file: String, preset: String? = nil) {
+        self.file = file
+        if let preset { text = preset; state = .loaded(fromGitHub: true) }
+    }
 
     func load() async {
         state = .loading
-        var request = URLRequest(url: InstallScript.url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        var request = URLRequest(url: InstallScript.url(file), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.setValue("myLinux-Launcher", forHTTPHeaderField: "User-Agent")
         if let (data, response) = try? await URLSession.shared.data(for: request),
            (response as? HTTPURLResponse)?.statusCode == 200,
            let s = String(data: data, encoding: .utf8), InstallScript.plausible(s) {
             text = s; state = .loaded(fromGitHub: true); return
         }
-        if let s = InstallScript.bundled { text = s; state = .loaded(fromGitHub: false); return }
-        state = .failed("Could not load \(InstallScript.fileName) from GitHub. Check the Mac's internet connection and try again.")
+        if let s = InstallScript.bundled(file) { text = s; state = .loaded(fromGitHub: false); return }
+        state = .failed("Could not load \(file) from GitHub. Check the Mac's internet connection and try again.")
     }
 }
 
 /// Puts the script into the machine over its SSH connection (the terminal's own arguments, so its key and
 /// known_hosts are used), where the terminal then runs it in view.
 enum InstallScriptUpload {
-    @MainActor static func upload(_ script: String, profile: RemoteProfile) async -> String? {
+    @MainActor static func upload(_ script: String, file: String, profile: RemoteProfile) async -> String? {
         await withCheckedContinuation { done in
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
             proc.arguments = SshTerminal.arguments(for: profile) + ["-o", "BatchMode=yes",
-                "mkdir -p \(InstallScript.guestDir) && cat > \(InstallScript.guestPath) && chmod 755 \(InstallScript.guestPath)"]
+                "mkdir -p \(InstallScript.guestDir) && cat > \(InstallScript.guestPath(file)) && chmod 755 \(InstallScript.guestPath(file))"]
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = Paths.toolPath
             proc.environment = env

@@ -70,15 +70,15 @@ struct ContentView: View {
             images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
             // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
-            OmarchyManager.shared.refresh(settings); DebianManager.shared.refresh(settings)
-            if !settings.developerMode, !images.present, !OmarchyManager.shared.present, !DebianManager.shared.present,
+            OmarchyManager.shared.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings)
+            if !settings.developerMode, !images.present, !OmarchyManager.shared.present, !ServerImageManager.debian.present, !ServerImageManager.alpine.present,
                !UserDefaults.standard.bool(forKey: "welcomeShown") {
                 UserDefaults.standard.set(true, forKey: "welcomeShown"); showWelcome = true
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
         .sheet(isPresented: $showWelcome) {
-            WelcomeSheet(images: images, omarchy: .shared, debian: .shared, runtime: runtime, done: { kinds in
+            WelcomeSheet(images: images, omarchy: .shared, debian: .debian, alpine: .alpine, runtime: runtime, done: { kinds in
                 showWelcome = false
                 // a machine of each downloaded kind that has none yet, and the first of them selected
                 var first: UUID?
@@ -105,6 +105,9 @@ struct ContentView: View {
             }
             Button { selection = store.add(copying: selected?.kind == .debian ? selected : nil, kind: .debian).id } label: {
                 Label("Debian Server", systemImage: "server.rack")
+            }
+            Button { selection = store.add(copying: selected?.kind == .alpine ? selected : nil, kind: .alpine).id } label: {
+                Label("Alpine Server", systemImage: "mountain.2")
             }
             Divider()
             Button { selection = remote.add(.vnc).id } label: { Label("VNC Desktop", systemImage: "display") }
@@ -207,7 +210,7 @@ private struct MachineRow: View {
         case .inUseElsewhere: return "Running outside the app"
         case .failed: return "Failed"
         case .stopped:
-            if profile.kind == .debian { return "Debian server · \(profile.memoryGB) GB · ssh port \(String(profile.sshPort))" }
+            if profile.isServer { return "\(profile.kind.title) server · \(profile.memoryGB) GB · ssh port \(String(profile.sshPort))" }
             return "\(profile.memoryGB) GB · \(profile.grab == "opt" ? "Option as ⌘" : profile.grab == "full" ? "All keys" : "No key grab")"
         }
     }

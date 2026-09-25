@@ -29,6 +29,7 @@ struct MyLinuxApp: App {
                 Button("New myLinux Machine") { _ = store.add(kind: .mylinux) }.keyboardShortcut("n")
                 Button("New Omarchy Machine") { _ = store.add(kind: .omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Debian Server") { _ = store.add(kind: .debian) }.keyboardShortcut("n", modifiers: [.command, .option])
+                Button("New Alpine Server") { _ = store.add(kind: .alpine) }
                 Divider()
                 Button("Download Linux…") { NotificationCenter.default.post(name: WelcomeSheet.showNotification, object: nil) }
                 Button("Quick Connect…") { QuickConnect.shared.show() }.keyboardShortcut("k")
@@ -52,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
             if let ago = ProcessInfo.processInfo.environment["MYLINUX_RENDER_STARTED_AGO"].flatMap(Double.init) { WelcomeSheet.renderStartedAt = Date().addingTimeInterval(-ago) }
-            let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), omarchy: OmarchyManager(), debian: DebianManager(), runtime: RuntimeManager(), done: { _ in })
+            let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), omarchy: OmarchyManager(), debian: ServerImageManager(.debian), alpine: ServerImageManager(.alpine), runtime: RuntimeManager(), done: { _ in })
                 .environmentObject(AppSettings.shared))
             view.frame = NSRect(origin: .zero, size: view.fittingSize); view.appearance = NSAppearance(named: .darkAqua)
             if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
@@ -65,7 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // debian_install.sh in it (a look without a machine or the network)
         if let i = args.firstIndex(of: "--render-install-script"), i + 1 < args.count {
             var p = RemoteProfile(kind: .ssh); p.name = "Debian terminal"
-            let view = NSHostingView(rootView: InstallScriptSheet(profile: p, dismiss: {}, run: {}, preset: InstallScript.bundled ?? "#!/bin/bash\n"))
+            if let file = ProcessInfo.processInfo.environment["MYLINUX_INSTALL_SCRIPT"] { p.installScript = file; p.name = "Alpine terminal" }
+            let view = NSHostingView(rootView: InstallScriptSheet(profile: p, dismiss: {}, run: { _ in }, preset: InstallScript.bundled(p.installScriptFile) ?? "#!/bin/bash\n"))
             view.frame = NSRect(origin: .zero, size: view.fittingSize)
             view.appearance = NSAppearance(named: .darkAqua)
             if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
@@ -81,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // MYLINUX_TEST_SSH="port|key|known_hosts|share": a real machine, and the browser pane opens on a page inside it
             var wait = 2.0
             if let spec = ProcessInfo.processInfo.environment["MYLINUX_TEST_SSH"]?.split(separator: "|").map(String.init), spec.count == 4 {
-                p.port = Int(spec[0]) ?? 22; p.username = "debian"; p.keyFile = spec[1]
+                p.port = Int(spec[0]) ?? 22; p.username = ProcessInfo.processInfo.environment["MYLINUX_TEST_USER"] ?? "debian"; p.keyFile = spec[1]
                 p.sshOptions = [RemoteProfile.knownHostsOption(spec[2]), "ConnectTimeout=10"]; p.shareMacPath = spec[3]; p.shareGuestPath = "~/Mac"
                 wait = 12
             }

@@ -1,21 +1,21 @@
 import SwiftUI
 import AppKit
 
-/// The Install Script dialog: debian_install.sh as loaded from GitHub, a checkbox for each of its options, and the
+/// The Install Script dialog: the machine's install script (debian_install.sh, alpine_install.sh) as loaded from GitHub, a checkbox for each of its options, and the
 /// text itself to read or change. Run copies the text into the machine and runs it in the terminal, in view.
 struct InstallScriptSheet: View {
     let profile: RemoteProfile
     let dismiss: () -> Void
-    /// Called once the script is in the machine (the window types the command into the terminal).
-    let run: () -> Void
+    /// Called once the script is in the machine, with the command the window types into the terminal.
+    let run: (String) -> Void
     @StateObject private var loader: InstallScriptLoader
     @State private var uploading = false
     @State private var problem: String?
 
     /// `preset`, for pictures of the dialog: start with this text instead of loading it.
-    init(profile: RemoteProfile, dismiss: @escaping () -> Void, run: @escaping () -> Void, preset: String? = nil) {
+    init(profile: RemoteProfile, dismiss: @escaping () -> Void, run: @escaping (String) -> Void, preset: String? = nil) {
         self.profile = profile; self.dismiss = dismiss; self.run = run
-        _loader = StateObject(wrappedValue: InstallScriptLoader(preset: preset))
+        _loader = StateObject(wrappedValue: InstallScriptLoader(file: profile.installScriptFile, preset: preset))
     }
 
     private var machine: String { profile.name.replacingOccurrences(of: " terminal", with: "") }
@@ -45,7 +45,7 @@ struct InstallScriptSheet: View {
                     .autocorrectionDisabled()
                     .padding(6)
                     .disabled(uploading || loader.state == .loading)
-                if loader.state == .loading { ProgressView("Loading \(InstallScript.fileName)…").controlSize(.small) }
+                if loader.state == .loading { ProgressView("Loading \(loader.file)…").controlSize(.small) }
             }
             .frame(height: 360)
             .background(Color(nsColor: .textBackgroundColor))
@@ -76,7 +76,7 @@ struct InstallScriptSheet: View {
     @ViewBuilder private var source: some View {
         switch loader.state {
         case .loaded(fromGitHub: true):
-            Link(destination: InstallScript.url) { Label("From github.com/adminmylinux/mylinux", systemImage: "globe") }
+            Link(destination: InstallScript.url(loader.file)) { Label("From github.com/adminmylinux/mylinux", systemImage: "globe") }
                 .font(.caption).foregroundStyle(.secondary)
         case .loaded(fromGitHub: false):
             Banner(text: "GitHub couldn't be reached; this is the copy built into the launcher.", kind: .warning)
@@ -90,10 +90,10 @@ struct InstallScriptSheet: View {
     private func start() {
         problem = nil; uploading = true
         Task {
-            let failure = await InstallScriptUpload.upload(loader.text, profile: profile)
+            let failure = await InstallScriptUpload.upload(loader.text, file: loader.file, profile: profile)
             uploading = false
             if let failure { problem = failure; return }
-            run(); dismiss()
+            run(InstallScript.command(file: loader.file, script: loader.text)); dismiss()
         }
     }
 }

@@ -9,7 +9,8 @@ struct WelcomeSheet: View {
     @EnvironmentObject var settings: AppSettings
     @ObservedObject var images: ImageManager
     @ObservedObject var omarchy: OmarchyManager
-    @ObservedObject var debian: DebianManager
+    @ObservedObject var debian: ServerImageManager
+    @ObservedObject var alpine: ServerImageManager
     @ObservedObject var runtime: RuntimeManager
     /// Called when the sheet closes, with the kinds that were downloaded and are ready (to add machines for).
     let done: ([Profile.Kind]) -> Void
@@ -34,6 +35,8 @@ struct WelcomeSheet: View {
               text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. Your Command key works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
         Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
               text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
+        Offer(kind: .alpine, name: "Alpine Server", size: "100 MB", bytes: 100e6,
+              text: "The smallest: Alpine Linux as a terminal that boots in seconds and idles in about 100 MB of memory. The same menu installs the agents, and the same browser looks inside."),
     ]
 
     var body: some View {
@@ -117,7 +120,7 @@ struct WelcomeSheet: View {
         }
     }
 
-    /// The machine's own mark on a tile of the same size for all three.
+    /// The machine's own mark on a tile of the same size for each.
     private func logo(_ kind: Profile.Kind) -> some View {
         ZStack {
             switch kind {
@@ -133,6 +136,8 @@ struct WelcomeSheet: View {
                     RoundedRectangle(cornerRadius: 11, style: .continuous).fill(.white).frame(width: 46, height: 46)
                         .overlay(Image(nsImage: i).resizable().aspectRatio(contentMode: .fit).padding(8))
                 } else { tile(.red, "terminal") }
+            case .alpine:
+                tile(Color(red: 0.05, green: 0.35, blue: 0.50), "mountain.2")
             }
         }
         .frame(width: 52, height: 52)
@@ -175,14 +180,14 @@ struct WelcomeSheet: View {
 
     // ---- state ----------------------------------------------------------------------------------------------------
     private func manager(_ kind: Profile.Kind) -> ScriptDownloader {
-        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian }
+        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine }
     }
     private func present(_ kind: Profile.Kind) -> Bool {
-        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present }
+        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present }
     }
     /// Ticked and not downloaded yet.
     private var pending: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && !present($0) } }
-    private var anyBusy: Bool { images.busy || omarchy.busy || debian.busy || runtime.busy }
+    private var anyBusy: Bool { images.busy || omarchy.busy || debian.busy || alpine.busy || runtime.busy }
     private var readyKinds: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && present($0) } }
     private var summary: String {
         if started && anyBusy { return "Downloading…" }
@@ -202,6 +207,7 @@ struct WelcomeSheet: View {
                 if !runtime.present && !runtime.busy && RuntimeManager.bundledTarball == nil { runtime.download(settings) }
                 omarchy.download(settings)
             case .debian: debian.download(settings)
+            case .alpine: alpine.download(settings)
             }
         }
     }
