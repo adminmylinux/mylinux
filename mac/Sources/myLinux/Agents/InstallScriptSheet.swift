@@ -10,14 +10,17 @@ struct InstallScriptSheet: View {
     let dismiss: () -> Void
     /// Called once the script is in the machine, with the command the window types into the terminal.
     let run: (String) -> Void
+    /// Called when saving cloud folders restarts the machine (the window then shows the restart's progress).
+    var restarting: () -> Void = {}
     @StateObject private var loader: InstallScriptLoader
     @State private var uploading = false
     @State private var problem: String?
     @State private var tab: Tab
 
     /// `preset`, for pictures of the dialog: start with this text instead of loading it.
-    init(profile: RemoteProfile, dismiss: @escaping () -> Void, run: @escaping (String) -> Void, preset: String? = nil, tab: Tab = .install) {
-        self.profile = profile; self.dismiss = dismiss; self.run = run
+    init(profile: RemoteProfile, dismiss: @escaping () -> Void, run: @escaping (String) -> Void, restarting: @escaping () -> Void = {},
+         preset: String? = nil, tab: Tab = .install) {
+        self.profile = profile; self.dismiss = dismiss; self.run = run; self.restarting = restarting
         _loader = StateObject(wrappedValue: InstallScriptLoader(file: profile.installScriptFile, preset: preset))
         _tab = State(initialValue: tab)
     }
@@ -36,7 +39,7 @@ struct InstallScriptSheet: View {
                 .pickerStyle(.segmented).labelsHidden().frame(width: 180)
             }
             if tab == .install { installTab } else {
-                CloudTab(machineID: profile.machineID ?? profile.id, machine: machine, dismiss: dismiss)
+                CloudTab(machineID: profile.machineID ?? profile.id, machine: machine, dismiss: dismiss, restarting: restarting)
             }
         }
         .padding(20)
@@ -120,6 +123,7 @@ struct CloudTab: View {
     let machineID: UUID
     let machine: String
     let dismiss: () -> Void
+    var restarting: () -> Void = {}
     @ObservedObject private var store = ProfileStore.shared
     @State private var picked: Set<String> = []
     @State private var loaded = false
@@ -179,7 +183,6 @@ struct CloudTab: View {
         p.cloudFolders = CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) }
         store.update(p)
         let r = RunManager.shared.runner(for: machineID)
-        if r.isActive { r.restart(p) }
-        dismiss()
+        if r.isActive { r.restart(p); restarting() } else { dismiss() }
     }
 }

@@ -22,6 +22,20 @@ final class Runner: ObservableObject {
     @Published private(set) var sshReady = false
     /// Waiting for that login (after Start, or a Terminal press before it), to open the terminal then.
     @Published private(set) var waitingForSSH = false
+    // ---- the clock: every step is timed and shown in seconds ("Starting… 7 s", "Ready in 14 s") ----------------
+    /// When this start began, when a server's sshd first answered, when it was ready (cloud folders mounted).
+    @Published private(set) var startedAt: Date?
+    @Published private(set) var sshAnsweredAt: Date?
+    @Published private(set) var readyAt: Date?
+    /// Mounting the cloud folders inside, between the answer and ready.
+    @Published private(set) var mountingCloud = false
+    /// A restart (Install Script… › Cloud): when it began, and when the machine was down.
+    @Published private(set) var restartBeganAt: Date?
+    @Published private(set) var stoppedAt: Date?
+    /// Seconds from Start to ready, once there.
+    var readyIn: TimeInterval? { readyAt.flatMap { r in startedAt.map { r.timeIntervalSince($0) } } }
+    /// "7 s": the way every duration in the launcher reads.
+    static func seconds(_ t: TimeInterval) -> String { t < 0.5 ? "<1 s" : "\(Int(t.rounded())) s" }
 
     let profileID: UUID
     private var process: Process?
@@ -121,6 +135,7 @@ final class Runner: ObservableObject {
         }
         process = proc; profile = p
         state = .starting
+        startedAt = Date(); sshAnsweredAt = nil; readyAt = nil; mountingCloud = false
         UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
         connectSerial()
         sshReady = false
@@ -138,7 +153,7 @@ final class Runner: ObservableObject {
         closeSerial()
         sshReady = false
         if let p = restartWith {
-            restartWith = nil
+            restartWith = nil; stoppedAt = Date()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.start(p) }
         }
         try? logHandle?.close(); logHandle = nil
@@ -256,8 +271,12 @@ final class Runner: ObservableObject {
                     t.waitUntilExit()
                     if t.terminationStatus == 0 {
                         // the cloud folders (Install Script… › Cloud): mounted before the terminal opens, so ~/Dropbox is there
+                        DispatchQueue.main.sync { self.sshAnsweredAt = Date(); self.mountingCloud = !p.cloudFolders.isEmpty }
                         self.mountCloudFolders(p, sshArgs: SshTerminal.arguments(for: profile))
-                        DispatchQueue.main.async { self.sshReady = true; self.waitingForSSH = false; RemoteWindowController.show(profile) }
+                        DispatchQueue.main.async {
+                            self.mountingCloud = false; self.readyAt = Date()
+                            self.sshReady = true; self.waitingForSSH = false; RemoteWindowController.show(profile)
+                        }
                         return
                     }
                 }
@@ -284,7 +303,8 @@ final class Runner: ObservableObject {
 
     /// Shut down, then start again with `p` (new cloud folders are attached only when QEMU starts).
     func restart(_ p: Profile) {
-        guard isActive else { start(p); return }
+        restartBeganAt = Date(); stoppedAt = nil
+        guard isActive else { stoppedAt = restartBeganAt; start(p); return }
         restartWith = p
         stop()
     }

@@ -138,6 +138,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             area.addArrangedSubview(t)
             window?.makeFirstResponder(t)
             status.stringValue = "ssh \(profile.username.isEmpty ? "" : profile.username + "@")\(profile.host):\(profile.port)" + (profile.tmux.isEmpty ? "" : "  tmux \(profile.tmux)")
+            // a launcher machine: how long it took from Start to this terminal
+            if profile.launcherMachine, let t = RunManager.shared.runner(for: profile.machineID ?? profile.id).readyIn {
+                status.stringValue += "  ·  ready in \(Runner.seconds(t))"
+            }
         }
         hudTimer?.invalidate()
         hudTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.updateStatus() }
@@ -477,11 +481,27 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: InstallScriptSheet(
             profile: profile,
             dismiss: { [weak self] in self?.endSheet() },
-            run: { [weak self] command in guard let self, let t = self.ssh else { return }; t.type(command); self.window?.makeFirstResponder(t) })))
+            run: { [weak self] command in guard let self, let t = self.ssh else { return }; t.type(command); self.window?.makeFirstResponder(t) },
+            restarting: { [weak self] in self?.endSheet(); DispatchQueue.main.async { self?.showRestartProgress() } })))
         sheet.styleMask = [.titled]
         sheetWindow = sheet
         window.beginSheet(sheet) { _ in }
     }
+    /// The restart for new cloud folders, step by step with its seconds, over this window.
+    private func showRestartProgress() {
+        guard let window, sheetWindow == nil else { return }
+        let id = profile.machineID ?? profile.id
+        let machine = ProfileStore.shared.profiles.first { $0.id == id }
+        let names = CloudFolder.allCases.filter { (machine?.cloudFolders ?? []).contains($0.rawValue) }.map(\.title)
+        let folders = names.isEmpty ? nil : ListFormatter.localizedString(byJoining: names)
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: RestartProgressView(
+            runner: RunManager.shared.runner(for: id), machine: machine?.name ?? "the machine", folders: folders,
+            close: { [weak self] in self?.endSheet() })))
+        sheet.styleMask = [.titled]
+        sheetWindow = sheet
+        window.beginSheet(sheet) { _ in }
+    }
+    func testShowRestartProgress() { showRestartProgress() }
     private func endSheet() {
         guard let window, let sheet = sheetWindow else { return }
         window.endSheet(sheet); sheetWindow = nil

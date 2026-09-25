@@ -67,6 +67,8 @@ struct ContentView: View {
         }
         .onAppear {
             if selection == nil { selection = store.profiles.first?.id }
+            // tests (--start-machine): the page of the machine being started
+            if let k = ProcessInfo.processInfo.environment["MYLINUX_TEST_SELECT"], let p = store.profiles.first(where: { $0.kind.rawValue == k }) { selection = p.id }
             images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
             // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
@@ -186,7 +188,12 @@ private struct MachineRow: View {
             Circle().fill(color).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 Text(profile.name).lineLimit(1)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if runner.isActive && runner.readyAt == nil {
+                    // counting while it starts: a redraw every second
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1).monospacedDigit() }
+                } else {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
         }
         .padding(.vertical, 2)
@@ -204,8 +211,10 @@ private struct MachineRow: View {
 
     private var subtitle: String {
         switch runner.state {
-        case .running: return "Running"
-        case .starting: return "Starting…"
+        case .running where profile.isServer && runner.readyAt == nil:
+            return "Starting… " + Runner.seconds(Date().timeIntervalSince(runner.startedAt ?? Date()))
+        case .running: return runner.readyIn.map { "Running · ready in " + Runner.seconds($0) } ?? "Running"
+        case .starting: return "Starting… " + Runner.seconds(Date().timeIntervalSince(runner.startedAt ?? Date()))
         case .stopping: return "Shutting down…"
         case .inUseElsewhere: return "Running outside the app"
         case .failed: return "Failed"

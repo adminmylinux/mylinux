@@ -156,8 +156,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
                 let st = "\(runner.state)"
                 if st != last { say("state: \(st)"); last = st }
+                // MYLINUX_TEST_BOOT_SHOT=<png>: the launcher's own window 8 s into the start (the count on the machine page)
+                if let shot = env["MYLINUX_TEST_BOOT_SHOT"], windowAt == nil, Date().timeIntervalSince(t0) > 8, !FileManager.default.fileExists(atPath: shot),
+                   let main = NSApp.windows.first(where: { !($0.windowController is RemoteWindowController) && $0.isVisible && $0.title != "" }) {
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(main.windowNumber), shot]
+                    try? cap.run(); cap.waitUntilExit(); say("photographed the launcher window")
+                }
                 if windowAt == nil, runner.sshReady || env["MYLINUX_TEST_STALE_WINDOW"] != "1",
                    let c = RemoteWindowController.open.first(where: { $0.profile.id == p.id }) {
+                    // MYLINUX_TEST_RESTART_CLOUD=dropbox: then save cloud folders as the Cloud tab does, and photograph
+                    // the restart's progress halfway (<png>-mid.png) and when ready (<png>)
+                    if let cloud = env["MYLINUX_TEST_RESTART_CLOUD"] {
+                        windowAt = Date(); say("terminal window opened; restarting for \(cloud)")
+                        var q = store.profiles.first { $0.id == p.id } ?? p
+                        q.cloudFolders = cloud.split(separator: ",").map(String.init); store.update(q)
+                        runner.restart(q); c.testShowRestartProgress()
+                        func shootSheet(_ path: String) {
+                            let n = c.window?.attachedSheet?.windowNumber ?? c.window?.windowNumber ?? 0
+                            let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(n), path]
+                            try? cap.run(); cap.waitUntilExit()
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 7) { shootSheet(args[i + 2].replacingOccurrences(of: ".png", with: "-mid.png")); say("photographed the restart halfway") }
+                        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { tm in
+                            guard let began = runner.restartBeganAt, let ready = runner.readyAt, ready > began else { return }
+                            tm.invalidate(); say("ready again \(Runner.seconds(ready.timeIntervalSince(began))) after the restart began")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { shootSheet(args[i + 2]); say("photographed; qmp \(runner.qmpSocket)"); exit(0) }
+                        }
+                        return
+                    }
                     windowAt = Date(); say("terminal window opened")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
                         let n = c.window?.windowNumber ?? 0

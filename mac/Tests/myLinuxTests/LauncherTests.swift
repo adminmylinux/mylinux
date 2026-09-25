@@ -320,6 +320,15 @@ final class CloudFolderTests: XCTestCase {
     }
 }
 
+final class SecondsTests: XCTestCase {
+    func testDurationsReadInWholeSeconds() {
+        XCTAssertEqual(Runner.seconds(0.2), "<1 s")
+        XCTAssertEqual(Runner.seconds(0.6), "1 s")
+        XCTAssertEqual(Runner.seconds(13.4), "13 s")
+        XCTAssertEqual(Runner.seconds(16.5), "17 s")
+    }
+}
+
 final class BundledRuntimeTests: XCTestCase {
     func testInstalledWhenMissingOrAnotherVersion() {
         XCTAssertTrue(RuntimeManager.bundledInstallNeeded(installed: nil, bundled: "qemu-runtime-11.1.1-2", hasTarball: true))

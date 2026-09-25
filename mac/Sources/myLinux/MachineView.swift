@@ -94,9 +94,21 @@ struct MachineView: View {
                     if isServer {
                         if runner.waitingForSSH {
                             ProgressView().controlSize(.small)
-                            Button {} label: { Label("Waiting for SSH…", systemImage: "terminal") }.disabled(true)
-                                .help("The terminal opens as soon as the machine answers.")
+                            // the clock runs from Start: the whole wait, in seconds, is what the user sees
+                            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                                Button {} label: {
+                                    Label(runner.mountingCloud ? "Connecting folders… \(Runner.seconds(ctx.date.timeIntervalSince(runner.startedAt ?? ctx.date)))"
+                                                               : "Starting… \(Runner.seconds(ctx.date.timeIntervalSince(runner.startedAt ?? ctx.date)))", systemImage: "terminal")
+                                        .monospacedDigit()
+                                }
+                                .disabled(true)
+                            }
+                            .help("The terminal opens as soon as the machine answers.")
                         } else {
+                            if let t = runner.readyIn {
+                                Label("Ready in \(Runner.seconds(t))", systemImage: "bolt.fill").font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                                    .help("From Start to a terminal you can type in.")
+                            }
                             Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
                                 .buttonStyle(.borderedProminent)
                         }
