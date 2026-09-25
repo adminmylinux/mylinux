@@ -22,7 +22,12 @@ abs() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$CALLER" "$1" ;;
 die() { echo "run-omarchy.sh: $*" >&2; exit 1; }
 # python3 is optional on a Mac: without Xcode's command line tools /usr/bin/python3 is a stub that fails and asks
 # to install them, so it is only called when a real one is there
-have_python() { [ -x /opt/homebrew/bin/python3 ] || [ -x /usr/local/bin/python3 ] || xcode-select -p >/dev/null 2>&1; }
+have_python() {
+  [ -x /opt/homebrew/bin/python3 ] || [ -x /usr/local/bin/python3 ] && return 0
+  dev=$(xcode-select -p 2>/dev/null) || return 1
+  # with Xcode, /usr/bin/python3 goes through xcrun, which refuses to run anything until the Xcode licence is accepted
+  case "$dev" in */CommandLineTools) [ -x "$dev/usr/bin/python3" ] ;; *) xcodebuild -license check >/dev/null 2>&1 ;; esac
+}
 # grow_file <path> <GB>: create the file or grow it to that size, sparse; never shrinks, keeps what is in it
 grow_file() {
   want=$(( $2 * 1024 * 1024 * 1024 )); have=$(stat -f %z "$1" 2>/dev/null || echo 0)
@@ -185,8 +190,11 @@ fi
 MYLINUX_BUNDLE=omarchy tools/make-app-bundle.sh >/dev/null || die "could not prepare $OUT/myLinux-omarchy.app"
 [ -x "$QEMU" ] || die "$QEMU is missing"
 # the clipboard bridge connects once QEMU has made the socket and leaves when QEMU (its parent after the exec) is gone
+# the bridge is the launcher's own binary (MYLINUX_HELPER, set by the app); from the command line, the Python one
 if [ "${CLIPBOARD:-1}" = 1 ]; then
-  if have_python; then rm -f "$CLIPSOCK"; python3 tools/omarchy-clipboard.py "$CLIPSOCK" 2>>"${MACHINE}/clipboard.log" &
-  else echo "run-omarchy.sh: clipboard sharing needs python3 (Xcode's command line tools: xcode-select --install); the machine starts without it" | tee -a "${MACHINE}/clipboard.log" >&2; fi
+  rm -f "$CLIPSOCK"
+  if [ -n "${MYLINUX_HELPER:-}" ] && [ -x "$MYLINUX_HELPER" ]; then "$MYLINUX_HELPER" --omarchy-clipboard "$CLIPSOCK" 2>>"${MACHINE}/clipboard.log" &
+  elif have_python; then python3 tools/omarchy-clipboard.py "$CLIPSOCK" 2>>"${MACHINE}/clipboard.log" &
+  else echo "run-omarchy.sh: clipboard sharing needs the launcher app or python3; the machine starts without it" | tee -a "${MACHINE}/clipboard.log" >&2; fi
 fi
 exec "$QEMU" "$@"

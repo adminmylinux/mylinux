@@ -52,6 +52,41 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class OmarchyClipboardTests: XCTestCase {
+    typealias C = OmarchyClipboard
+    func testSyncIsEchoSafeBothWays() {
+        var sent: [[String: String]] = [], copied: [(String, Data)] = []
+        var now = 100.0
+        let s = C.Sync(send: { sent.append(try! JSONSerialization.jsonObject(with: $0) as! [String: String]) },
+                       copy: { copied.append(($0, $1)) }, clock: { now })
+        XCTAssertTrue(s.macChanged(C.text, Data("hello".utf8)))
+        XCTAssertEqual(sent.last, ["type": "clipboard", "format": C.text, "data": Data("hello".utf8).base64EncodedString()])
+        XCTAssertFalse(s.guestChanged(C.text, Data("hello".utf8)), "the guest re-announcing what it was given is an echo")
+        XCTAssertTrue(s.guestChanged(C.text, Data("from omarchy".utf8)))
+        XCTAssertEqual(copied.last?.1, Data("from omarchy".utf8))
+        XCTAssertFalse(s.macChanged(C.text, Data("from omarchy".utf8)), "the Mac re-announcing what it was given is an echo")
+        now += 3
+        XCTAssertTrue(s.macChanged(C.text, Data("from omarchy".utf8)), "the same text copied again later is a real change")
+        XCTAssertTrue(s.guestChanged(C.png, Data([0x89, 0x50, 0x4e, 0x47])))
+        XCTAssertEqual(copied.last?.0, C.png)
+        XCTAssertTrue(s.syncRequested())
+        XCTAssertEqual(sent.last?["format"], C.text, "sync answers with what the Mac holds")
+    }
+    func testDecode() {
+        XCTAssertEqual(C.decode(Data(#"{"type":"sync"}"#.utf8)), .sync)
+        let line = C.encode(C.png, Data([0x89, 0x50]))
+        XCTAssertEqual(C.decode(line.dropLast()), .clipboard(C.png, Data([0x89, 0x50])))
+        XCTAssertNil(C.decode(Data(#"{"type":"clipboard","format":"text/html","data":"aGk="}"#.utf8)), "unknown formats are ignored")
+        XCTAssertNil(C.decode(Data(#"{"type":"clipboard","format":"text/plain;charset=utf-8","data":"/w=="}"#.utf8)), "invalid UTF-8 text is ignored")
+        XCTAssertNil(C.decode(Data("not json".utf8)))
+    }
+    func testNewOmarchyMachinesGiveOmarchyEveryKey() {
+        let p = ProfileStore.newProfile(named: "Omarchy", kind: .omarchy, folder: URL(fileURLWithPath: "/m/o"))
+        XCTAssertEqual(p.grab, "full")
+        XCTAssertEqual(p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/tmp/s")["GRAB"], "full")
+    }
+}
+
 final class WelcomeClockTests: XCTestCase {
     func testPercentComesFromCurlsProgressLine() {
         XCTAssertEqual(WelcomeSheet.percent(in: "######### 65.7%"), 0.657, accuracy: 0.0001)

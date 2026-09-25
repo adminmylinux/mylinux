@@ -31,7 +31,7 @@ struct WelcomeSheet: View {
         Offer(kind: .mylinux, name: "myLinux", size: "110 MB", bytes: 110e6,
               text: "A small Linux desktop with a Mac feel that starts in seconds and runs from memory, so every start is clean. Your home folder, browsers and coding agents live on their own disk."),
         Offer(kind: .omarchy, name: "Omarchy", size: "1.4 GB", bytes: 1.4e9,
-              text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. The Option key works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
+              text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. Your Command key works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
         Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
               text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
     ]

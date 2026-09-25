@@ -7,7 +7,12 @@
 set -eu
 cd "$(dirname "$0")/.."
 # python3 is optional: without Xcode's command line tools the stub fails and asks to install them
-have_python() { [ -x /opt/homebrew/bin/python3 ] || [ -x /usr/local/bin/python3 ] || xcode-select -p >/dev/null 2>&1; }
+have_python() {
+  [ -x /opt/homebrew/bin/python3 ] || [ -x /usr/local/bin/python3 ] && return 0
+  dev=$(xcode-select -p 2>/dev/null) || return 1
+  # with Xcode, /usr/bin/python3 goes through xcrun, which refuses to run anything until the Xcode licence is accepted
+  case "$dev" in */CommandLineTools) [ -x "$dev/usr/bin/python3" ] ;; *) xcodebuild -license check >/dev/null 2>&1 ;; esac
+}
 OUT="${MYLINUX_OUT:-out}"
 # Two bundles from the same recipe. myLinux.app is 1x on purpose (see NSHighResolutionCapable below). run-omarchy.sh
 # asks for the other one (MYLINUX_BUNDLE=omarchy): the runtime's Cocoa display tells that guest the window's size in

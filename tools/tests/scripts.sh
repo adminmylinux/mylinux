@@ -219,13 +219,16 @@ out=$(cd "$W" && DRYRUN=1 SHARE_DIR="$HOME" sh run-debian.sh 2>&1); rc=$?
 not_rc0 "the whole home folder is refused as a share" $rc
 out=$(cd "$W" && DRYRUN=1 DISK_SIZE_GB=4 sh run-debian.sh 2>&1); rc=$?
 not_rc0 "a disk under 8 GB is refused" $rc
+echo "the Omarchy clipboard bridge"
+grep -q '"$MYLINUX_HELPER" --omarchy-clipboard "$CLIPSOCK"' "$REPO/run-omarchy.sh" && ok "run-omarchy.sh starts the launcher's own bridge when the app runs it" || ko "run-omarchy.sh does not use MYLINUX_HELPER"
+grep -q 'xcodebuild -license check' "$REPO/run-omarchy.sh" && ok "an unaccepted Xcode licence counts as no python3" || ko "the python3 guard ignores the Xcode licence"
 echo "no python3 on the start and download paths"
 # a Mac without Xcode's command line tools has only a python3 stub, which fails and pops an install dialog
 for f in run.sh run-debian.sh tools/get-debian.sh tools/get-omarchy.sh tools/get-image.sh tools/get-qemu-runtime.sh; do
   grep -n 'python3' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -q . && ko "$f calls python3" || ok "$f does not call python3"
 done
 for f in run-omarchy.sh tools/make-app-bundle.sh; do
-  bad=$(grep -n 'python3 ' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -v 'have_python' | grep -v 'echo ' || true)
+  bad=$(grep -n 'python3 ' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -v 'have_python' | grep -v 'echo ' | grep -v '\[ -x ' || true)
   [ -z "$bad" ] && ok "$f calls python3 only behind have_python" || ko "$f calls python3 unguarded: $bad"
 done
 printf '{"items":[{"data":{"info":{"arch":"arm64","version":"20260914-2601"},"packages":[{"name":"x","version":"9"}]}}]}' > "$T/image.json"

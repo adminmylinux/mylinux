@@ -58,9 +58,11 @@ struct ContentView: View {
                     .id(p.id)
             } else if let r = selectedRemote {
                 RemoteEditor(profile: r).id(r.id)
+                    .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
             } else {
                 ContentUnavailableView("No machine selected", systemImage: "desktopcomputer",
                                        description: Text("Pick a machine on the left, or add one."))
+                    .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
             }
         }
         .onAppear {
@@ -75,8 +77,6 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
-        // the version under the window's title, so it is plain which launcher is running
-        .navigationSubtitle(AppInfo.versionText)
         .sheet(isPresented: $showWelcome) {
             WelcomeSheet(images: images, omarchy: .shared, debian: .shared, runtime: runtime, done: { kinds in
                 showWelcome = false
@@ -253,8 +253,19 @@ struct Banner: View {
     }
 }
 
+/// Top right of the window: which launcher this is, then the way to its settings.
+struct VersionAndSettings: View {
+    var body: some View {
+        Text(AppInfo.shortVersion).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+            .help(AppInfo.versionText).accessibilityLabel(AppInfo.versionText)
+        SettingsLink { Image(systemName: "gearshape") }.help("Settings")
+    }
+}
+
 /// What the app bundle says about itself.
 enum AppInfo {
+    /// "0.3.4" for the toolbar.
+    static var shortVersion: String { (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).map { "v\($0)" } ?? "dev" }
     /// "Version 0.3.2" from Info.plist (mac/build-app.sh takes it from the v* tag); a development build shows the
     /// commit too, "Version 0.3.2-4-gabc1234".
     static var versionText: String {

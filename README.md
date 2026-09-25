@@ -72,7 +72,11 @@ the account (run-omarchy.sh puts the files in the share folder as `mylinux-tools
 takes it out. The Session menu in the middle of the window's title bar (and in the
 floating box in full screen) saves, restores and sets how often the layout is saved; it hands the command to the
 tool through the share folder. The clipboard is shared both ways, text and PNG images, through
-Omarchy's own clipboard agent and `tools/omarchy-clipboard.py` on the Mac (`CLIPBOARD=0` turns it off). Not there
+Omarchy's own clipboard agent and, on the Mac, the launcher's own binary in a helper mode
+(`myLinux Launcher --omarchy-clipboard <socket>`, which the app hands to run-omarchy.sh as `MYLINUX_HELPER`; from the
+command line without the app, `tools/omarchy-clipboard.py` when a working python3 is there). `CLIPBOARD=0` turns it
+off. New Omarchy machines in the launcher send every key to Omarchy with Command as Super (`GRAB=full`); the
+machine page switches to Option. Neither a machine's first start nor a download needs python3. Not there
 (they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output.
 
 ### Debian server machines

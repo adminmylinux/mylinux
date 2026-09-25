@@ -87,6 +87,8 @@ final class Runner: ObservableObject {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = Paths.toolPath
         for (k, v) in p.environment(outDir: settings.outDir, serialSocket: serialSocket, qmpSocket: qmpSocket) { env[k] = v }
+        // the launcher's own binary does the Omarchy clipboard bridge (--omarchy-clipboard), no python3 needed
+        if let helper = Bundle.main.executablePath { env["MYLINUX_HELPER"] = helper }
         env["PLACER"] = settings.placeWindow ? "1" : "0"
         proc.environment = env
         // straight into the log file, not a pipe: a machine outlives the launcher, and writing to the pipe of a

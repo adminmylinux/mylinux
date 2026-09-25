@@ -9,6 +9,12 @@ struct MyLinuxApp: App {
     @StateObject private var runs = RunManager.shared
     @StateObject private var remote = RemoteStore.shared
 
+    init() {
+        // helper mode, before any window: run-omarchy.sh starts the launcher's own binary as the clipboard bridge
+        let args = CommandLine.arguments
+        if args.count == 3, args[1] == "--omarchy-clipboard" { exit(OmarchyClipboard.run(socketPath: args[2])) }
+    }
+
     var body: some Scene {
         WindowGroup("myLinux Machines") {
             ContentView()
@@ -234,6 +240,8 @@ enum QuickStart {
 
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
+    @State private var confirmClear = false
+    @State private var clearError: String?
     @StateObject private var images = ImageManager.shared
     @StateObject private var runtime = RuntimeManager.shared
 
@@ -299,9 +307,21 @@ struct SettingsView: View {
             Section("Storage") {
                 LabeledContent("Machines folder") { Text(Paths.support.path).lineLimit(1).truncationMode(.head).foregroundStyle(.secondary) }
             }
+            Section("Start over") {
+                Button("Clear All Data on This Mac…", role: .destructive) { confirmClear = true }
+                Text("Deletes every machine and its disk, the downloaded Linuxes and QEMU, the launcher's settings, saved remote passwords and the browser's data, then restarts the launcher as if it were new. A developer checkout's out/ folder is not touched.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if let clearError { Banner(text: clearError, kind: .error) }
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 560)
+        .frame(width: 560, height: 640)
+        .confirmationDialog("Clear all myLinux data on this Mac?", isPresented: $confirmClear) {
+            Button("Delete Everything and Restart", role: .destructive) { clearError = StartOver.clearAll() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every machine, its disk and everything inside it is deleted, along with the downloads and settings. This cannot be undone.")
+        }
         .onAppear { images.refresh(settings); runtime.refresh(settings) }
         .onChange(of: settings.repoPath) { _, _ in images.refresh(settings); runtime.refresh(settings) }
     }

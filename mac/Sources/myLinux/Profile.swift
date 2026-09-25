@@ -199,6 +199,7 @@ final class ProfileStore: ObservableObject {
             var p = Profile(name: name, appsDisk: dir.appendingPathComponent("omarchy.ext4").path,
                             shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
             p.kind = .omarchy; p.memoryGB = 8; p.appsSizeGB = 32
+            p.grab = "full"      // every key to Omarchy, Command as Super: Omarchy's shortcuts as they are meant
             return p
         }
         return Profile(name: name, appsDisk: dir.appendingPathComponent("apps.img").path,

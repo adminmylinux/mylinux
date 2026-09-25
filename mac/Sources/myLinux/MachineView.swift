@@ -57,13 +57,14 @@ struct MachineView: View {
             if new == .running { showConsole = false }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Picker("", selection: $showConsole) {
                     Text("Settings").tag(false)
                     Text("Console").tag(true)
                 }
                 .pickerStyle(.segmented)
                 .disabled(!runner.isActive && !runner.consoleConnected && runner.console.isEmpty)
+                VersionAndSettings()
             }
         }
     }
