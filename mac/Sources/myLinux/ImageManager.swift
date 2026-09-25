@@ -5,6 +5,8 @@ import Foundation
 class ScriptDownloader: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var progress = ""
+    /// When the running download began (the header counts its seconds).
+    @Published private(set) var startedAt: Date?
     @Published fileprivate(set) var lastError: String?
     private var process: Process?
 
@@ -17,7 +19,7 @@ class ScriptDownloader: ObservableObject {
         guard FileManager.default.isReadableFile(atPath: script.path) else {
             lastError = "\(tool) is missing from the app."; return
         }
-        busy = true; progress = starting; lastError = nil
+        busy = true; progress = starting; lastError = nil; startedAt = Date()
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
         proc.arguments = [script.path] + arguments
@@ -173,7 +175,7 @@ final class ServerImageManager: ScriptDownloader {
     /// For the download rows: the size and where it comes from.
     var detail: String {
         kind == .alpine ? "about 100 MB, the latest stable cloud image from alpinelinux.org"
-                        : "about 300 MB, the latest stable cloud image from cloud.debian.org"
+                        : "about 300 MB, the latest stable cloud image from debian.org"
     }
 
     func refresh(_ settings: AppSettings = .shared) {

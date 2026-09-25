@@ -261,6 +261,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --show-machine <kind> <png>` (MYLINUX_SUPPORT_DIR a scratch folder, MYLINUX_TEST_SELECT the kind):
+        // add a machine of that kind as the + menu does and photograph the launcher's window on its page
+        if let i = args.firstIndex(of: "--show-machine"), i + 2 < args.count, let kind = Profile.Kind(rawValue: args[i + 1]),
+           ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            if !ProfileStore.shared.profiles.contains(where: { $0.kind == kind }) { _ = ProfileStore.shared.add(kind: kind) }
+            func shoot(_ path: String) {
+                if let main = NSApp.windows.first(where: { !($0.windowController is RemoteWindowController) && $0.isVisible && $0.title != "" }) {
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(main.windowNumber), path]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+            }
+            // MYLINUX_TEST_DOWNLOAD=1 (a server): the header's Download, photographed while it runs (<png>-busy.png)
+            // and once Start is back (<png>)
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_DOWNLOAD"] == "1", kind.isServer {
+                let m = ServerImageManager.shared(kind), t0 = Date()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { print("download pressed"); m.download(AppSettings.shared) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6) { shoot(args[i + 2].replacingOccurrences(of: ".png", with: "-busy.png")); print("photographed while downloading: \(m.progress)") }
+                Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { tm in
+                    if !m.busy && m.present && Date().timeIntervalSince(t0) > 7 {
+                        tm.invalidate(); print("downloaded in \(Int(Date().timeIntervalSince(t0)) - 2) s")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { shoot(args[i + 2]); exit(0) }
+                    } else if let e = m.lastError, !m.busy { print("download failed: \(e)"); exit(1) }
+                    else if Date().timeIntervalSince(t0) > 600 { print("gave up"); exit(2) }
+                }
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { shoot(args[i + 2]); exit(0) }
+            return
+        }
         // `myLinux --adopt-machine <kind> <png>` (MYLINUX_SUPPORT_DIR a scratch folder): a machine of that kind that an
         // earlier launcher started and left running: wait for "started by an earlier launcher", photograph the
         // launcher's window, open the terminal as the Terminal button does, then shut it down from here

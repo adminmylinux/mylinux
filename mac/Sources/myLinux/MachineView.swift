@@ -44,6 +44,25 @@ struct MachineView: View {
         }
     }
 
+    /// The download the header offers in place of Start while something is missing: its button title, whether it
+    /// is under way, its progress line, and how to start it. The same downloads as "Before the first start" below,
+    /// where they were easy to miss beside a greyed-out Start and "Download … first".
+    private var headerDownload: (name: String, loader: ScriptDownloader, start: () -> Void)? {
+        switch draft.kind {
+        case .mylinux:
+            guard !images.present, !settings.developerMode else { return nil }
+            return ("myLinux", images, { images.download(settings) })
+        case .omarchy:
+            if !runtime.present { return ("QEMU", runtime, { runtime.download(settings) }) }
+            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
+            return created || omarchy.present ? nil : ("Omarchy", omarchy, { omarchy.download(settings) })
+        case .debian, .alpine:
+            if !settings.qemuAvailable { return ("QEMU", runtime, { runtime.download(settings) }) }
+            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
+            return created || server.present ? nil : (guestName, server, { server.download(settings) })
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -83,10 +102,27 @@ struct MachineView: View {
                 Spacer()
                 switch runner.state {
                 case .stopped, .failed:
-                    if let missing = missingBeforeStart { Text(missing).font(.caption).foregroundStyle(.orange).multilineTextAlignment(.trailing) }
-                    Button { runner.start(draft, settings: settings) } label: { Label("Start", systemImage: "play.fill") }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!draft.problems.isEmpty || missingBeforeStart != nil)
+                    if let d = headerDownload {
+                        // what is missing, as the button where Start will be
+                        if d.loader.busy {
+                            ProgressView().controlSize(.small)
+                            // "Downloading Debian · 51.5% · 12 s": the percentage the script prints, and the clock
+                            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                                let pct = d.loader.progress.range(of: #"[0-9.]+%"#, options: .regularExpression).map { " · " + d.loader.progress[$0] } ?? ""
+                                Text("Downloading \(d.name)\(pct) · \(Runner.seconds(ctx.date.timeIntervalSince(d.loader.startedAt ?? ctx.date)))")
+                                    .font(.callout).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        } else {
+                            Button { d.start() } label: { Label("Download \(d.name)", systemImage: "arrow.down.circle.fill") }
+                                .buttonStyle(.borderedProminent)
+                                .help("Downloads once; then Start is here")
+                        }
+                    } else {
+                        if let missing = missingBeforeStart { Text(missing).font(.caption).foregroundStyle(.orange).multilineTextAlignment(.trailing) }
+                        Button { runner.start(draft, settings: settings) } label: { Label("Start", systemImage: "play.fill") }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!draft.problems.isEmpty || missingBeforeStart != nil)
+                    }
                 case .starting:
                     ProgressView().controlSize(.small)
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }
