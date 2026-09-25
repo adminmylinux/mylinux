@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `myLinux --terminal-window <png>` (with MYLINUX_LOCAL_SHELL=1): open a machine terminal window on a local shell
         // and photograph it, to check the window's layout
         if let i = args.firstIndex(of: "--terminal-window"), i + 1 < args.count {
-            var p = RemoteProfile(kind: .ssh); p.name = "Debian terminal"; p.host = "127.0.0.1"; p.launcherMachine = true
+            var p = RemoteProfile(kind: .ssh); p.name = ProcessInfo.processInfo.environment["MYLINUX_TEST_NAME"] ?? "Debian terminal"; p.host = "127.0.0.1"; p.launcherMachine = true
             // MYLINUX_TEST_SSH="port|key|known_hosts|share": a real machine, and the browser pane opens on a page inside it
             var wait = 2.0
             if let spec = ProcessInfo.processInfo.environment["MYLINUX_TEST_SSH"]?.split(separator: "|").map(String.init), spec.count == 4 {
