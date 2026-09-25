@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
         RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
+        Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
         let args = CommandLine.arguments
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
@@ -290,6 +291,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { shoot(args[i + 2]); exit(0) }
             return
         }
+        // `myLinux --hold-terminal <kind>` (MYLINUX_SUPPORT_DIR, MYLINUX_HANDOVER_TEST=1): an earlier launcher for the
+        // handover test: pick up the running machine of that kind, open its terminal, and keep running
+        if let i = args.firstIndex(of: "--hold-terminal"), i + 1 < args.count, let kind = Profile.Kind(rawValue: args[i + 1]),
+           let p = ProfileStore.shared.profiles.first(where: { $0.kind == kind }) {
+            let runner = RunManager.shared.runner(for: p.id)
+            RunManager.shared.startWatching(ProfileStore.shared)
+            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { t in
+                if runner.state == .inUseElsewhere { t.invalidate(); runner.openTerminal(p); print("holding the terminal of \(p.name), pid \(ProcessInfo.processInfo.processIdentifier)"); fflush(stdout) }
+            }
+            return
+        }
+        // `myLinux --handover-check <kind> <png>` (MYLINUX_SUPPORT_DIR, MYLINUX_HANDOVER_TEST=1): the newer launcher:
+        // after the handover, report whether the machine's terminal came back here, and photograph it
+        if let i = args.firstIndex(of: "--handover-check"), i + 2 < args.count, let kind = Profile.Kind(rawValue: args[i + 1]),
+           let p = ProfileStore.shared.profiles.first(where: { $0.kind == kind }) {
+            RunManager.shared.startWatching(ProfileStore.shared)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 14) {
+                let c = RemoteWindowController.open.first { ($0.profile.machineID ?? $0.profile.id) == p.id }
+                print("terminal reopened here:", c != nil, "state:", RunManager.shared.runner(for: p.id).state)
+                if let n = c?.window?.windowNumber {
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(n), args[i + 2]]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --adopt-machine <kind> <png>` (MYLINUX_SUPPORT_DIR a scratch folder): a machine of that kind that an
         // earlier launcher started and left running: wait for "started by an earlier launcher", photograph the
         // launcher's window, open the terminal as the Terminal button does, then shut it down from here
@@ -439,6 +467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// shut them down first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         RemoteSession.quitting = true            // remote windows closing from here on are not closed on purpose
+        if Handover.handingOver { return .terminateNow }      // a newer launcher takes over; the machines keep running
         let running = RunManager.shared.active
         guard !running.isEmpty else { return .terminateNow }
         let alert = NSAlert()
