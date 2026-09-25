@@ -274,7 +274,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             let pop = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 110, height: 24), pullsDown: true)
             pop.bezelStyle = .texturedRounded
             pop.addItem(withTitle: "myLinux")
-            let install = NSMenuItem(title: "Install Agents…", action: #selector(installAgents), keyEquivalent: ""); install.target = self
+            let install = NSMenuItem(title: "Install Script…", action: #selector(installScript), keyEquivalent: ""); install.target = self
             pop.menu?.addItem(install)
             pop.menu?.addItem(.separator())
             let tab = NSMenuItem(title: "New Terminal Tab", action: #selector(newTerminal), keyEquivalent: "t"); tab.target = self; pop.menu?.addItem(tab)
@@ -436,14 +436,14 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     func testShowBrowser(_ url: URL) { openInBrowser(url) }
     func testScreenshotToMachine() { screenshotBrowser() }
 
-    // ---- the myLinux menu: Install Agents… ----
+    // ---- the myLinux menu: Install Script… ----
     private var sheetWindow: NSWindow?
-    @objc private func installAgents() {
+    @objc private func installScript() {
         guard let window, sheetWindow == nil else { return }
-        let sheet = NSWindow(contentViewController: NSHostingController(rootView: AgentsSheet(
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: InstallScriptSheet(
             profile: profile,
             dismiss: { [weak self] in self?.endSheet() },
-            finished: { [weak self] in self?.ssh?.type(" source ~/.bashrc\n") })))
+            run: { [weak self] in guard let self, let t = self.ssh else { return }; t.type(InstallScript.command); self.window?.makeFirstResponder(t) })))
         sheet.styleMask = [.titled]
         sheetWindow = sheet
         window.beginSheet(sheet) { _ in }

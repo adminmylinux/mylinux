@@ -48,13 +48,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
         let args = CommandLine.arguments
-        // `myLinux --agent-script claude,codex,basics`: print the Install Agents script for that choice and quit
-        // (the end-to-end check runs it over ssh against a test machine)
-        if let i = args.firstIndex(of: "--agent-script") {
-            let picks = i + 1 < args.count ? args[i + 1].split(separator: ",").map(String.init) : []
-            var o = AgentInstallOptions(); o.claude = picks.contains("claude"); o.codex = picks.contains("codex"); o.basics = picks.contains("basics")
-            print(o.script); exit(o.problems.isEmpty ? 0 : 1)
-        }
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
             if let ago = ProcessInfo.processInfo.environment["MYLINUX_RENDER_STARTED_AGO"].flatMap(Double.init) { WelcomeSheet.renderStartedAt = Date().addingTimeInterval(-ago) }
@@ -67,10 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             exit(0)
         }
-        // `myLinux --render-agents-sheet <png>`: draw the Install Agents dialog to a file (a look without a machine)
-        if let i = args.firstIndex(of: "--render-agents-sheet"), i + 1 < args.count {
+        // `myLinux --render-install-script <png>`: draw the Install Script dialog to a file, with the checkout's
+        // debian_install.sh in it (a look without a machine or the network)
+        if let i = args.firstIndex(of: "--render-install-script"), i + 1 < args.count {
             var p = RemoteProfile(kind: .ssh); p.name = "Debian terminal"
-            let view = NSHostingView(rootView: AgentsSheet(profile: p, dismiss: {}, finished: {}))
+            let view = NSHostingView(rootView: InstallScriptSheet(profile: p, dismiss: {}, run: {}, preset: InstallScript.bundled ?? "#!/bin/bash\n"))
             view.frame = NSRect(origin: .zero, size: view.fittingSize)
             view.appearance = NSAppearance(named: .darkAqua)
             if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {

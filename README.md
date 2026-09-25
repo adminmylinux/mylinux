@@ -93,11 +93,15 @@ name as its host name, and the share folder mounted at `/mnt/mac` and linked fro
 to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
 and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
 page has the settings, the Console tab the serial console, and Start opens an SSH terminal with the machine's key
-as soon as its sshd answers (the Terminal button opens it again). That terminal window has a **myLinux** menu in the middle of its title bar; **Install Agents…** puts
-coding agents into the machine: Claude Code (Anthropic's native installer) and Codex (OpenAI's prebuilt Linux
-binary), each with an alias you can edit (`cc` for `claude update && claude --dangerously-skip-permissions`, `cx`
-for `codex --full-auto`), plus git and tmux. The dialog turns the choice into one bash script, runs it over the
-machine's SSH connection with the output in view, and the terminal picks up the aliases straight away. **Show
+as soon as its sshd answers (the Terminal button opens it again). That terminal window has a **myLinux** menu in the middle of its title bar; **Install Script…** opens
+[`debian_install.sh`](debian_install.sh), loaded from this repository on GitHub (the copy built into the launcher
+stands in when GitHub can't be reached), in an editable text field. Above it is a checkbox for each option the
+script declares (a `NAME=1   # option: Label` line: Claude Code, Codex, btop and Tailscale, all on). Ticking a box
+rewrites its line, so the text is always what runs. **Run in Terminal** copies the text into the machine
+(`~/.local/share/mylinux/debian_install.sh`, over the machine's SSH connection) and runs it in the terminal, in
+view. It installs git and tmux, the chosen tools, and the aliases `cc` (`claude update && claude
+--dangerously-skip-permissions`) and `cx` (`codex --full-auto`) in a marked block of `~/.bashrc`. With Tailscale on,
+it ends at Tailscale's sign-in link. The script can change on `main` without a new launcher. **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
 forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says
