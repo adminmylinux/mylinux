@@ -182,6 +182,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 wait = 4
             }
+            // MYLINUX_TEST_KEYS=font: ⌘= ⌘- ⌘0 through the window's key-equivalent pass, and the columns after each
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "font" {
+                func key(_ chars: String, _ code: UInt16, _ mods: NSEvent.ModifierFlags) -> Bool {
+                    guard let w = c.window, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                                                       context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) else { return false }
+                    return w.performKeyEquivalent(with: e)
+                }
+                let steps: [(String, String, UInt16, NSEvent.ModifierFlags)] = [("cmd =", "=", 24, [.command]), ("cmd =", "=", 24, [.command]), ("cmd -", "-", 27, [.command]), ("cmd -", "-", 27, [.command]), ("cmd -", "-", 27, [.command]), ("cmd 0", "0", 29, [.command]), ("nordic cmd - (the key left of right shift)", "-", 44, [.command]), ("nordic cmd - again", "-", 44, [.command])]
+                for (n, step) in steps.enumerated() {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0 + Double(n) * 0.6) {
+                        let before = c.testGhostty?.testColumns ?? 0
+                        let handled = key(step.1, step.2, step.3)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { print("\(step.0): handled \(handled), columns \(before) -> \(c.testGhostty?.testColumns ?? 0)") }
+                    }
+                }
+                wait = 8
+            }
+            // MYLINUX_TEST_KEYS=commands: pick "Disk space" from the Commands menu, then look for df's header on screen
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "commands" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    guard let bar = c.testCommandBar, let df = bar.testCommands.first(where: { $0.title == "Disk space" }) else { print("no command bar"); return }
+                    print("commands offered:", bar.testCommands.count); bar.onPick?(df)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+                    let screen = c.testGhostty?.screenText() ?? ""
+                    print("df ran:", screen.contains("Filesystem") ? "yes" : "no")
+                }
+                wait = 6
+            }
             // MYLINUX_TEST_KEYS=link: a URL on the first line, then hover and ⌘-click on it, as a person would
             if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "link" {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { c.testType("clear; echo https://example.org/clicked\n") }
@@ -443,7 +472,7 @@ struct SettingsView: View {
     @State private var clearError: String?
     @StateObject private var images = ImageManager.shared
     @StateObject private var runtime = RuntimeManager.shared
-    @AppStorage(TerminalEngine.settingKey) private var terminalEngine = TerminalEngine.swiftTerm.rawValue
+    @AppStorage(TerminalEngine.settingKey) private var terminalEngine = TerminalEngine.ghostty.rawValue
 
     var body: some View {
         Form {
@@ -452,8 +481,8 @@ struct SettingsView: View {
                     ForEach(TerminalEngine.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
                 }
                 Text(terminalEngine == TerminalEngine.ghostty.rawValue
-                     ? "Ghostty's terminal (GhosttyKit): drawn on the GPU, with Ghostty's fonts and text handling. ⌘C, ⌘V, ⌘A, ⌘K and ⌘+/⌘- work as in Ghostty; the window's own keys stay the same. New terminals use it; open ones keep theirs."
-                     : "SwiftTerm, the terminal the launcher has always used. Ghostty can be tried here; new terminals use the choice, open ones keep theirs.")
+                     ? "Ghostty's terminal (GhosttyKit): drawn on the GPU, with Ghostty's fonts and text handling. ⌘C, ⌘V, ⌘A, ⌘K and ⌘+/⌘− work as in Ghostty; the window's own keys stay the same. New terminals use the choice; open ones keep theirs."
+                     : "SwiftTerm, the terminal the launcher used before Ghostty. New terminals use the choice; open ones keep theirs.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Section("myLinux image") {

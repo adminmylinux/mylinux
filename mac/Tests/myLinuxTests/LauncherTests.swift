@@ -333,9 +333,25 @@ final class GhosttyTerminalTests: XCTestCase {
         defer { if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) } }
         guard ProcessInfo.processInfo.environment["MYLINUX_TERMINAL"] == nil else { return }
         UserDefaults.standard.removeObject(forKey: key)
-        XCTAssertEqual(TerminalEngine.current, .swiftTerm, "SwiftTerm unless Ghostty is chosen")
-        UserDefaults.standard.set("ghostty", forKey: key)
-        XCTAssertEqual(TerminalEngine.current, .ghostty)
+        XCTAssertEqual(TerminalEngine.current, .ghostty, "Ghostty unless SwiftTerm is chosen")
+        UserDefaults.standard.set("swiftterm", forKey: key)
+        XCTAssertEqual(TerminalEngine.current, .swiftTerm)
+    }
+}
+
+final class MachineCommandTests: XCTestCase {
+    func testEachDistributionGetsItsOwnTools() {
+        let alpine = MachineCommands.sections(alpine: true).flatMap(\.1), debian = MachineCommands.sections(alpine: false).flatMap(\.1)
+        XCTAssertTrue(alpine.contains { $0.text == "doas apk update && doas apk upgrade" })
+        XCTAssertTrue(debian.contains { $0.text == "sudo apt update && sudo apt upgrade -y" })
+        XCTAssertFalse(alpine.contains { $0.text.contains("sudo") || $0.text.contains("apt ") }, "no sudo or apt on Alpine")
+        XCTAssertFalse(debian.contains { $0.text.contains("doas") || $0.text.contains("apk ") }, "no doas or apk on Debian")
+        XCTAssertEqual(alpine.first?.text, "cc", "the agents first")
+    }
+    func testAnUnfinishedCommandWaitsOnThePrompt() {
+        let install = MachineCommands.sections(alpine: true).flatMap(\.1).first { $0.title.hasPrefix("Install a package") }
+        XCTAssertEqual(install?.text, "doas apk add ")
+        XCTAssertEqual(install?.run, false, "the name is typed by the user, then Return")
     }
 }
 

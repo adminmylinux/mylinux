@@ -30,6 +30,8 @@ final class GhosttySshTerminal: NSView, MachineTerminal {
         for bind in ["super+c=copy_to_clipboard", "super+v=paste_from_clipboard", "super+a=select_all",
                      "super+k=clear_screen", "super+equal=increase_font_size:1", "super+plus=increase_font_size:1",
                      "super+minus=decrease_font_size:1", "super+zero=reset_font_size",
+                     // by character too: on Nordic keyboards "-" is not on the US minus key (that one is "+")
+                     "super+-=decrease_font_size:1", "super+==increase_font_size:1",
                      "super+home=scroll_to_top", "super+end=scroll_to_bottom",
                      "shift+page_up=scroll_page_up", "shift+page_down=scroll_page_down"] {
             c.withCustom("keybind", bind)
@@ -116,6 +118,7 @@ final class GhosttySshTerminal: NSView, MachineTerminal {
     }
 
     var testHasSelection: Bool { surface?.hasSelection() ?? false }
+    var testColumns: Int { surface?.rawValue.map { Int(ghostty_surface_size($0).columns) } ?? 0 }
     var testSelection: String? { surface?.readSelection() }
 
     func terminate() {

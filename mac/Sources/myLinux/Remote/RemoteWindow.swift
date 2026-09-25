@@ -59,6 +59,19 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         status.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular); status.textColor = .secondaryLabelColor
         status.frame = NSRect(x: 8, y: 3, width: root.bounds.width - 16, height: 16); status.autoresizingMask = [.width, .maxYMargin]
         root.addSubview(status)
+        // a server's window: its keys and the Commands menu in a line at the top
+        if profile.launcherMachine {
+            let bar = CommandBar(frame: NSRect(x: 0, y: root.bounds.height - CommandBar.height, width: root.bounds.width, height: CommandBar.height),
+                                 alpine: profile.installScriptFile.hasPrefix("alpine"))
+            bar.autoresizingMask = [.width, .minYMargin]
+            bar.onPick = { [weak self] c in
+                guard let self, let t = self.ssh else { return }
+                t.type(c.text + (c.run ? "\n" : ""))
+                self.window?.makeFirstResponder(t.keyView)
+            }
+            root.addSubview(bar)
+            commandBar = bar
+        }
         overlay.isHidden = true; overlay.alignment = .center; overlay.font = NSFont.systemFont(ofSize: 14)
         overlay.textColor = .white; overlay.backgroundColor = NSColor.black.withAlphaComponent(0.7); overlay.drawsBackground = true
         overlay.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
@@ -94,7 +107,12 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    private var contentArea: NSRect { NSRect(x: 0, y: 22, width: window!.contentView!.bounds.width, height: window!.contentView!.bounds.height - 22) }
+    private var contentArea: NSRect {
+        let top = commandBar == nil ? 0 : CommandBar.height
+        return NSRect(x: 0, y: 22, width: window!.contentView!.bounds.width, height: window!.contentView!.bounds.height - 22 - top)
+    }
+    private var commandBar: CommandBar?
+    var testCommandBar: CommandBar? { commandBar }
     /// The terminals' place: inset from the window's edges, so the first column is not against the rounded frame.
     private var terminalRect: NSRect { contentArea.insetBy(dx: 6, dy: 0) }
     private var browser: BrowserPane?

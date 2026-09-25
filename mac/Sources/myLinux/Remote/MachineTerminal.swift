@@ -1,7 +1,7 @@
 import AppKit
 
-/// What a terminal window needs from one terminal pane, whichever engine draws it: SwiftTerm (SshTerminal, the
-/// default) or Ghostty (GhosttySshTerminal, Settings › Terminal). Both run the Mac's ssh with the same arguments.
+/// What a terminal window needs from one terminal pane, whichever engine draws it: Ghostty (GhosttySshTerminal, the
+/// default) or SwiftTerm (SshTerminal, the earlier one; Settings › Terminal). Both run the Mac's ssh with the same arguments.
 @MainActor
 protocol MachineTerminal: NSView {
     var onExit: ((Int32?) -> Void)? { get set }
@@ -21,14 +21,14 @@ protocol MachineTerminal: NSView {
 
 /// Which engine draws the terminals: the setting, read when a pane is made.
 enum TerminalEngine: String, CaseIterable {
-    case swiftTerm = "swiftterm", ghostty
+    case ghostty, swiftTerm = "swiftterm"
 
     static let settingKey = "terminalEngine"
     static var current: TerminalEngine {
         if let e = ProcessInfo.processInfo.environment["MYLINUX_TERMINAL"].flatMap(TerminalEngine.init(rawValue:)) { return e }   // tests
-        return UserDefaults.standard.string(forKey: settingKey).flatMap(TerminalEngine.init(rawValue:)) ?? .swiftTerm
+        return UserDefaults.standard.string(forKey: settingKey).flatMap(TerminalEngine.init(rawValue:)) ?? .ghostty
     }
-    var title: String { self == .swiftTerm ? "Built in (SwiftTerm)" : "Ghostty (experimental)" }
+    var title: String { self == .swiftTerm ? "SwiftTerm (the earlier terminal)" : "Ghostty" }
 
     @MainActor static func make(profile: RemoteProfile) -> any MachineTerminal {
         switch current {

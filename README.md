@@ -118,7 +118,11 @@ Path** put a PNG of the page, or of the Mac clipboard, into the machine's share 
 terminal, so an agent inside can look at it. The Omarchy keys work here too: ⌘↩ splits the tab with one more
 terminal (side by side; under the others once the browser is on the right), ⇧⌘↩ shows the browser with its address
 bar ready, ⌘T opens another tab to the machine, and ⌘W closes the pane with the keyboard (the browser, or one terminal
-of several; with a single terminal, the window). A terminal leaves the tab when its shell ends. So one tab can
+of several; with a single terminal, the window). A line at the top of the window lists those keys, and its
+**Commands** menu types common commands into the terminal: the agents (`cc`, `cx`), btop, disk space, memory,
+addresses and listening ports, updating and installing packages (`doas apk` on Alpine, `sudo apt` on Debian; an
+unfinished one such as "Install a package…" waits on the prompt for the name), the Mac and Dropbox folders, and
+Tailscale. A terminal leaves the tab when its shell ends. So one tab can
 hold Claude in one terminal, Codex in another below it, and the result in the browser beside them. Environment: `DISK`, `DISK_SIZE_GB=32`, `NAME`, `MEM=2G`, `CPUS`, `SHARE_DIR`, `SSH_PORT`, `FORWARD`,
 `SERIAL`, `QMP`, `DRYRUN=1`.
 
@@ -183,7 +187,8 @@ shortcuts*, *Option is Super*, or *Everything to the remote* (⌘Tab and ⌘Spac
 keyboard back; needs Accessibility permission once) — plus a list of shortcuts the Mac always keeps. SSH tabs run
 the Mac's `ssh` in a SwiftTerm view: your keys and agent work as in Terminal, a saved password is handed to ssh
 through an askpass helper that reads the Keychain, and a tmux session name attaches on login. **Settings ›
-Terminal** can switch every new terminal (SSH tabs and the Debian and Alpine servers) to **Ghostty**: Ghostty's own
+Terminal** chooses the terminal for every new SSH tab and Debian or Alpine server: **Ghostty**, the default since
+0.5.1, or SwiftTerm, the earlier one. Ghostty is Ghostty's own
 terminal core and Metal renderer from [GhosttyKit](https://github.com/Lakr233/libghostty-spm) (MIT), the Swift
 package around libghostty, pinned to one release. `tools/get-ghosttykit.sh` fetches it with curl (SwiftPM's own
 download of its 77 MB XCFramework stalled), checks both files against pinned SHA-256 sums, unpacks it into
