@@ -177,13 +177,18 @@ working on myLinux itself. A local build is signed ad hoc, so on another Mac Gat
 tools/build-libvncclient.sh      # libvncclient, libjpeg-turbo and OpenSSL from pinned sources, built for macOS 15 (once)
 tools/build-qemu-runtime.sh      # out/qemu-runtime-macos-arm64.tar.gz at the version in tools/qemu-runtime.version
 mac/release.sh --notarize <notarytool keychain profile>   # Developer ID from the keychain; out/mac/myLinux-Launcher-<version>.dmg
+mac/publish-release.sh notes.md  # releases launcher-<version> and updates launcher-latest
 ```
 
 `mac/release.sh` builds the app with `MYLINUX_RELEASE=1` (the runtime tarball rides in `Contents/Resources/runtime`,
 no checkout path in Info.plist), signs it inside out with the hardened runtime, and `mac/package-dmg.sh` has Apple
 notarise the app and the disk image and staples both tickets. Homebrew's libvncclient is built for the macOS it was
 installed on (26 here), which is why the release uses the libraries from `tools/build-libvncclient.sh` in `out/libvnc`;
-`mac/build-app.sh` prefers them whenever they are there. The DMG goes into a release in `adminmylinux/mylinux-releases`.
+`mac/build-app.sh` prefers them whenever they are there. `mac/publish-release.sh` puts the DMG into
+`adminmylinux/mylinux-releases` twice: as `launcher-<version>`, and over the files of `launcher-latest`, so
+[`releases/download/launcher-latest/myLinux-Launcher.dmg`](https://github.com/adminmylinux/mylinux-releases/releases/download/launcher-latest/myLinux-Launcher.dmg)
+(the website's link) is always the newest launcher. Neither is the repository's "latest" release: that stays the
+Linux image, which `tools/get-image.sh` resolves.
 
 ## Keys
 
