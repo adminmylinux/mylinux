@@ -92,8 +92,14 @@ struct MachineView: View {
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }
                 case .running:
                     if isServer {
-                        Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
-                            .buttonStyle(.borderedProminent)
+                        if runner.waitingForSSH {
+                            ProgressView().controlSize(.small)
+                            Button {} label: { Label("Waiting for SSH…", systemImage: "terminal") }.disabled(true)
+                                .help("The terminal opens as soon as the machine answers.")
+                        } else {
+                            Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
+                                .buttonStyle(.borderedProminent)
+                        }
                         Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
                     } else {
                         Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
@@ -196,7 +202,7 @@ struct MachineView: View {
 
     /// The SSH terminal to this machine: an unsaved remote profile keyed by the machine's id, so a second click
     /// brings the same window forward.
-    private func openTerminal() { RemoteWindowController.show(draft.terminalProfile) }
+    private func openTerminal() { runner.openTerminal(draft) }
 
     /// What a server needs before its first start.
     @ViewBuilder private var serverDownloads: some View {

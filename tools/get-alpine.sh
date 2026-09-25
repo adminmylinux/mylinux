@@ -50,6 +50,14 @@ dd if="$STAGE/raw/disk.raw" of="$STAGE/new/alpine.raw" bs=1m conv=sparse 2>/dev/
 # a hole at the very end leaves the copy short: set its length to the disk's
 SIZE=$(stat -f %z "$STAGE/raw/disk.raw"); dd if=/dev/zero of="$STAGE/new/alpine.raw" bs=1 count=0 seek="$SIZE" 2>/dev/null
 cmp -s "$STAGE/raw/disk.raw" "$STAGE/new/alpine.raw" || { echo "the unpacked disk differs from the download: nothing installed" >&2; exit 1; }
+# Limine waits 10 s at every boot for a menu choice a server never makes. Its config sits in the FAT boot partition;
+# "timeout: 10\n" and "timeout: 0\n\n" are the same length, so the file changes in place with its size and the
+# filesystem untouched. Only when it is found once, as the config's first line (run-server.sh also sets it on the
+# first boot, so an image laid out differently just keeps the wait once).
+HITS=$(LC_ALL=C grep -obUa 'timeout: 10' "$STAGE/new/alpine.raw" | cut -d: -f1)
+if [ "$(printf '%s\n' "$HITS" | grep -c .)" = 1 ] && [ "$(dd if="$STAGE/new/alpine.raw" bs=1 skip="$HITS" count=24 2>/dev/null | LC_ALL=C tr '\n' '|')" = "timeout: 10|serial: yes|" ]; then
+  printf 'timeout: 0\n\n' | dd of="$STAGE/new/alpine.raw" bs=1 seek="$HITS" conv=notrunc 2>/dev/null && echo "the boot menu's countdown is off"
+fi
 printf '%s\n' "$REVISION" > "$STAGE/new/ALPINE-REVISION"
 rm -rf "$DEST.prev"; [ -d "$DEST" ] && mv "$DEST" "$DEST.prev"
 mv "$STAGE/new" "$DEST"; rm -rf "$DEST.prev"

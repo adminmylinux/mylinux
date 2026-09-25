@@ -18,6 +18,10 @@ final class Runner: ObservableObject {
     @Published private(set) var console = ""
     @Published private(set) var consoleConnected = false
     @Published private(set) var stoppingSince: Date?
+    /// A server's sshd has answered a login since this start, so a terminal opened now connects.
+    @Published private(set) var sshReady = false
+    /// Waiting for that login (after Start, or a Terminal press before it), to open the terminal then.
+    @Published private(set) var waitingForSSH = false
 
     let profileID: UUID
     private var process: Process?
@@ -119,7 +123,8 @@ final class Runner: ObservableObject {
         state = .starting
         UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
         connectSerial()
-        if p.isServer { openTerminalWhenReady(p) }
+        sshReady = false
+        if p.isServer { openTerminal(p) }
     }
 
     /// The last lines run.sh wrote, for the message on an unexpected exit.
@@ -131,6 +136,7 @@ final class Runner: ObservableObject {
 
     private func finished(status: Int32) {
         closeSerial()
+        sshReady = false
         try? logHandle?.close(); logHandle = nil
         let wasStopping = state == .stopping
         process = nil; stoppingSince = nil
@@ -223,21 +229,33 @@ final class Runner: ObservableObject {
         }
     }
 
-    /// A server is a terminal: once its sshd answers after a start, the terminal window opens on its own.
-    /// The forwarded port accepts connections before the guest listens, so a real ssh login is the test.
-    private func openTerminalWhenReady(_ p: Profile) {
+    /// A server is a terminal: its window opens once its sshd answers, on its own after a start and from the Terminal
+    /// button. Before that, QEMU's forwarded port accepts the connection with nothing behind it and a terminal would
+    /// fail with "timed out during banner exchange" (a first Alpine start takes about 28 s), so a real ssh login is
+    /// the test, and a press during the wait just waits along.
+    func openTerminal(_ p: Profile) {
         let profile = p.terminalProfile
+        if sshReady { RemoteWindowController.show(profile); return }
+        guard !waitingForSSH else { return }
+        waitingForSSH = true
         let args = SshTerminal.arguments(for: profile) + ["true"]
         let startedAt = Date()
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            defer { DispatchQueue.main.async { self?.waitingForSSH = false } }
             while Date().timeIntervalSince(startedAt) < 240 {
                 guard let self, self.isActive, self.profileID == p.id else { return }
                 let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
                 t.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=3"] + args
                 var env = ProcessInfo.processInfo.environment; env["PATH"] = Paths.toolPath; t.environment = env
                 t.standardInput = FileHandle.nullDevice; t.standardOutput = FileHandle.nullDevice; t.standardError = FileHandle.nullDevice
-                if (try? t.run()) != nil { t.waitUntilExit(); if t.terminationStatus == 0 { DispatchQueue.main.async { RemoteWindowController.show(profile) }; return } }
-                Thread.sleep(forTimeInterval: 3)
+                if (try? t.run()) != nil {
+                    t.waitUntilExit()
+                    if t.terminationStatus == 0 {
+                        DispatchQueue.main.async { self.sshReady = true; self.waitingForSSH = false; RemoteWindowController.show(profile) }
+                        return
+                    }
+                }
+                Thread.sleep(forTimeInterval: 1)      // each try already waits up to 3 s for the banner
             }
         }
     }

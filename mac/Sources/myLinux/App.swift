@@ -126,6 +126,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --start-machine <kind> <png>` (MYLINUX_SUPPORT_DIR must name a scratch folder): the product path end to
+        // end: add a machine of that kind as the + menu does (MYLINUX_TEST_PORT overrides a server's SSH port), start it as
+        // the Start button does, log each state and when its terminal window opens, and photograph that window 15 s later
+        if let i = args.firstIndex(of: "--start-machine"), i + 2 < args.count, let kind = Profile.Kind(rawValue: args[i + 1]) {
+            let env = ProcessInfo.processInfo.environment
+            guard env["MYLINUX_SUPPORT_DIR"] != nil else { print("--start-machine needs MYLINUX_SUPPORT_DIR (a scratch folder)"); exit(64) }
+            let store = ProfileStore.shared
+            var p = store.profiles.first(where: { $0.kind == kind }) ?? store.add(kind: kind)
+            if let port = env["MYLINUX_TEST_PORT"].flatMap(Int.init) { p.sshPort = port; store.update(p) }
+            let runner = Runner(profileID: p.id)
+            let t0 = Date()
+            func say(_ m: String) { print(String(format: "%6.1fs ", Date().timeIntervalSince(t0)) + m); fflush(stdout) }
+            say("starting \(p.name) (\(kind.rawValue)), ssh port \(p.sshPort), log \(runner.logFile.path)")
+            runner.start(p)
+            // MYLINUX_TEST_EARLY_TERMINAL=1: press Terminal 2 s after Start, long before sshd answers
+            if env["MYLINUX_TEST_EARLY_TERMINAL"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { say("Terminal pressed"); runner.openTerminal(p) } }
+            // MYLINUX_TEST_STALE_WINDOW=1: a terminal window already open at Start (it fails, as in a left-over window)
+            if env["MYLINUX_TEST_STALE_WINDOW"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { say("stale window opened"); RemoteWindowController.show(p.terminalProfile) } }
+            var last = ""
+            var windowAt: Date?
+            Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
+                let st = "\(runner.state)"
+                if st != last { say("state: \(st)"); last = st }
+                if windowAt == nil, runner.sshReady || env["MYLINUX_TEST_STALE_WINDOW"] != "1",
+                   let c = RemoteWindowController.open.first(where: { $0.profile.id == p.id }) {
+                    windowAt = Date(); say("terminal window opened")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                        let n = c.window?.windowNumber ?? 0
+                        let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(n), args[i + 2]]
+                        try? cap.run(); cap.waitUntilExit(); say("photographed; qmp \(runner.qmpSocket)"); exit(0)
+                    }
+                }
+                if case .failed = runner.state { timer.invalidate(); say("failed; last log lines:\n" + ((try? String(contentsOf: runner.logFile, encoding: .utf8)) ?? "").suffix(1500)); exit(1) }
+                if Date().timeIntervalSince(t0) > 300 { say("gave up after 300 s"); exit(2) }
+            }
+            return
+        }
         // `myLinux --render-terminal <png>`: draw a local terminal running a short command, to check the text placement
         if let i = args.firstIndex(of: "--render-terminal"), i + 1 < args.count {
             var p = RemoteProfile(kind: .ssh); p.name = "render"

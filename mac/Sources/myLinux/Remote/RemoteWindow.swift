@@ -31,7 +31,11 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     @discardableResult
     static func show(_ profile: RemoteProfile) -> RemoteWindowController {
         _ = trace
-        if let existing = open.first(where: { $0.profile.id == profile.id }) { existing.window?.makeKeyAndOrderFront(nil); return existing }
+        if let existing = open.first(where: { $0.profile.id == profile.id }) {
+            // a window left disconnected (the machine was stopped or restarted) connects again rather than showing its old error
+            if !existing.overlay.isHidden { existing.hideOverlay(); existing.connect() }
+            existing.window?.makeKeyAndOrderFront(nil); return existing
+        }
         let c = RemoteWindowController(profile: profile)
         open.append(c); RemoteSession.noteOpenWindows()
         if let last = open.dropLast().last?.window, let w = c.window { last.addTabbedWindow(w, ordered: .above) }
