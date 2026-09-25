@@ -29,6 +29,7 @@ else
   export PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}:/opt/homebrew/lib/pkgconfig"; echo "libvncclient: Homebrew's"
   [ "${MYLINUX_RELEASE:-0}" = 1 ] && { echo "a release needs the libraries from tools/build-libvncclient.sh: Homebrew's are built for this Mac's macOS only" >&2; exit 1; }
 fi
+sh tools/get-ghosttykit.sh             # the Ghostty terminal package (Settings › Terminal), pinned
 (cd mac && swift build -c release --product myLinux)
 BIN="$(cd mac && swift build -c release --show-bin-path)/myLinux"
 [ -x "$BIN" ] || { echo "the launcher binary was not built" >&2; exit 1; }
@@ -82,6 +83,8 @@ done
 cp run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh "$NEW/Contents/Resources/runtime/"
 # Install Script… (a server's terminal) loads <distro>_install.sh from GitHub; these copies stand in when it can't
 cp debian_install.sh alpine_install.sh "$NEW/Contents/Resources/"
+# GhosttyKit's resources (Ghostty's resource folder and terminfo), found there by its patched lookup
+cp -R "$(dirname "$BIN")/GhosttyKit_GhosttyTerminal.bundle" "$NEW/Contents/Resources/"
 mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session "$NEW/Contents/Resources/runtime/omarchy/"
 for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-debian.sh get-alpine.sh get-edk2.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"

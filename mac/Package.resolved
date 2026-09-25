@@ -1,6 +1,15 @@
 {
-  "originHash" : "89b8d10e8dee4c4bca6e4e3634061791a202ca09f9b34dc7b381801e0b59da99",
+  "originHash" : "a66242ee6b8d073139d94270c8ea7704760ce230d5eaaefd1d9b309b4a78dc35",
   "pins" : [
+    {
+      "identity" : "msdisplaylink",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Lakr233/MSDisplayLink.git",
+      "state" : {
+        "revision" : "87eb0af130744c8cbe2e31b6e1a5bcd659f1c220",
+        "version" : "2.2.0"
+      }
+    },
     {
       "identity" : "swift-argument-parser",
       "kind" : "remoteSourceControl",

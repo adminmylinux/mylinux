@@ -15,9 +15,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     private var vnc: VncConnection?
     private var vncView: VncView?
     /// The terminals of this tab. `ssh` is the one with the keyboard (or the first), which the actions type into.
-    private var terminals: [SshTerminal] = []
-    private var ssh: SshTerminal? {
-        if let t = window?.firstResponder as? SshTerminal, terminals.contains(where: { $0 === t }) { return t }
+    private var terminals: [any MachineTerminal] = []
+    private var ssh: (any MachineTerminal)? {
+        if let r = window?.firstResponder as? NSView, let t = terminals.first(where: { r === $0 || r.isDescendant(of: $0) }) { return t }
         return terminals.first
     }
     private let status = NSTextField(labelWithString: "")
@@ -140,7 +140,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             outer = o; terminalArea = area
             let t = makeTerminal()
             area.addArrangedSubview(t)
-            window?.makeFirstResponder(t)
+            window?.makeFirstResponder(t.keyView)
             if hadBrowser { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in if self?.browser == nil { self?.toggleBrowser() } } }
             status.stringValue = "ssh \(profile.username.isEmpty ? "" : profile.username + "@")\(profile.host):\(profile.port)" + (profile.tmux.isEmpty ? "" : "  tmux \(profile.tmux)")
             // a launcher machine: how long it took from Start to this terminal
@@ -153,8 +153,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     /// A terminal to the machine, started; it leaves the tab on its own when its shell ends and others remain.
-    private func makeTerminal() -> SshTerminal {
-        let t = SshTerminal(profile: profile)
+    private func makeTerminal() -> any MachineTerminal {
+        let t = TerminalEngine.make(profile: profile)
         t.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
         terminals.append(t)
         if profile.launcherMachine { t.onOpenLink = { [weak self] url in self?.openInBrowser(url) } }
@@ -171,11 +171,11 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         t.start()
         return t
     }
-    private func remove(terminal t: SshTerminal) {
+    private func remove(terminal t: any MachineTerminal) {
         terminals.removeAll { $0 === t }
         t.removeFromSuperview()
         if let area = terminalArea { equalize(area) }
-        if let next = terminals.first { window?.makeFirstResponder(next) }
+        if let next = terminals.first { window?.makeFirstResponder(next.keyView) }
     }
     /// Even shares for the panes of a split.
     private func equalize(_ sv: NSSplitView) {
@@ -267,7 +267,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     // ---- clipboard: what the Mac copies goes to the remote when the window becomes key ----
     func windowDidBecomeKey(_ n: Notification) {
-        if let v = vncView { window?.makeFirstResponder(v) } else if let t = ssh { window?.makeFirstResponder(t) }
+        if let v = vncView { window?.makeFirstResponder(v) } else if let t = ssh { window?.makeFirstResponder(t.keyView) }
         let pb = NSPasteboard.general
         if pb.changeCount != pasteboardCount, let s = pb.string(forType: .string) { pasteboardCount = pb.changeCount; vnc?.send(text: s) }
         if let v = vncView, keyboardMode == .all, !v.grabbing { v.setGrab(true, keep: profile.keepForMac) }
@@ -377,7 +377,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         if let current = ssh, let i = area.arrangedSubviews.firstIndex(where: { $0 === current }) { area.insertArrangedSubview(t, at: i + 1) }
         else { area.addArrangedSubview(t) }
         equalize(area)
-        window?.makeFirstResponder(t)
+        window?.makeFirstResponder(t.keyView)
     }
     /// ⇧⌘↩, as in Omarchy: the browser, with the address bar ready to type into.
     private func showBrowserAndFocus() {
@@ -407,7 +407,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             if ok { if let first { pane.load(first) } else { pane.showStart() } }
             else { self.showOverlay("The tunnel into the machine did not come up (is it running, and is SSH reachable?). Click to dismiss.") }
         }
-        window?.makeFirstResponder(t)
+        window?.makeFirstResponder(t.keyView)
     }
     /// A Mac port that leads to the machine's port, opened once per port and kept while the pane is open.
     private func forward(_ guestPort: Int, _ done: @escaping (UInt16?) -> Void) {
@@ -424,9 +424,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         browser = nil
         area.isVertical = true
         equalize(area)
-        window?.makeFirstResponder(ssh)
+        window?.makeFirstResponder(ssh?.keyView)
     }
     private func openInBrowser(_ url: URL) {
+        testOpenedLink = url
         if browser == nil { toggleBrowser() }
         if let tunnel, tunnel.isRunning, SocksTunnel.answers(tunnel.port) { browser?.load(url) }
         else { pendingURL = url }
@@ -454,7 +455,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             try png.write(to: folder.appendingPathComponent(name))
         } catch { showOverlay("Could not save the screenshot: \(error.localizedDescription). Click to dismiss."); return }
         ssh?.type("\(profile.shareGuestPath)/screenshots/\(name) ")
-        window?.makeFirstResponder(ssh)
+        window?.makeFirstResponder(ssh?.keyView)
     }
     @objc private func screenshotBrowser() {
         guard let browser else { showOverlay("Show the browser first. Click to dismiss."); return }
@@ -472,6 +473,13 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     /// The pane is on screen, not only remembered.
     var testBrowserVisible: Bool { browser?.window != nil }
     func testReconnect() { connect() }
+    var testOverlayVisible: Bool { !overlay.isHidden }
+    var testGhostty: GhosttySshTerminal? { terminals.first as? GhosttySshTerminal }
+    /// The last link a terminal asked this window to open (⌘-click), for the tests.
+    private(set) var testOpenedLink: URL?
+    /// Where the first terminal's top-left text sits, in window coordinates.
+    var testFirstTerminalTopLeft: NSPoint? { terminals.first.map { $0.convert(NSPoint(x: 0, y: $0.isFlipped ? 0 : $0.bounds.height), to: nil) } }
+    func testLastURL() -> URL? { ssh?.lastURL() }
     func testFocusBrowser() { browser?.focusAddress() }
     var testSheetOpen: Bool { sheetWindow != nil }
     func testType(_ text: String) { ssh?.type(text + "\n") }
@@ -489,7 +497,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         let sheet = NSWindow(contentViewController: NSHostingController(rootView: InstallScriptSheet(
             profile: profile,
             dismiss: { [weak self] in self?.endSheet() },
-            run: { [weak self] command in guard let self, let t = self.ssh else { return }; t.type(command); self.window?.makeFirstResponder(t) },
+            run: { [weak self] command in guard let self, let t = self.ssh else { return }; t.type(command); self.window?.makeFirstResponder(t.keyView) },
             restarting: { [weak self] in self?.endSheet(); DispatchQueue.main.async { self?.showRestartProgress() } })))
         sheet.styleMask = [.titled]
         sheetWindow = sheet

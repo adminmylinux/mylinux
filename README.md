@@ -182,7 +182,18 @@ Tight/ZRLE, VeNCrypt TLS and a trust-on-first-use certificate sheet like the myL
 shortcuts*, *Option is Super*, or *Everything to the remote* (⌘Tab and ⌘Space included, Ctrl+Option+G gives the
 keyboard back; needs Accessibility permission once) — plus a list of shortcuts the Mac always keeps. SSH tabs run
 the Mac's `ssh` in a SwiftTerm view: your keys and agent work as in Terminal, a saved password is handed to ssh
-through an askpass helper that reads the Keychain, and a tmux session name attaches on login. Connections open as
+through an askpass helper that reads the Keychain, and a tmux session name attaches on login. **Settings ›
+Terminal** can switch every new terminal (SSH tabs and the Debian and Alpine servers) to **Ghostty**: Ghostty's own
+terminal core and Metal renderer from [GhosttyKit](https://github.com/Lakr233/libghostty-spm) (MIT), the Swift
+package around libghostty, pinned to one release. `tools/get-ghosttykit.sh` fetches it with curl (SwiftPM's own
+download of its 77 MB XCFramework stalled), checks both files against pinned SHA-256 sums, unpacks it into
+`out/ghosttykit`, and makes three small changes it documents: the binary target from that local copy, the surface
+handle public (Open Last URL reads the scrollback through `ghostty_surface_read_text`), and its resources looked up
+in the app's `Contents/Resources`. The same `ssh` command runs in both; Ghostty starts it through `/usr/bin/login`,
+so it goes through `env sh -c`, which clears login's "Last login" line and always exits 0 (Ghostty otherwise holds a
+pane whose command failed with its own error page, and the window's "Disconnected" and reconnect never came).
+Ghostty's key bindings are cleared and only ⌘C, ⌘V, ⌘A, ⌘K and the font sizes are bound again, so the window's ⌘↩,
+⇧⌘↩, ⌘T, ⌘W and ⌘P stay the window's; `term` is `xterm-256color`, which the machines know. Connections open as
 native window tabs and can go fullscreen per display. Passwords live in the Keychain, profiles in
 `~/Library/Application Support/myLinux/remote.json`, certificate pins next to it. The launcher's menu bar item is
 the way back when a remote window holds every key: *Release Keyboard to the Mac*. Remote windows open at quit come
@@ -439,3 +450,5 @@ which Qt offers under the GPL v3 only. Theme palettes are from Omarchy (MIT, see
 The launcher's welcome sheet shows two marks in `tools/icons/` (Alpine gets a plain mountain tile, not its logo): `debian.png` is the Debian Open Use Logo,
 Copyright (c) 1999 Software in the Public Interest, Inc., under LGPL-3 or CC-BY-SA 3.0; `omarchy.png` is the
 Omarchy mark from Omarchy's brand kit (as used by Try Omarchy), a pending trademark of the Omarchy project.
+The launcher's optional Ghostty terminal is GhosttyKit (MIT, Lakr233/libghostty-spm) around libghostty from Ghostty
+(MIT, ghostty-org/ghostty); SwiftTerm, the default terminal, is MIT too.

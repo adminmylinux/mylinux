@@ -39,6 +39,7 @@ sh tools/tests/guest.sh || fail=$((fail + 1))
 step "mac launcher: swift tests"
 if command -v swift >/dev/null 2>&1; then
   # the exit status is swift's, not the filter's
+  sh tools/get-ghosttykit.sh >/dev/null || fail=$((fail + 1))          # the Ghostty terminal package, pinned
   (cd mac && swift test > "$FAILED.swift" 2>&1; rc=$?; grep -E "error:|failed|Executed [0-9]+ tests" "$FAILED.swift" | tail -3; rm -f "$FAILED.swift"; exit $rc) || fail=$((fail + 1))
 else echo "swift not installed: skipped (verification gap)"; fi
 

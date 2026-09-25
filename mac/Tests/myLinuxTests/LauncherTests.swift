@@ -320,6 +320,25 @@ final class CloudFolderTests: XCTestCase {
     }
 }
 
+final class GhosttyTerminalTests: XCTestCase {
+    func testTheCommandLineKeepsEveryArgumentWhole() {
+        let line = GhosttySshTerminal.commandLine("/usr/bin/ssh", ["-p", "2223", "-o", #"UserKnownHostsFile="/Users/a/Library/Application Support/m/known_hosts""#, "it's@127.0.0.1"])
+        XCTAssertTrue(line.hasPrefix("'/usr/bin/env' 'sh' '-c' "), "through env sh -c, which clears login's line and always exits 0")
+        XCTAssertTrue(line.contains(#"; "$0" "$@"; exit 0'"#), "the program with its arguments exactly as given, then exit 0")
+        XCTAssertTrue(line.contains(#"'UserKnownHostsFile="/Users/a/Library/Application Support/m/known_hosts"'"#), "a space stays inside its argument")
+        XCTAssertTrue(line.hasSuffix(#"'it'\''s@127.0.0.1'"#), "a single quote is escaped")
+    }
+    func testTheEngineFollowsTheSetting() {
+        let key = TerminalEngine.settingKey, saved = UserDefaults.standard.string(forKey: key)
+        defer { if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) } }
+        guard ProcessInfo.processInfo.environment["MYLINUX_TERMINAL"] == nil else { return }
+        UserDefaults.standard.removeObject(forKey: key)
+        XCTAssertEqual(TerminalEngine.current, .swiftTerm, "SwiftTerm unless Ghostty is chosen")
+        UserDefaults.standard.set("ghostty", forKey: key)
+        XCTAssertEqual(TerminalEngine.current, .ghostty)
+    }
+}
+
 final class SecondsTests: XCTestCase {
     func testDurationsReadInWholeSeconds() {
         XCTAssertEqual(Runner.seconds(0.2), "<1 s")

@@ -62,6 +62,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             exit(0)
         }
+        // `myLinux --render-settings <png>`: draw the Settings window's content to a file
+        if let i = args.firstIndex(of: "--render-settings"), i + 1 < args.count {
+            let view = NSHostingView(rootView: SettingsView().environmentObject(AppSettings.shared).frame(width: 560, height: 700))
+            view.frame = NSRect(x: 0, y: 0, width: 560, height: 700); view.appearance = NSAppearance(named: .darkAqua)
+            let w = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false); w.contentView = view; w.orderFront(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --render-install-script <png>`: draw the Install Script dialog to a file, with the checkout's
         // debian_install.sh in it (a look without a machine or the network)
         if let i = args.firstIndex(of: "--render-install-script"), i + 1 < args.count {
@@ -112,6 +126,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 7.6) { print("terminals after cmd-w:", c.testTerminalCount, "window open:", c.window?.isVisible == true); press("P", 35, [.command, .shift]) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 8.6) { print("install script sheet after shift-cmd-p:", c.testSheetOpen) }
                 wait = 9.5
+            }
+            // MYLINUX_TEST_KEYS=io: real key presses into the terminal, the scrollback read back, exit, reconnect
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "io" {
+                func key(_ chars: String, _ code: UInt16, _ mods: NSEvent.ModifierFlags = []) {
+                    guard let w = c.window else { return }
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                                    context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) { NSApp.postEvent(e, atStart: false) }
+                    }
+                }
+                // US key codes for "echo https://example.org/typed" and Return
+                let codes: [Character: UInt16] = ["e": 14, "c": 8, "h": 4, "o": 31, " ": 49, "t": 17, "p": 35, "s": 1, ":": 41, "/": 44, "x": 7, "a": 0, "m": 46, "l": 37, ".": 47, "r": 15, "g": 5, "y": 16, "d": 2]
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    for ch in "echo https://example.org/typed" { key(String(ch), codes[ch] ?? 0, ch == ":" ? [.shift] : []) }
+                    key("\r", 36)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { print("last URL after typing:", c.testLastURL()?.absoluteString ?? "none"); c.testType("exit\n") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) { print("overlay after exit:", c.testOverlayVisible, "terminals:", c.testTerminalCount); c.testReconnect() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 9.0) { print("after reconnect: overlay", c.testOverlayVisible, "terminals:", c.testTerminalCount); c.testType("echo https://example.org/after-reconnect\n") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 11.0) { print("last URL after reconnect:", c.testLastURL()?.absoluteString ?? "none") }
+                wait = 12
+            }
+            // MYLINUX_GHOSTTY_CONFIG=1: what Ghostty was given, and any issue it reported
+            if ProcessInfo.processInfo.environment["MYLINUX_GHOSTTY_CONFIG"] == "1" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    print("ghostty config:\n" + GhosttySshTerminal.controller.renderedConfig)
+                    print("ghostty issue:", GhosttySshTerminal.controller.lastConfigurationIssue ?? "none")
+                }
+            }
+            // MYLINUX_TEST_KEYS=copy: ⌘A then ⌘C in the terminal, and what the pasteboard holds after
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "copy" {
+                // a test run is never the active app, so AppKit would not route ⌘-keys: hand them to the window's
+                // key-equivalent pass directly, which is what AppKit does for the key window
+                func key(_ chars: String, _ code: UInt16, _ mods: NSEvent.ModifierFlags) {
+                    guard let w = c.window, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                                                       context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) else { return }
+                    print("key \(chars) with ⌘ handled by the window:", w.performKeyEquivalent(with: e))
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    print("window key:", c.window?.isKeyWindow ?? false, "app active:", NSApp.isActive, "responder:", c.window?.firstResponder.map { String(describing: Swift.type(of: $0)) } ?? "nil")
+                    NSApp.activate(ignoringOtherApps: true); c.window?.makeKeyAndOrderFront(nil)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) {
+                    print("then key:", c.window?.isKeyWindow ?? false, "app active:", NSApp.isActive)
+                    NSPasteboard.general.clearContents(); key("a", 0, [.command])
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
+                    print("after cmd-a: selection", c.testGhostty?.testHasSelection ?? false)
+                    key("c", 8, [.command])
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) {
+                    let s = NSPasteboard.general.string(forType: .string) ?? ""
+                    print("copied:", s.contains("first column check") ? "yes" : "no", "(\(s.count) characters)")
+                }
+                wait = 4
+            }
+            // MYLINUX_TEST_KEYS=link: a URL on the first line, then hover and ⌘-click on it, as a person would
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "link" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { c.testType("clear; echo https://example.org/clicked\n") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                    guard let w = c.window, let tl = c.testFirstTerminalTopLeft else { return }
+                    // the 5th character of the first row: 6 pt padding, about 8 pt per cell, 17 pt per row
+                    let p = NSPoint(x: tl.x + 6 + 8 * 5 + 4, y: tl.y - 4 - 8)
+                    for (type, mods) in [(NSEvent.EventType.mouseMoved, NSEvent.ModifierFlags.command), (.leftMouseDown, .command), (.leftMouseUp, .command)] {
+                        if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                                      context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) { NSApp.postEvent(e, atStart: false) }
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { print("link the window was asked to open:", c.testOpenedLink?.absoluteString ?? "none", "browser:", c.testHasBrowser) }
+                wait = 7
             }
             // MYLINUX_TEST_KEYS=reconnect: the browser, a reconnect (as after a restart), then ⇧⌘↩ again
             if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "reconnect" {
@@ -327,9 +411,19 @@ struct SettingsView: View {
     @State private var clearError: String?
     @StateObject private var images = ImageManager.shared
     @StateObject private var runtime = RuntimeManager.shared
+    @AppStorage(TerminalEngine.settingKey) private var terminalEngine = TerminalEngine.swiftTerm.rawValue
 
     var body: some View {
         Form {
+            Section("Terminal") {
+                Picker("Terminal for servers and SSH", selection: $terminalEngine) {
+                    ForEach(TerminalEngine.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+                }
+                Text(terminalEngine == TerminalEngine.ghostty.rawValue
+                     ? "Ghostty's terminal (GhosttyKit): drawn on the GPU, with Ghostty's fonts and text handling. ⌘C, ⌘V, ⌘A, ⌘K and ⌘+/⌘- work as in Ghostty; the window's own keys stay the same. New terminals use it; open ones keep theirs."
+                     : "SwiftTerm, the terminal the launcher has always used. Ghostty can be tried here; new terminals use the choice, open ones keep theirs.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Section("myLinux image") {
                 LabeledContent("Source") {
                     Text(settings.developerMode ? "The checkout's out/ folder" : "Downloaded releases")
