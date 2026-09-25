@@ -216,7 +216,7 @@ private struct MachineRow: View {
         case .running: return runner.readyIn.map { "Running · ready in " + Runner.seconds($0) } ?? "Running"
         case .starting: return "Starting… " + Runner.seconds(Date().timeIntervalSince(runner.startedAt ?? Date()))
         case .stopping: return "Shutting down…"
-        case .inUseElsewhere: return "Running outside the app"
+        case .inUseElsewhere: return profile.isServer ? "Running · started by an earlier launcher" : "Running outside the app"
         case .failed: return "Failed"
         case .stopped:
             if profile.isServer { return "\(profile.kind.title) server · \(profile.memoryGB) GB · ssh port \(String(profile.sshPort))" }

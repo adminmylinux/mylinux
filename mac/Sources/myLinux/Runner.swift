@@ -262,7 +262,7 @@ final class Runner: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             defer { DispatchQueue.main.async { self?.waitingForSSH = false } }
             while Date().timeIntervalSince(startedAt) < 240 {
-                guard let self, self.isActive, self.profileID == p.id else { return }
+                guard let self, self.isActive || self.state == .inUseElsewhere, self.profileID == p.id else { return }
                 let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
                 t.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=3"] + args
                 var env = ProcessInfo.processInfo.environment; env["PATH"] = Paths.toolPath; t.environment = env
@@ -312,7 +312,9 @@ final class Runner: ObservableObject {
 
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
-        guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) else { return }
+        // a server started by an earlier launcher is still reachable: its QMP socket is named after the machine
+        let adoptedServer = state == .inUseElsewhere && profile?.isServer == true && FileManager.default.fileExists(atPath: qmpSocket)
+        guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) || adoptedServer else { return }
         if profile?.kind == .omarchy || profile?.isServer == true {
             state = .stopping; stoppingSince = Date()
             let path = qmpSocket
@@ -342,11 +344,13 @@ final class Runner: ObservableObject {
     var currentOrLastProfileDisk: String? { profile?.appsDisk ?? ProfileStore.shared.profiles.first { $0.id == profileID }?.appsDisk }
 
     /// Periodic check for machines started outside the app (Terminal, an earlier launcher session).
-    func refreshExternal(disk: String) {
+    func refreshExternal(inUse: Bool) {
         profile = profile ?? ProfileStore.shared.profiles.first { $0.id == profileID }
         switch state {
+        case .stopping where process == nil:
+            // shut down from here while another launcher had started it: done once its QEMU is gone
+            if !inUse { state = .stopped; stoppingSince = nil; closeSerial() }
         case .stopped, .failed, .inUseElsewhere:
-            let inUse = Runner.diskInUse(disk)
             if inUse && state != .inUseElsewhere { state = .inUseElsewhere }
             if !inUse && state == .inUseElsewhere { state = .stopped; closeSerial() }
             if inUse { attachConsole() }
@@ -476,9 +480,10 @@ final class RunManager: ObservableObject {
             guard let self, let store else { return }
             for p in store.profiles {
                 let r = self.runner(for: p.id)
+                // pgrep in the background: on the main thread, every machine every 4 s, it stalled the window
                 DispatchQueue.global(qos: .utility).async {
-                    let disk = p.appsDisk
-                    DispatchQueue.main.async { r.refreshExternal(disk: disk) }
+                    let inUse = Runner.diskInUse(p.appsDisk)
+                    DispatchQueue.main.async { r.refreshExternal(inUse: inUse) }
                 }
             }
         }

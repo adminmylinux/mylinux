@@ -77,7 +77,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case .mylinux: return [3, 4, 6][tier]
         case .omarchy: return [4, 6, 8][tier]
         case .debian: return [2, 2, 4][tier]
-        case .alpine: return [1, 1, 2][tier]
+        case .alpine: return [2, 2, 4][tier]      // idles in 60 MB; Claude Code and Codex's server need the room
         }
     }
     static var macMemoryGB: Int { Int((ProcessInfo.processInfo.physicalMemory + (1 << 29)) >> 30) }

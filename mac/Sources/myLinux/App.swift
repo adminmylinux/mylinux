@@ -232,6 +232,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --adopt-machine <kind> <png>` (MYLINUX_SUPPORT_DIR a scratch folder): a machine of that kind that an
+        // earlier launcher started and left running: wait for "started by an earlier launcher", photograph the
+        // launcher's window, open the terminal as the Terminal button does, then shut it down from here
+        if let i = args.firstIndex(of: "--adopt-machine"), i + 2 < args.count, let kind = Profile.Kind(rawValue: args[i + 1]),
+           ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil, let p = ProfileStore.shared.profiles.first(where: { $0.kind == kind }) {
+            let runner = RunManager.shared.runner(for: p.id)
+            RunManager.shared.startWatching(ProfileStore.shared)
+            let t0 = Date()
+            func say(_ m: String) { print(String(format: "%6.1fs ", Date().timeIntervalSince(t0)) + m); fflush(stdout) }
+            var phase = 0
+            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+                switch phase {
+                case 0 where runner.state == .inUseElsewhere:
+                    phase = 1; say("state: running outside this launcher")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        if let main = NSApp.windows.first(where: { !($0.windowController is RemoteWindowController) && $0.isVisible && $0.title != "" }) {
+                            let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(main.windowNumber), args[i + 2]]
+                            try? cap.run(); cap.waitUntilExit(); say("photographed the launcher window")
+                        }
+                        say("Terminal pressed"); runner.openTerminal(p); phase = 2
+                    }
+                case 2 where RemoteWindowController.open.contains(where: { $0.profile.id == p.id }):
+                    phase = 3; say("terminal window opened (ssh ready: \(runner.sshReady))")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { say("Shut Down pressed"); runner.stop(); phase = 4 }
+                case 4 where runner.state == .stopped:
+                    timer.invalidate(); say("stopped"); exit(0)
+                default:
+                    if Date().timeIntervalSince(t0) > 120 { say("gave up in phase \(phase), state \(runner.state)"); exit(2) }
+                }
+            }
+            return
+        }
         // `myLinux --start-machine <kind> <png>` (MYLINUX_SUPPORT_DIR must name a scratch folder): the product path end to
         // end: add a machine of that kind as the + menu does (MYLINUX_TEST_PORT overrides a server's SSH port), start it as
         // the Start button does, log each state and when its terminal window opens, and photograph that window 15 s later

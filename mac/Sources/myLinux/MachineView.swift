@@ -121,6 +121,17 @@ struct MachineView: View {
                     ProgressView().controlSize(.small)
                     Text("Shutting down…").foregroundStyle(.secondary)
                     Button("Force Quit", role: .destructive) { runner.forceQuit() }
+                case .inUseElsewhere where isServer:
+                    // started by an earlier launcher (updated or restarted since): still reachable over SSH and QMP
+                    Text("Started by an earlier launcher").foregroundStyle(.secondary)
+                    if runner.waitingForSSH {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
+                    Button("Force Quit", role: .destructive) { runner.forceQuit() }
                 case .inUseElsewhere:
                     Text(runner.consoleConnected ? "Started outside this launcher" : "Running outside the app").foregroundStyle(.secondary)
                     if runner.consoleConnected {
