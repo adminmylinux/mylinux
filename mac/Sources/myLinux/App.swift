@@ -113,6 +113,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 8.6) { print("install script sheet after shift-cmd-p:", c.testSheetOpen) }
                 wait = 9.5
             }
+            // MYLINUX_TEST_KEYS=reconnect: the browser, a reconnect (as after a restart), then ⇧⌘↩ again
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "reconnect" {
+                func press(_ chars: String, _ code: UInt16, _ mods: NSEvent.ModifierFlags) {
+                    guard let w = c.window, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: w.windowNumber,
+                                                                       context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) else { return }
+                    NSApp.postEvent(e, atStart: false)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { press("\r", 36, [.command, .shift]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { print("browser before the reconnect:", c.testBrowserVisible); c.testReconnect() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { print("browser after the reconnect (it comes back):", c.testBrowserVisible); press("w", 13, [.command]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { c.testFocusBrowser() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.2) { press("w", 13, [.command]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { print("browser after cmd-w:", c.testBrowserVisible); press("\r", 36, [.command, .shift]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 7.5) { print("browser after shift-cmd-return:", c.testBrowserVisible) }
+                wait = 8.5
+            }
             // MYLINUX_TEST_SCENE="first command|second command": a product shot: the first command in the terminal, a
             // split with the second, the browser on MYLINUX_TEST_URL
             if let scene = ProcessInfo.processInfo.environment["MYLINUX_TEST_SCENE"]?.split(separator: "|").map(String.init), wait > 5 {

@@ -112,6 +112,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func connect() {
         guard let root = window?.contentView else { return }
+        // a reconnect (after a restart, or a click on "Disconnected"): the old browser pane goes with the old panes, and
+        // its tunnel with it; left remembered, ⇧⌘↩ would think it open. It comes back once the terminal is up.
+        let hadBrowser = browser != nil
+        if hadBrowser { tunnel?.stop(); tunnel = nil; stopForwards(); browser = nil }
         vncView?.removeFromSuperview(); outer?.removeFromSuperview(); terminals.removeAll(); outer = nil; terminalArea = nil
         if profile.kind == .vnc {
             let c = VncConnection(profile: profile)
@@ -137,6 +141,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             let t = makeTerminal()
             area.addArrangedSubview(t)
             window?.makeFirstResponder(t)
+            if hadBrowser { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in if self?.browser == nil { self?.toggleBrowser() } } }
             status.stringValue = "ssh \(profile.username.isEmpty ? "" : profile.username + "@")\(profile.host):\(profile.port)" + (profile.tmux.isEmpty ? "" : "  tmux \(profile.tmux)")
             // a launcher machine: how long it took from Start to this terminal
             if profile.launcherMachine, let t = RunManager.shared.runner(for: profile.machineID ?? profile.id).readyIn {
@@ -464,6 +469,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     var testHasBrowser: Bool { browser != nil }
+    /// The pane is on screen, not only remembered.
+    var testBrowserVisible: Bool { browser?.window != nil }
+    func testReconnect() { connect() }
     func testFocusBrowser() { browser?.focusAddress() }
     var testSheetOpen: Bool { sheetWindow != nil }
     func testType(_ text: String) { ssh?.type(text + "\n") }
