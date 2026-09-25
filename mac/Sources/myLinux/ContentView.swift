@@ -75,6 +75,8 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
+        // the version under the window's title, so it is plain which launcher is running
+        .navigationSubtitle(AppInfo.versionText)
         .sheet(isPresented: $showWelcome) {
             WelcomeSheet(images: images, omarchy: .shared, debian: .shared, runtime: runtime, done: { kinds in
                 showWelcome = false
@@ -248,5 +250,15 @@ struct Banner: View {
             .font(.caption)
             .foregroundStyle(kind == .error ? Color.red : kind == .warning ? Color.orange : Color.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// What the app bundle says about itself.
+enum AppInfo {
+    /// "Version 0.3.2" from Info.plist (mac/build-app.sh takes it from the v* tag); a development build shows the
+    /// commit too, "Version 0.3.2-4-gabc1234".
+    static var versionText: String {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        return v.isEmpty ? "Development build" : "Version \(v)"
     }
 }
