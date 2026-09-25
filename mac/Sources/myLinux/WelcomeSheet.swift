@@ -15,6 +15,10 @@ struct WelcomeSheet: View {
     let done: ([Profile.Kind]) -> Void
     @State private var chosen: Set<Profile.Kind> = [.mylinux]
     @State private var started = false
+    @State private var startedAt: Date? = WelcomeSheet.renderStartedAt
+    /// For --render-welcome: a sheet that started downloading this long ago.
+    static var renderStartedAt: Date?
+    @State private var finishedAt: Date?
 
     struct Offer {
         let kind: Profile.Kind
@@ -56,6 +60,26 @@ struct WelcomeSheet: View {
             }
         }
         .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 20)
+        .overlay(alignment: .topTrailing) { clock.padding(.top, 14).padding(.trailing, 18) }
+        .onChange(of: anyBusy) { _, busy in if started && !busy && finishedAt == nil { finishedAt = Date() } }
+    }
+
+    /// The download time, top right: elapsed and an estimate of what is left while it runs, the total when done.
+    @ViewBuilder private var clock: some View {
+        if let startedAt {
+            TimelineView(.periodic(from: startedAt, by: 1)) { ctx in
+                let end = finishedAt ?? ctx.date
+                let elapsed = end.timeIntervalSince(startedAt)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Label(finishedAt == nil ? WelcomeSheet.clockText(elapsed) : "Took \(WelcomeSheet.clockText(elapsed))", systemImage: "clock")
+                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    if finishedAt == nil, let left = WelcomeSheet.remaining(elapsed: elapsed, fraction: fraction) {
+                        Text(left).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
     }
 
     private func row(_ o: Offer) -> some View {
@@ -169,7 +193,7 @@ struct WelcomeSheet: View {
     }
 
     private func start() {
-        started = true
+        started = true; startedAt = Date(); finishedAt = nil
         for kind in pending {
             switch kind {
             case .mylinux: images.download(settings)
@@ -180,6 +204,37 @@ struct WelcomeSheet: View {
             case .debian: debian.download(settings)
             }
         }
+    }
+
+    /// How far the started downloads are, weighted by size: a finished one counts in full, a running one by the
+    /// percentage its download prints, a failed one not at all.
+    private var fraction: Double {
+        var total = 0.0, got = 0.0
+        for o in Self.offers where chosen.contains(o.kind) {
+            let m = manager(o.kind)
+            if present(o.kind) { total += o.bytes; got += o.bytes }
+            else if m.busy { total += o.bytes; got += o.bytes * WelcomeSheet.percent(in: m.progress) }
+        }
+        return total > 0 ? got / total : 0
+    }
+    /// The last "65.7%" in a line of curl's progress output, as 0...1.
+    static func percent(in line: String) -> Double {
+        guard let re = try? NSRegularExpression(pattern: "([0-9]+(?:\\.[0-9]+)?)%") else { return 0 }
+        let ms = re.matches(in: line, range: NSRange(line.startIndex..., in: line))
+        guard let m = ms.last, let r = Range(m.range(at: 1), in: line), let v = Double(line[r]) else { return 0 }
+        return min(max(v / 100, 0), 1)
+    }
+    /// "4:05", or "1:02:03" past an hour.
+    static func clockText(_ t: TimeInterval) -> String {
+        let s = Int(t.rounded()); let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+    /// "about 3 min left", once there is enough progress to judge (3 % and 5 s).
+    static func remaining(elapsed: TimeInterval, fraction f: Double) -> String? {
+        guard f >= 0.03, f < 1, elapsed >= 5 else { return nil }
+        let left = elapsed * (1 - f) / f
+        if left < 60 { return "under a minute left" }
+        return "about \(Int((left / 60).rounded())) min left"
     }
 
     /// An icon from the app bundle (Contents/Resources/icons), or from the developer checkout's tools/icons.

@@ -28,7 +28,7 @@ else
   BASE="https://github.com/$REPO/releases/download/$TAG"
   for f in "$NAME.sha256" "$NAME"; do
     echo "downloading $f ($TAG) ..."
-    curl -fL --progress-bar -o "$STAGE/$f" "$BASE/$f"
+    curl -fL --retry 3 --retry-delay 2 --progress-bar -o "$STAGE/$f" "$BASE/$f"
   done
 fi
 (cd "$STAGE" && shasum -a 256 -c "$NAME.sha256") || { echo "checksum mismatch: nothing replaced" >&2; exit 1; }

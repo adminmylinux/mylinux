@@ -20,6 +20,14 @@ CALLER="$PWD"
 cd "$REPO"
 abs() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$CALLER" "$1" ;; esac; }
 die() { echo "run-omarchy.sh: $*" >&2; exit 1; }
+# python3 is optional on a Mac: without Xcode's command line tools /usr/bin/python3 is a stub that fails and asks
+# to install them, so it is only called when a real one is there
+have_python() { [ -x /opt/homebrew/bin/python3 ] || [ -x /usr/local/bin/python3 ] || xcode-select -p >/dev/null 2>&1; }
+# grow_file <path> <GB>: create the file or grow it to that size, sparse; never shrinks, keeps what is in it
+grow_file() {
+  want=$(( $2 * 1024 * 1024 * 1024 )); have=$(stat -f %z "$1" 2>/dev/null || echo 0)
+  [ "$have" -ge "$want" ] || dd if=/dev/zero of="$1" bs=1 count=0 seek="$want" 2>/dev/null
+}
 OUT="${MYLINUX_OUT:+$(abs "$MYLINUX_OUT")}"; OUT="${OUT:-$REPO/out}"
 export MYLINUX_OUT="$OUT"
 G="$OUT/omarchy"
@@ -129,7 +137,7 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinu
   mkdir -p "$MACHINE/boot"
   echo "creating $DISK ($DISK_SIZE_GB GB, sparse) from Omarchy $(cat "$G/OMARCHY-REVISION" 2>/dev/null) ..."
   "$OUT/qemu-runtime/bin/zstd" -d -q -f --sparse -o "$DISK.new" "$G/rootfs.ext4.zst" || { rm -f "$DISK.new"; die "could not unpack the root disk"; }
-  python3 -c 'import sys,os; s=int(sys.argv[2])*2**30; f=open(sys.argv[1],"r+b"); s>os.path.getsize(sys.argv[1]) and f.truncate(s)' "$DISK.new" "$DISK_SIZE_GB"
+  grow_file "$DISK.new" "$DISK_SIZE_GB" || { rm -f "$DISK.new"; die "could not grow the root disk"; }
   # the session tool goes into the disk now (system-wide, enabled), so the Session menu works from the first login
   tools/omarchy-bake-session.sh "$DISK.new" omarchy/session || echo "run-omarchy.sh: the session tool is not in the disk; inside Omarchy, sh ~/<share>/mylinux-tools/install-session.sh installs it" >&2
   cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/OMARCHY-REVISION" "$MACHINE/boot/OMARCHY-REVISION" 2>/dev/null || true
@@ -177,5 +185,8 @@ fi
 MYLINUX_BUNDLE=omarchy tools/make-app-bundle.sh >/dev/null || die "could not prepare $OUT/myLinux-omarchy.app"
 [ -x "$QEMU" ] || die "$QEMU is missing"
 # the clipboard bridge connects once QEMU has made the socket and leaves when QEMU (its parent after the exec) is gone
-if [ "${CLIPBOARD:-1}" = 1 ]; then rm -f "$CLIPSOCK"; python3 tools/omarchy-clipboard.py "$CLIPSOCK" 2>>"${MACHINE}/clipboard.log" & fi
+if [ "${CLIPBOARD:-1}" = 1 ]; then
+  if have_python; then rm -f "$CLIPSOCK"; python3 tools/omarchy-clipboard.py "$CLIPSOCK" 2>>"${MACHINE}/clipboard.log" &
+  else echo "run-omarchy.sh: clipboard sharing needs python3 (Xcode's command line tools: xcode-select --install); the machine starts without it" | tee -a "${MACHINE}/clipboard.log" >&2; fi
+fi
 exec "$QEMU" "$@"

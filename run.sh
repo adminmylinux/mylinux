@@ -57,8 +57,10 @@ APPS_SIZE_GB="${APPS_SIZE_GB:-16}"
 case "$APPS_SIZE_GB" in ''|*[!0-9]*) die "APPS_SIZE_GB must be a whole number of GB" ;; esac
 [ "$APPS_SIZE_GB" -ge 4 ] && [ "$APPS_SIZE_GB" -le 2000 ] || die "APPS_SIZE_GB out of range: $APPS_SIZE_GB"
 if [ ! -f "$APPS_IMG" ]; then   # blank sparse disk; the VM formats and populates it on first boot (apps-setup)
-  python3 -c 'import sys; open(sys.argv[1], "wb").truncate(int(sys.argv[2]) * 2**30)' "$APPS_IMG" "$APPS_SIZE_GB" \
-    && echo "created blank apps disk $APPS_IMG ($APPS_SIZE_GB GB, sparse)"
+  mkdir -p "$(dirname "$APPS_IMG")"
+  dd if=/dev/zero of="$APPS_IMG" bs=1 count=0 seek=$(( APPS_SIZE_GB * 1024 * 1024 * 1024 )) 2>/dev/null \
+    || die "could not create the apps disk $APPS_IMG"
+  echo "created blank apps disk $APPS_IMG ($APPS_SIZE_GB GB, sparse)"
 fi
 SHARE_DIR=$(abs "${SHARE_DIR:-share}"); mkdir -p "$SHARE_DIR"
 NAME="${NAME:-myLinux}"

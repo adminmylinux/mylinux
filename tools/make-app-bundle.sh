@@ -6,6 +6,8 @@
 # machine to run, so it asks myLinux Launcher to start the last-used machine (or bring a running one forward).
 set -eu
 cd "$(dirname "$0")/.."
+# python3 is optional: without Xcode's command line tools the stub fails and asks to install them
+have_python() { [ -x /opt/homebrew/bin/python3 ] || [ -x /usr/local/bin/python3 ] || xcode-select -p >/dev/null 2>&1; }
 OUT="${MYLINUX_OUT:-out}"
 # Two bundles from the same recipe. myLinux.app is 1x on purpose (see NSHighResolutionCapable below). run-omarchy.sh
 # asks for the other one (MYLINUX_BUNDLE=omarchy): the runtime's Cocoa display tells that guest the window's size in
@@ -33,10 +35,10 @@ BIN="$APP/Contents/MacOS/qemu-myLinux"
 # layout), an unbranded copy is used with a warning instead of no app at all.
 # ($BIN.source names the binary the copy was made from, so switching between the runtime and Homebrew refreshes it.)
 if [ -L "$BIN" ] || [ ! -f "$BIN" ] || [ "$QEMU" -nt "$BIN" ] || [ "$(cat "$BIN.source" 2>/dev/null)" != "$QEMU" ]; then
-  if python3 tools/brand-qemu.py "$QEMU" "$BIN.new"; then
+  if have_python && python3 tools/brand-qemu.py "$QEMU" "$BIN.new"; then
     mv -f "$BIN.new" "$BIN"
   else
-    echo "warning: could not brand QEMU (tools/brand-qemu.py failed); using an unbranded copy" >&2
+    have_python && echo "warning: could not brand QEMU (tools/brand-qemu.py failed); using an unbranded copy" >&2
     rm -f "$BIN.new"
     cp -f "$QEMU" "$BIN.new" && codesign --force --sign - --entitlements /dev/stdin "$BIN.new" <<'ENT' && mv -f "$BIN.new" "$BIN"
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -85,7 +87,7 @@ ICNS="$APP/Contents/Resources/myLinux.icns"
 if [ -f tools/icons/myLinux.icns ]; then
   if ! cmp -s tools/icons/myLinux.icns "$ICNS"; then cp -f tools/icons/myLinux.icns "$ICNS" && touch "$APP"; fi
 elif [ ! -f "$ICNS" ]; then
-  if python3 tools/gen-icon.py "$APP/Contents/Resources/myLinux.png" 2>/dev/null; then
+  if have_python && python3 tools/gen-icon.py "$APP/Contents/Resources/myLinux.png" 2>/dev/null; then
     sips -s format icns "$APP/Contents/Resources/myLinux.png" --out "$ICNS" >/dev/null || true
   else echo "warning: no icon (python3 unavailable)" >&2; fi
 fi

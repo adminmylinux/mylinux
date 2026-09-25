@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/sparse-copy.py" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-debian.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-debian.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -219,13 +219,18 @@ out=$(cd "$W" && DRYRUN=1 SHARE_DIR="$HOME" sh run-debian.sh 2>&1); rc=$?
 not_rc0 "the whole home folder is refused as a share" $rc
 out=$(cd "$W" && DRYRUN=1 DISK_SIZE_GB=4 sh run-debian.sh 2>&1); rc=$?
 not_rc0 "a disk under 8 GB is refused" $rc
-echo "tools/sparse-copy.py"
-python3 -c 'f=open("'"$T"'/z.img","wb"); f.write(b"A"*4096); f.write(bytes(3*1024*1024)); f.write(b"B"*10); f.close()'
-python3 "$REPO/tools/sparse-copy.py" "$T/z.img" "$T/z2.img" 1 >/dev/null 2>&1; rc=$?
-is_rc "copies a disk image" $rc 0
-[ "$(stat -f %z "$T/z2.img")" = 1073741824 ] && rc=0 || rc=1; is_rc "grows it to the asked size" $rc 0
-[ "$(du -k "$T/z2.img" | cut -f1)" -lt 8192 ] && rc=0 || rc=1; is_rc "zeros became holes" $rc 0
-head -c "$(stat -f %z "$T/z.img")" "$T/z2.img" > "$T/z2.head"; cmp -s "$T/z.img" "$T/z2.head" && rc=0 || rc=1; is_rc "the data is the same" $rc 0
+echo "no python3 on the start and download paths"
+# a Mac without Xcode's command line tools has only a python3 stub, which fails and pops an install dialog
+for f in run.sh run-debian.sh tools/get-debian.sh tools/get-omarchy.sh tools/get-image.sh tools/get-qemu-runtime.sh; do
+  grep -n 'python3' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -q . && ko "$f calls python3" || ok "$f does not call python3"
+done
+for f in run-omarchy.sh tools/make-app-bundle.sh; do
+  bad=$(grep -n 'python3 ' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -v 'have_python' | grep -v 'echo ' || true)
+  [ -z "$bad" ] && ok "$f calls python3 only behind have_python" || ko "$f calls python3 unguarded: $bad"
+done
+printf '{"items":[{"data":{"info":{"arch":"arm64","version":"20260914-2601"},"packages":[{"name":"x","version":"9"}]}}]}' > "$T/image.json"
+v=$(plutil -extract items.0.data.info.version raw -o - "$T/image.json" 2>/dev/null)
+[ "$v" = "20260914-2601" ] && ok "get-debian.sh's plutil read finds the image version" || ko "plutil read gave '$v'"
 
 echo "mac/package-dmg.sh"
 FAKE="$T/Fake App.app"; mkdir -p "$FAKE/Contents/MacOS"; printf '#!/bin/sh\necho hi\n' > "$FAKE/Contents/MacOS/Fake App"; chmod +x "$FAKE/Contents/MacOS/Fake App"

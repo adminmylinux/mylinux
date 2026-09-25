@@ -31,7 +31,7 @@ if [ -n "${MYLINUX_OMARCHY_DMG:-}" ]; then
 else
   DMG="$STAGE/TryOmarchy.dmg"
   echo "downloading Try Omarchy $TAG (1.4 GB) ..."
-  curl -fL --progress-bar -o "$DMG" "$URL"
+  curl -fL --retry 3 --retry-delay 2 --progress-bar -o "$DMG" "$URL"
 fi
 echo "checking the download ..."
 [ "$(shasum -a 256 "$DMG" | cut -d' ' -f1)" = "$DMG_SHA256" ] || { echo "the disk image is not Try Omarchy $TAG (checksum mismatch): nothing installed" >&2; exit 1; }

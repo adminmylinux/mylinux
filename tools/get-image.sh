@@ -12,7 +12,7 @@ REPO=adminmylinux/mylinux-releases      # release assets only; the source reposi
 TAG="${1:-latest}"
 if [ "$TAG" = latest ]; then
   # the redirect target of /releases/latest names the tag; no API token needed
-  TAG=$(curl -fsSIL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" | sed 's#.*/tag/##')
+  TAG=$(curl -fsSIL --retry 3 --retry-delay 2 -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" | sed 's#.*/tag/##')
   [ -n "$TAG" ] || { echo "could not resolve the latest release" >&2; exit 1; }
 fi
 BASE="https://github.com/$REPO/releases/download/$TAG"
@@ -22,7 +22,7 @@ mkdir -p "$OUT" "$STAGE"
 trap 'rm -rf "$STAGE"' EXIT
 for f in SHA256SUMS Image rootfs.cpio.gz; do
   echo "downloading $f ($TAG) ..."
-  curl -fL --progress-bar -o "$STAGE/$f" "$BASE/$f"
+  curl -fL --retry 3 --retry-delay 2 --progress-bar -o "$STAGE/$f" "$BASE/$f"
 done
 (cd "$STAGE" && shasum -a 256 -c SHA256SUMS) || { echo "checksum mismatch: nothing replaced" >&2; exit 1; }
 for f in Image rootfs.cpio.gz; do [ -f "$OUT/$f" ] && mv -f "$OUT/$f" "$OUT/$f.prev"; done

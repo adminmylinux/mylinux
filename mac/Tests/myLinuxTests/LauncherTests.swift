@@ -52,6 +52,21 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class WelcomeClockTests: XCTestCase {
+    func testPercentComesFromCurlsProgressLine() {
+        XCTAssertEqual(WelcomeSheet.percent(in: "######### 65.7%"), 0.657, accuracy: 0.0001)
+        XCTAssertEqual(WelcomeSheet.percent(in: "#### 12.0%#### 13.5%"), 0.135, accuracy: 0.0001, "the last value wins")
+        XCTAssertEqual(WelcomeSheet.percent(in: "checking the download ..."), 0)
+    }
+    func testClockAndEstimate() {
+        XCTAssertEqual(WelcomeSheet.clockText(245), "4:05")
+        XCTAssertEqual(WelcomeSheet.clockText(3723), "1:02:03")
+        XCTAssertNil(WelcomeSheet.remaining(elapsed: 30, fraction: 0.01), "too early to judge")
+        XCTAssertEqual(WelcomeSheet.remaining(elapsed: 60, fraction: 0.25), "about 3 min left")
+        XCTAssertEqual(WelcomeSheet.remaining(elapsed: 50, fraction: 0.9), "under a minute left")
+    }
+}
+
 final class TerminalURLTests: XCTestCase {
     func testLastURLWinsAndTrailingPunctuationGoes() {
         let text = "see https://a.example/one and then (https://b.example/two)."

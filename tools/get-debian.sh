@@ -28,28 +28,29 @@ mkdir -p "$OUT"
 STAGE="$OUT/.staging-debian"
 rm -rf "$STAGE"; mkdir -p "$STAGE/new"; trap 'rm -rf "$STAGE"' EXIT
 echo "looking up the latest $RELEASE image ..."
-curl -fsSL -o "$STAGE/SHA512SUMS" "$BASE/SHA512SUMS"
-curl -fsSL -o "$STAGE/$IMAGE.json" "$BASE/$IMAGE.json"
-VERSION=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["items"][0]["data"]["info"]["version"])' "$STAGE/$IMAGE.json" 2>/dev/null || true)
+curl -fsSL --retry 3 --retry-delay 2 -o "$STAGE/SHA512SUMS" "$BASE/SHA512SUMS"
+curl -fsSL --retry 3 --retry-delay 2 -o "$STAGE/$IMAGE.json" "$BASE/$IMAGE.json"
+VERSION=$(plutil -extract items.0.data.info.version raw -o - "$STAGE/$IMAGE.json" 2>/dev/null || true)
 [ -n "$VERSION" ] || { echo "could not read the image version from $IMAGE.json" >&2; exit 1; }
 REVISION="$RELEASE $VERSION"
 if [ "$(cat "$DEST/DEBIAN-REVISION" 2>/dev/null)" = "$REVISION" ] && [ -s "$DEST/debian.raw" ] && [ -s "$DEST/edk2-aarch64-code.fd" ]; then
   echo "ok: $DEST already is Debian $REVISION"; exit 0
 fi
 echo "downloading Debian $REVISION ($IMAGE.tar.xz, about 300 MB) ..."
-curl -fL --progress-bar -o "$STAGE/$IMAGE.tar.xz" "$BASE/$IMAGE.tar.xz"
+curl -fL --retry 3 --retry-delay 2 --progress-bar -o "$STAGE/$IMAGE.tar.xz" "$BASE/$IMAGE.tar.xz"
 (cd "$STAGE" && grep -E "  $IMAGE\.(tar\.xz|json)\$" SHA512SUMS | shasum -a 512 -c - >/dev/null) || { echo "the download does not match SHA512SUMS: nothing installed" >&2; exit 1; }
 [ "$(grep -c -E "  $IMAGE\.tar\.xz\$" "$STAGE/SHA512SUMS")" = 1 ] || { echo "SHA512SUMS does not list $IMAGE.tar.xz: nothing installed" >&2; exit 1; }
 echo "downloading the UEFI firmware (QEMU's edk2 build) ..."
-curl -fL --progress-bar -o "$STAGE/edk2.fd.bz2" "$EFI_URL"
-curl -fsSL -o "$STAGE/edk2-licenses.txt" "$EFI_LICENSE_URL"
+curl -fL --retry 3 --retry-delay 2 --progress-bar -o "$STAGE/edk2.fd.bz2" "$EFI_URL"
+curl -fsSL --retry 3 --retry-delay 2 -o "$STAGE/edk2-licenses.txt" "$EFI_LICENSE_URL"
 [ "$(shasum -a 256 "$STAGE/edk2.fd.bz2" | cut -d' ' -f1)" = "$EFI_SHA256" ] || { echo "the firmware does not match its pinned checksum: nothing installed" >&2; exit 1; }
 [ "$(shasum -a 256 "$STAGE/edk2-licenses.txt" | cut -d' ' -f1)" = "$EFI_LICENSE_SHA256" ] || { echo "the firmware licence file does not match its pinned checksum: nothing installed" >&2; exit 1; }
 echo "unpacking ..."
 # only the one disk file is expected in the archive
 [ "$(tar -tJf "$STAGE/$IMAGE.tar.xz" | tr -d '\n')" = "disk.raw" ] || { echo "unexpected contents in $IMAGE.tar.xz: nothing installed" >&2; tar -tJf "$STAGE/$IMAGE.tar.xz" >&2; exit 1; }
 mkdir -p "$STAGE/raw" && tar -xJf "$STAGE/$IMAGE.tar.xz" -C "$STAGE/raw"
-python3 tools/sparse-copy.py "$STAGE/raw/disk.raw" "$STAGE/new/debian.raw" && rm -f "$STAGE/raw/disk.raw"
+# bsdtar writes the zero runs as holes already: the 3 GB disk takes about 1.3 GB
+mv "$STAGE/raw/disk.raw" "$STAGE/new/debian.raw"
 bunzip2 -c "$STAGE/edk2.fd.bz2" > "$STAGE/new/edk2-aarch64-code.fd"
 cp "$STAGE/edk2-licenses.txt" "$STAGE/new/edk2-licenses.txt"
 cp "$STAGE/$IMAGE.json" "$STAGE/new/image.json"

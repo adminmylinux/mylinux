@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
+            if let ago = ProcessInfo.processInfo.environment["MYLINUX_RENDER_STARTED_AGO"].flatMap(Double.init) { WelcomeSheet.renderStartedAt = Date().addingTimeInterval(-ago) }
             let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), omarchy: OmarchyManager(), debian: DebianManager(), runtime: RuntimeManager(), done: { _ in })
                 .environmentObject(AppSettings.shared))
             view.frame = NSRect(origin: .zero, size: view.fittingSize); view.appearance = NSAppearance(named: .darkAqua)

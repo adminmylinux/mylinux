@@ -16,6 +16,11 @@ set -eu
 cd "$(dirname "$0")"
 REPO=$(pwd)
 die() { echo "run-debian.sh: $*" >&2; exit 1; }
+# grow_file <path> <GB>: create the file or grow it to that size, sparse; never shrinks, keeps what is in it
+grow_file() {
+  want=$(( $2 * 1024 * 1024 * 1024 )); have=$(stat -f %z "$1" 2>/dev/null || echo 0)
+  [ "$have" -ge "$want" ] || dd if=/dev/zero of="$1" bs=1 count=0 seek="$want" 2>/dev/null
+}
 abs() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$PWD" "$1" ;; esac; }
 OUT=$(abs "${MYLINUX_OUT:-out}")
 G="$OUT/debian"
@@ -67,7 +72,9 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$SEED" ]; }; then
   mkdir -p "$MACHINE"
   if [ ! -f "$DISK" ]; then
     echo "creating $DISK ($DISK_SIZE_GB GB, sparse) from Debian $(cat "$G/DEBIAN-REVISION" 2>/dev/null) ..."
-    python3 tools/sparse-copy.py "$G/debian.raw" "$DISK" "$DISK_SIZE_GB" || { rm -f "$DISK" "$DISK.new"; die "could not create the disk"; }
+    # a clone on APFS (instant, shares the blocks until either side changes), a sparse copy elsewhere
+    { cp -c "$G/debian.raw" "$DISK.new" 2>/dev/null || dd if="$G/debian.raw" of="$DISK.new" bs=1m conv=sparse 2>/dev/null; } \
+      && grow_file "$DISK.new" "$DISK_SIZE_GB" && mv "$DISK.new" "$DISK" || { rm -f "$DISK.new"; die "could not create the disk"; }
     cp "$G/DEBIAN-REVISION" "$MACHINE/DEBIAN-REVISION" 2>/dev/null || true
   fi
   [ -s "$MACHINE/ssh_key" ] || ssh-keygen -q -t ed25519 -N '' -C "myLinux $HOSTNAME" -f "$MACHINE/ssh_key" || die "could not make the SSH key (ssh-keygen)"
