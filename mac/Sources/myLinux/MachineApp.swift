@@ -80,6 +80,8 @@ enum MachineApp {
                   Runner.run("/usr/bin/codesign", ["--force", "--sign", "-", tmp.path]) == 0 else {
                 NSLog("machine app: could not copy or sign the launcher binary"); try? fm.removeItem(at: tmp); return nil
             }
+            // a clone keeps the quarantine flag of a downloaded launcher even with -X
+            removexattr(tmp.path, "com.apple.quarantine", XATTR_NOFOLLOW)
             try fm.moveItem(at: tmp, to: macos.appendingPathComponent("myLinux Machine"))
             let frameworks = launcher.appendingPathComponent("Contents/Frameworks")
             if fm.fileExists(atPath: frameworks.path) {
@@ -104,6 +106,7 @@ enum MachineApp {
             for old in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where old.pathExtension == "app" && old.lastPathComponent != ".new.app" {
                 try? fm.removeItem(at: old)
             }
+            _ = Runner.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", new.path])
             try fm.moveItem(at: new, to: url)
             LSRegisterURL(url as CFURL, true)
             return url
