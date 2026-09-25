@@ -41,6 +41,13 @@ final class Runner: ObservableObject {
     func start(_ p: Profile, settings: AppSettings = .shared) {
         guard !isActive else { return }
         if let problem = p.problems.first { state = .failed(problem); return }
+        // "every key to the machine": QEMU's event tap needs Accessibility, which macOS credits to this app and
+        // checks once, when the machine starts. Ask first, and start after it is granted.
+        if p.kind != .debian, p.grab == "full", !KeyboardGrab.permitted {
+            KeyboardGrab.askPermission()
+            state = .failed("Sending every key to the machine needs Accessibility permission for myLinux Launcher. Turn it on in System Settings › Privacy & Security › Accessibility, then press Start again.")
+            return
+        }
         guard settings.qemuAvailable else { state = .failed(AppSettings.qemuMissingText); return }
         guard let scripts = settings.scriptsDir, FileManager.default.isReadableFile(atPath: scripts.appendingPathComponent(p.script).path) else {
             state = .failed("\(p.script) was not found (developer checkout moved, or the app bundle is incomplete)."); return

@@ -14,7 +14,10 @@ set -eu
 cd "$(dirname "$0")/.."
 RELEASE=trixie; RELEASE_ID=13
 IMAGE="debian-$RELEASE_ID-generic-arm64"
-BASE="https://cloud.debian.org/images/cloud/$RELEASE/latest"
+# Debian publishes the cloud images from two hosts; cdimage sends the big file on to its mirror network. The first
+# that answers both small files is used for everything (a timeout or an error 500 moves on to the next).
+SOURCES="https://cdimage.debian.org/images/cloud/$RELEASE/latest https://cloud.debian.org/images/cloud/$RELEASE/latest"
+FETCH="--retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 20"
 QEMU_COMMIT=c3d48b7d1e89604920e5b81b91140c2ad39a1943      # the runtime's QEMU (tools/build-qemu-runtime.sh)
 EFI_URL="https://gitlab.com/qemu-project/qemu/-/raw/$QEMU_COMMIT/pc-bios/edk2-aarch64-code.fd.bz2"
 EFI_SHA256=c023444108b7a132fdebf70c4765cd2dd9af2a9ff7d001a743aaabe87c20a458
@@ -28,8 +31,15 @@ mkdir -p "$OUT"
 STAGE="$OUT/.staging-debian"
 rm -rf "$STAGE"; mkdir -p "$STAGE/new"; trap 'rm -rf "$STAGE"' EXIT
 echo "looking up the latest $RELEASE image ..."
-curl -fsSL --retry 3 --retry-delay 2 -o "$STAGE/SHA512SUMS" "$BASE/SHA512SUMS"
-curl -fsSL --retry 3 --retry-delay 2 -o "$STAGE/$IMAGE.json" "$BASE/$IMAGE.json"
+BASE=""
+for s in $SOURCES; do
+  # shellcheck disable=SC2086
+  if curl -fsSL $FETCH --max-time 60 -o "$STAGE/SHA512SUMS" "$s/SHA512SUMS" && curl -fsSL $FETCH --max-time 60 -o "$STAGE/$IMAGE.json" "$s/$IMAGE.json"; then
+    BASE=$s; break
+  fi
+  echo "no answer from ${s%%/images*}; trying the next source ..."
+done
+[ -n "$BASE" ] || { echo "Debian's image servers are not answering right now (cdimage.debian.org, cloud.debian.org); try again in a few minutes" >&2; exit 1; }
 VERSION=$(plutil -extract items.0.data.info.version raw -o - "$STAGE/$IMAGE.json" 2>/dev/null || true)
 [ -n "$VERSION" ] || { echo "could not read the image version from $IMAGE.json" >&2; exit 1; }
 REVISION="$RELEASE $VERSION"
@@ -37,7 +47,8 @@ if [ "$(cat "$DEST/DEBIAN-REVISION" 2>/dev/null)" = "$REVISION" ] && [ -s "$DEST
   echo "ok: $DEST already is Debian $REVISION"; exit 0
 fi
 echo "downloading Debian $REVISION ($IMAGE.tar.xz, about 300 MB) ..."
-curl -fL --retry 3 --retry-delay 2 --progress-bar -o "$STAGE/$IMAGE.tar.xz" "$BASE/$IMAGE.tar.xz"
+# shellcheck disable=SC2086
+curl -fL $FETCH -C - --progress-bar -o "$STAGE/$IMAGE.tar.xz" "$BASE/$IMAGE.tar.xz"
 (cd "$STAGE" && grep -E "  $IMAGE\.(tar\.xz|json)\$" SHA512SUMS | shasum -a 512 -c - >/dev/null) || { echo "the download does not match SHA512SUMS: nothing installed" >&2; exit 1; }
 [ "$(grep -c -E "  $IMAGE\.tar\.xz\$" "$STAGE/SHA512SUMS")" = 1 ] || { echo "SHA512SUMS does not list $IMAGE.tar.xz: nothing installed" >&2; exit 1; }
 echo "downloading the UEFI firmware (QEMU's edk2 build) ..."

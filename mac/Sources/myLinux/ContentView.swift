@@ -257,6 +257,7 @@ struct Banner: View {
 struct VersionAndSettings: View {
     var body: some View {
         Text(AppInfo.shortVersion).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+            .padding(.leading, 8)
             .help(AppInfo.versionText).accessibilityLabel(AppInfo.versionText)
         SettingsLink { Image(systemName: "gearshape") }.help("Settings")
     }
