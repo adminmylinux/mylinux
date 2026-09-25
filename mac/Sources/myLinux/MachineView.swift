@@ -134,9 +134,7 @@ struct MachineView: View {
         Form {
             debianDownloads
             Section("Machine") {
-                Picker("Memory", selection: $draft.memoryGB) {
-                    ForEach(memoryChoices, id: \.self) { Text("\($0) GB").tag($0) }
-                }
+                memoryPicker
                 Picker("Processor cores", selection: $draft.cpus) {
                     Text("Automatic").tag(0)
                     ForEach(coreChoices, id: \.self) { Text("\($0)").tag($0) }
@@ -237,9 +235,7 @@ struct MachineView: View {
                 }
             }
             Section("Machine") {
-                Picker("Memory", selection: $draft.memoryGB) {
-                    ForEach(memoryChoices, id: \.self) { Text("\($0) GB").tag($0) }
-                }
+                memoryPicker
                 if isOmarchy {
                     Picker("Processor cores", selection: $draft.cpus) {
                         Text("Automatic").tag(0)
@@ -376,8 +372,18 @@ struct MachineView: View {
     }
 
     private var memoryChoices: [Int] {
-        let physical = Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024))
-        return [2, 4, 6, 8, 12, 16, 24, 32, 48, 64].filter { $0 <= max(4, physical - 2) }
+        [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64].filter { $0 <= max(4, Profile.macMemoryGB - 2) }
+    }
+    /// Automatic (0 here) follows the Mac's memory at every launcher start; a size is kept as chosen.
+    private var memoryPicker: some View {
+        let recommended = Profile.recommendedMemoryGB(draft.kind)
+        return Picker("Memory", selection: Binding(
+            get: { draft.memoryAuto ? 0 : draft.memoryGB },
+            set: { v in draft.memoryAuto = v == 0; draft.memoryGB = v == 0 ? recommended : v })) {
+            Text("Automatic (\(recommended) GB on this \(Profile.macMemoryGB) GB Mac)").tag(0)
+            Divider()
+            ForEach(memoryChoices, id: \.self) { Text("\($0) GB").tag($0) }
+        }
     }
 
     private var diskNote: String {

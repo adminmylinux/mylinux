@@ -52,6 +52,47 @@ final class ProfileTests: XCTestCase {
     }
 }
 
+final class AutomaticMemoryTests: XCTestCase {
+    func testSizesFollowTheMac() {
+        XCTAssertEqual([8, 16, 24, 36].map { Profile.recommendedMemoryGB(.mylinux, macGB: $0) }, [3, 4, 6, 6])
+        XCTAssertEqual([8, 16, 24, 36].map { Profile.recommendedMemoryGB(.omarchy, macGB: $0) }, [4, 6, 8, 8])
+        XCTAssertEqual([8, 16, 24, 36].map { Profile.recommendedMemoryGB(.debian, macGB: $0) }, [2, 2, 4, 4])
+    }
+    func testNewMachinesAreAutomatic() {
+        for kind in [Profile.Kind.mylinux, .omarchy, .debian] {
+            let p = ProfileStore.newProfile(named: "M", kind: kind, folder: URL(fileURLWithPath: "/m/x"))
+            XCTAssertTrue(p.memoryAuto); XCTAssertEqual(p.memoryGB, Profile.recommendedMemoryGB(kind))
+        }
+    }
+    func testSavedMachinesAtTheOldDefaultBecomeAutomaticOthersKeepTheirs() throws {
+        func decode(_ kind: String, _ gb: Int) throws -> Profile {
+            try JSONDecoder().decode(Profile.self, from: Data(#"{"kind":"\#(kind)","name":"M","appsDisk":"/d/a","shareDir":"","memoryGB":\#(gb)}"#.utf8))
+        }
+        XCTAssertTrue(try decode("omarchy", 8).memoryAuto)
+        XCTAssertTrue(try decode("debian", 2).memoryAuto)
+        XCTAssertTrue(try decode("mylinux", 6).memoryAuto)
+        XCTAssertFalse(try decode("omarchy", 12).memoryAuto, "a size someone chose stays")
+        XCTAssertFalse(try decode("debian", 4).memoryAuto)
+        var chosen = try decode("omarchy", 12)
+        XCTAssertFalse(chosen.applyAutomaticMemory(macGB: 8)); XCTAssertEqual(chosen.memoryGB, 12)
+        var auto = try decode("omarchy", 8)
+        XCTAssertTrue(auto.applyAutomaticMemory(macGB: 8)); XCTAssertEqual(auto.memoryGB, 4)
+    }
+    func testTheStoreSizesAutomaticMachinesAtStart() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-memory-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("profiles.json")
+        let json = #"[{"kind":"omarchy","name":"O","appsDisk":"/d/o","shareDir":"","memoryGB":8},{"kind":"debian","name":"D","appsDisk":"/d/d","shareDir":"","memoryGB":16,"sshPort":2223}]"#
+        try Data(json.utf8).write(to: file)
+        let store = ProfileStore(file: file)
+        XCTAssertEqual(store.profiles[0].memoryGB, Profile.recommendedMemoryGB(.omarchy))
+        XCTAssertEqual(store.profiles[1].memoryGB, 16, "chosen by hand: kept")
+        let saved = try JSONDecoder().decode([Profile].self, from: Data(contentsOf: file))
+        XCTAssertEqual(saved.map(\.memoryAuto), [true, false], "the choice is saved, so it survives a change of Mac")
+    }
+}
+
 final class OmarchyClipboardTests: XCTestCase {
     typealias C = OmarchyClipboard
     func testSyncIsEchoSafeBothWays() {
@@ -345,7 +386,7 @@ final class OmarchyProfileTests: XCTestCase {
         let env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s.sock", qmpSocket: "/tmp/q.sock")
         XCTAssertEqual(env["DISK"], "/tmp/m/omarchy/omarchy.ext4")
         XCTAssertEqual(env["DISK_SIZE_GB"], "32")
-        XCTAssertEqual(env["MEM"], "8G")
+        XCTAssertEqual(env["MEM"], "\(Profile.recommendedMemoryGB(.omarchy))G", "sized from this Mac's memory")
         XCTAssertEqual(env["QMP"], "/tmp/q.sock", "Stop presses the power button there")
         XCTAssertEqual(env["SHARE_DIR"], "/tmp/m/omarchy/Mac")
         XCTAssertNil(env["APPS_IMG"]); XCTAssertNil(env["MOUSE"]); XCTAssertNil(env["CLIPBOARD"], "sharing is the default")

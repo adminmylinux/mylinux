@@ -18,6 +18,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var mouse = "tablet"        // MOUSE: tablet | relative
     var clipboard = true        // CLIPBOARD
     var memoryGB = 6            // MEM
+    var memoryAuto = true       // memoryGB follows the Mac's memory (recommendedMemoryGB), set at every launcher start
     var resolution = ""         // RES: "" fits the screen the pointer is on, else WxH
     var appsSizeGB = 16         // APPS_SIZE_GB, used when the disk is created
     var appsDisk = ""           // APPS_IMG
@@ -48,6 +49,31 @@ struct Profile: Codable, Identifiable, Hashable {
         cpus = try c.decodeIfPresent(Int.self, forKey: .cpus) ?? 0
         sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? true
         sshPort = try c.decodeIfPresent(Int.self, forKey: .sshPort) ?? 0
+        // saved before Automatic existed: automatic when still at that launcher's fixed default, else the user's choice
+        memoryAuto = try c.decodeIfPresent(Bool.self, forKey: .memoryAuto) ?? (memoryGB == Profile.legacyMemoryGB[kind])
+    }
+
+    /// The fixed memory sizes launchers up to 0.3.7 gave new machines.
+    static let legacyMemoryGB: [Kind: Int] = [.mylinux: 6, .omarchy: 8, .debian: 2]
+
+    /// Memory for a machine of this kind on a Mac with `macGB` of memory: enough for its desktop (or, for Debian, the
+    /// coding agents and a build), while leaving macOS room on an 8 GB Mac.
+    static func recommendedMemoryGB(_ kind: Kind, macGB: Int = Profile.macMemoryGB) -> Int {
+        let tier = macGB < 12 ? 0 : macGB < 24 ? 1 : 2       // 8 GB · 16 GB · 24 GB and more
+        switch kind {
+        case .mylinux: return [3, 4, 6][tier]
+        case .omarchy: return [4, 6, 8][tier]
+        case .debian: return [2, 2, 4][tier]
+        }
+    }
+    static var macMemoryGB: Int { Int((ProcessInfo.processInfo.physicalMemory + (1 << 29)) >> 30) }
+
+    /// Sets an automatic machine's memory from the Mac's; returns whether it changed.
+    @discardableResult mutating func applyAutomaticMemory(macGB: Int = Profile.macMemoryGB) -> Bool {
+        guard memoryAuto else { return false }
+        let gb = Profile.recommendedMemoryGB(kind, macGB: macGB)
+        if memoryGB == gb { return false }
+        memoryGB = gb; return true
     }
 
     /// The QEMU window title and run.sh instance name. The first profile keeps the plain name.
@@ -171,6 +197,8 @@ final class ProfileStore: ObservableObject {
         } else {
             profiles = [ProfileStore.firstProfile(settings: settings)]
         }
+        // every start: automatic machines get the memory this Mac suits
+        for i in profiles.indices { profiles[i].applyAutomaticMemory() }
         loaded = true
         save()
     }
@@ -191,19 +219,21 @@ final class ProfileStore: ObservableObject {
         if kind == .debian {
             var p = Profile(name: name, appsDisk: dir.appendingPathComponent("debian.raw").path,
                             shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
-            p.kind = .debian; p.memoryGB = 2; p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
+            p.kind = .debian; p.memoryGB = Profile.recommendedMemoryGB(.debian); p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
             return p
         }
         if kind == .omarchy {
             // the share's own name is what Omarchy shows in the home folder (~/Mac)
             var p = Profile(name: name, appsDisk: dir.appendingPathComponent("omarchy.ext4").path,
                             shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
-            p.kind = .omarchy; p.memoryGB = 8; p.appsSizeGB = 32
+            p.kind = .omarchy; p.memoryGB = Profile.recommendedMemoryGB(.omarchy); p.appsSizeGB = 32
             p.grab = "full"      // every key to Omarchy, Command as Super: Omarchy's shortcuts as they are meant
             return p
         }
-        return Profile(name: name, appsDisk: dir.appendingPathComponent("apps.img").path,
-                       shareDir: dir.appendingPathComponent("share", isDirectory: true).path)
+        var p = Profile(name: name, appsDisk: dir.appendingPathComponent("apps.img").path,
+                        shareDir: dir.appendingPathComponent("share", isDirectory: true).path)
+        p.memoryGB = Profile.recommendedMemoryGB(.mylinux)
+        return p
     }
 
     func uniqueName(_ base: String) -> String {
@@ -223,7 +253,7 @@ final class ProfileStore: ObservableObject {
         var p = ProfileStore.newProfile(named: name, kind: kind)
         if let t = template {
             p.grab = t.grab; p.mouse = t.mouse; p.clipboard = t.clipboard
-            p.memoryGB = t.memoryGB; p.resolution = t.resolution; p.appsSizeGB = t.appsSizeGB
+            p.memoryGB = t.memoryGB; p.memoryAuto = t.memoryAuto; p.resolution = t.resolution; p.appsSizeGB = t.appsSizeGB
             p.cpus = t.cpus; p.sound = t.sound      // not the SSH port: two machines cannot listen on one
         }
         // a Debian machine always listens: the next free port after the other machines'
