@@ -8,6 +8,7 @@
 CLAUDE=1      # option: Claude Code
 CODEX=1       # option: Codex
 BTOP=1        # option: btop
+BUN=1         # option: Bun
 TAILSCALE=1   # option: Tailscale
 
 # plain sh: Alpine starts with BusyBox ash; bash comes with the packages below
@@ -22,6 +23,7 @@ packages="bash bash-completion curl ca-certificates git tmux less"
 # Codex reads its background server's start time with a full ps; BusyBox's cannot give it
 [ "$CODEX" = 1 ] && packages="$packages procps"
 [ "$BTOP" = 1 ] && packages="$packages btop"
+[ "$BUN" = 1 ] && packages="$packages unzip"                 # Bun's installer stops without unzip
 echo "== packages: $packages"
 doas apk update -q
 doas apk add -q $packages
@@ -39,6 +41,11 @@ if [ "$CODEX" = 1 ]; then
 fi
 
 # bash as the login shell, reading ~/.bashrc; the PATH and the aliases in one marked block of it
+if [ "$BUN" = 1 ]; then
+  echo "== Bun"
+  curl -fsSL https://bun.sh/install | bash
+fi
+
 echo "== shell setup"
 me=$(id -un)
 doas sed -i -E "s#^($me:([^:]*:){5}).*#\1/bin/bash#" /etc/passwd
@@ -58,6 +65,7 @@ echo "== done"
 [ "$CLAUDE" = 1 ] && "$HOME/.local/bin/claude" --version
 [ "$CODEX" = 1 ] && "$HOME/.local/bin/codex" --version
 [ "$BTOP" = 1 ] && btop --version | head -1
+[ "$BUN" = 1 ] && echo "bun $("$HOME/.bun/bin/bun" --version)"
 echo "Aliases: cc (Claude), cx (Codex); bash is the login shell now (this terminal switches to it)."
 
 # Tailscale last: signing in waits for a browser, and nothing else should wait behind it

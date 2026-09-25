@@ -211,7 +211,7 @@ final class InstallScriptTests: XCTestCase {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../debian_install.sh").standardized
         let s = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(InstallScript.plausible(s))
-        XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Tailscale"])
+        XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Bun", "Tailscale"])
         XCTAssertTrue(InstallScript.options(in: s).allSatisfy(\.on), "everything is on by default")
         XCTAssertFalse(InstallScript.plausible("<html>404</html>"))
         XCTAssertEqual(InstallScript.command(file: "debian_install.sh", script: s), " bash ~/.local/share/mylinux/debian_install.sh; command -v bash >/dev/null && exec bash -l\n")
@@ -220,7 +220,7 @@ final class InstallScriptTests: XCTestCase {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../alpine_install.sh").standardized
         let s = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(s.hasPrefix("#!/bin/sh\n"), "Alpine has no bash until the script installs it")
-        XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Tailscale"])
+        XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Bun", "Tailscale"])
         XCTAssertEqual(InstallScript.command(file: "alpine_install.sh", script: s), " sh ~/.local/share/mylinux/alpine_install.sh; command -v bash >/dev/null && exec bash -l\n")
         XCTAssertEqual(InstallScript.url("alpine_install.sh").absoluteString, "https://raw.githubusercontent.com/adminmylinux/mylinux/main/alpine_install.sh")
     }

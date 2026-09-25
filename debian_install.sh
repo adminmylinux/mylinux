@@ -8,6 +8,7 @@
 CLAUDE=1      # option: Claude Code
 CODEX=1       # option: Codex
 BTOP=1        # option: btop
+BUN=1         # option: Bun
 TAILSCALE=1   # option: Tailscale
 
 set -euo pipefail
@@ -17,6 +18,7 @@ mkdir -p "$HOME/.local/bin"
 
 packages="curl ca-certificates git tmux"
 [ "$BTOP" = 1 ] && packages="$packages btop"
+[ "$BUN" = 1 ] && packages="$packages unzip"                 # Bun's installer stops without unzip
 echo "== packages: $packages"
 sudo apt-get update -q
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q $packages
@@ -34,6 +36,11 @@ if [ "$CODEX" = 1 ]; then
 fi
 
 # the PATH and the aliases, in one marked block of ~/.bashrc (replaced on a rerun, so nothing piles up)
+if [ "$BUN" = 1 ]; then
+  echo "== Bun"
+  curl -fsSL https://bun.sh/install | bash
+fi
+
 echo "== shell setup"
 touch "$HOME/.bashrc"
 sed -i '/^# >>> myLinux >>>$/,/^# <<< myLinux <<<$/d; /^# >>> myLinux agents >>>$/,/^# <<< myLinux agents <<<$/d' "$HOME/.bashrc"
@@ -49,6 +56,7 @@ echo "== done"
 [ "$CLAUDE" = 1 ] && "$HOME/.local/bin/claude" --version
 [ "$CODEX" = 1 ] && "$HOME/.local/bin/codex" --version
 [ "$BTOP" = 1 ] && btop --version | head -1
+[ "$BUN" = 1 ] && echo "bun $("$HOME/.bun/bin/bun" --version)"
 echo "Aliases: cc (Claude), cx (Codex); new shells have them (this one after: source ~/.bashrc)."
 
 # Tailscale last: signing in waits for a browser, and nothing else should wait behind it
