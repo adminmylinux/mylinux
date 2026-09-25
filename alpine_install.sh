@@ -19,6 +19,8 @@ mkdir -p "$HOME/.local/bin"
 packages="bash bash-completion curl ca-certificates git tmux less"
 # Claude Code on musl needs these
 [ "$CLAUDE" = 1 ] && packages="$packages libgcc libstdc++ ripgrep"
+# Codex reads its background server's start time with a full ps; BusyBox's cannot give it
+[ "$CODEX" = 1 ] && packages="$packages procps"
 [ "$BTOP" = 1 ] && packages="$packages btop"
 echo "== packages: $packages"
 doas apk update -q
