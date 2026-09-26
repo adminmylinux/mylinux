@@ -1,6 +1,43 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -1125,6 +1125,16 @@
+@@ -118,6 +118,20 @@
+ 
+ static bool allow_events;
+ 
++/*
++ * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
++ * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
++ * fixed window does (the display code scales a text console wrongly whenever window and mode differ, and myLinux
++ * starts at one guest pixel per point). mylinux_user_sized turns true at the first size the user picks; resizes
++ * the window makes itself (following the mode, entering and leaving full screen) do not count.
++ */
++static bool mylinux_user_sized;
++static bool mylinux_self_sizing;
++static bool mylinux_fullscreen_moving;
++static bool mylinux_sized_before_fullscreen;
++static bool mylinux_size_buttons(void);
++static bool mylinux_follows_mode(NSWindow *window);
++
+ static NSInteger cbchangecount = -1;
+ static QemuClipboardInfo *cbinfo;
+ static QemuEvent cbevent;
+@@ -696,12 +710,14 @@
+ {
+     [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
+ 
+-    if (!([[self window] styleMask] & NSWindowStyleMaskResizable)) {
++    if (!([[self window] styleMask] & NSWindowStyleMaskResizable) || mylinux_follows_mode([self window])) {
+         CGFloat width = screen.width / [[self window] backingScaleFactor];
+         CGFloat height = screen.height / [[self window] backingScaleFactor];
+ 
++        mylinux_self_sizing = true;
+         [[self window] setContentSize:NSMakeSize(width, height)];
+         [[self window] center];
++        mylinux_self_sizing = false;
+     } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
+         [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
+         [[self window] center];
+@@ -1125,6 +1141,16 @@
              return true;
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
@@ -17,7 +54,7 @@
  
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-@@ -1410,12 +1420,20 @@
+@@ -1410,12 +1436,20 @@
   ------------------------------------------------------
  */
  @interface QemuCocoaAppController : NSObject
@@ -39,27 +76,40 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1491,6 +1509,7 @@
+@@ -1491,6 +1525,10 @@
          [window makeKeyAndOrderFront:self];
          [window center];
          [window setDelegate: self];
 +        [self installSizeButtons];
++        if (mylinux_size_buttons()) {
++            [window setStyleMask:[window styleMask] | NSWindowStyleMaskResizable];
++        }
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1563,18 +1582,32 @@
+@@ -1561,20 +1599,47 @@
+ {
+     [cocoaView updateScale];
      [cocoaView updateUIInfo];
- }
- 
++}
++
 +- (void)windowWillEnterFullScreen:(NSNotification *)notification
 +{
++    mylinux_fullscreen_moving = true;
++    mylinux_sized_before_fullscreen = mylinux_user_sized;
 +    prefullscreen_size = [[[cocoaView window] contentView] frame].size;
 +    /* the toolbar stays out of full screen; the floating box has its controls there */
 +    [[[cocoaView window] toolbar] setVisible:NO];
+ }
+ 
++- (void)windowWillExitFullScreen:(NSNotification *)notification
++{
++    mylinux_fullscreen_moving = true;
 +}
 +
  - (void)windowDidEnterFullScreen:(NSNotification *)notification
  {
++    mylinux_fullscreen_moving = false;
      [fullScreenMenuItem setTitle:@"Exit Full Screen"];
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
@@ -73,7 +123,12 @@
 -    [cocoaView resizeWindow];
 +    [fullscreen_panel orderOut:nil];
 +    [[[cocoaView window] toolbar] setVisible:YES];
-+    if (prefullscreen_size.width > 0) {
++    mylinux_fullscreen_moving = false;
++    if (mylinux_size_buttons() && !mylinux_sized_before_fullscreen) {
++        /* never sized by the user: back to following the guest's mode */
++        mylinux_user_sized = false;
++        [cocoaView resizeWindow];
++    } else if (prefullscreen_size.width > 0) {
 +        [self sizeButtonSetContentSize:prefullscreen_size];
 +    } else {
 +        [cocoaView resizeWindow];
@@ -81,7 +136,19 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1675,6 +1708,325 @@
+@@ -1582,6 +1647,11 @@
+ 
+ - (void)windowDidResize:(NSNotification *)notification
+ {
++    /* a size from outside the window's own code (Fill, tiling, a drag): the user's from now on */
++    NSWindow *window = [notification object];
++    if (!mylinux_self_sizing && !mylinux_fullscreen_moving && !([window styleMask] & NSWindowStyleMaskFullScreen)) {
++        mylinux_user_sized = true;
++    }
+     [cocoaView updateScale];
+     [cocoaView updateUIInfo];
+ }
+@@ -1675,12 +1745,338 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -107,6 +174,10 @@
 +    return v && *v ? v : NULL;
 +}
 +static bool mylinux_size_buttons(void) { return mylinux_env("MYLINUX_SIZE_BUTTONS") != NULL; }
++static bool mylinux_follows_mode(NSWindow *window)
++{
++    return mylinux_size_buttons() && !mylinux_user_sized && !([window styleMask] & NSWindowStyleMaskFullScreen);
++}
 +static bool mylinux_session(void) { return mylinux_env("MYLINUX_SESSION_CMD") != NULL; }
 +
 +- (void)installSizeButtons
@@ -365,6 +436,7 @@
 +        [window toggleFullScreen:nil];
 +        return;
 +    }
++    mylinux_user_sized = true;
 +    if (!([window styleMask] & NSWindowStyleMaskResizable)) {
 +        [window setStyleMask:[window styleMask] | NSWindowStyleMaskResizable];
 +        if (!zoom_to_fit_item) {
@@ -407,3 +479,11 @@
  - (void)zoomToFit:(id) sender
  {
      NSWindowStyleMask styleMask = [[cocoaView window] styleMask] ^ NSWindowStyleMaskResizable;
+ 
+     [[cocoaView window] setStyleMask:styleMask];
+     [sender setState:styleMask & NSWindowStyleMaskResizable ? NSControlStateValueOn : NSControlStateValueOff];
++    /* turned on by hand: the window keeps the size it has and scales; off: it follows the guest's mode */
++    mylinux_user_sized = (styleMask & NSWindowStyleMaskResizable) != 0;
+     [cocoaView resizeWindow];
+ }
+ 

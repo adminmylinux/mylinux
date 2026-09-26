@@ -42,8 +42,11 @@ BIN="$APP/Contents/MacOS/qemu-myLinux"
 # refreshed whenever Homebrew's binary changes. Patched into a temporary file and moved into place,
 # so a failed patch leaves the previous binary; if the patcher cannot handle this QEMU (new Mach-O
 # layout), an unbranded copy is used with a warning instead of no app at all.
-# ($BIN.source names the binary the copy was made from, so switching between the runtime and Homebrew refreshes it.)
-if [ -L "$BIN" ] || [ ! -f "$BIN" ] || [ "$QEMU" -nt "$BIN" ] || [ "$(cat "$BIN.source" 2>/dev/null)" != "$QEMU" ]; then
+# ($BIN.source names the binary the copy was made from, with its inode, size and time: switching between the runtime
+# and Homebrew refreshes it, and so does any new runtime. Not "newer than the copy": an installed runtime keeps its
+# build time, which can be older than a copy branded from the previous runtime, and that copy was kept.)
+STAMP="$QEMU $(/usr/bin/stat -f '%i %z %m' "$QEMU" 2>/dev/null)"     # macOS's stat: Homebrew's coreutils one reads -f otherwise
+if [ -L "$BIN" ] || [ ! -f "$BIN" ] || [ "$QEMU" -nt "$BIN" ] || [ "$(cat "$BIN.source" 2>/dev/null)" != "$STAMP" ]; then
   if have_python && python3 tools/brand-qemu.py "$QEMU" "$BIN.new"; then
     mv -f "$BIN.new" "$BIN"
   else
@@ -55,7 +58,7 @@ if [ -L "$BIN" ] || [ ! -f "$BIN" ] || [ "$QEMU" -nt "$BIN" ] || [ "$(cat "$BIN.
 ENT
   fi
 fi
-printf '%s\n' "$QEMU" > "$BIN.source"
+printf '%s\n' "$STAMP" > "$BIN.source"
 # the Dock/Finder entry point (replaces the QEMU binary that bundles before 2026-09-14 had under this name)
 cat > "$APP/Contents/MacOS/myLinux.new" <<'SH'
 #!/bin/sh

@@ -59,7 +59,9 @@ Mac's GPU. A machine is a folder holding its root disk (unpacked on first start,
 and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up inside as `~/Work`; `GRAB`, `MEM`, `RES`
 work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. The window's
 title bar has three buttons at the right: 10% smaller, 10% larger (Omarchy follows with a lower or higher
-resolution; myLinux's window has the same buttons since runtime 11.1.1-3, and its desktop is zoomed), and full screen; Control+Command+F toggles full screen in every keyboard mode, and a small floating
+resolution; myLinux's window has the same buttons since runtime 11.1.1-3, and its desktop is zoomed), and full screen.
+Since runtime 11.1.1-4 the window is resizable from the start, so Window › Fill, the green button's tiling and a
+drag work straight away; until you size it, it follows the guest's resolution as a fixed window did; Control+Command+F toggles full screen in every keyboard mode, and a small floating
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
 patch on the runtime. In the
 launcher it is **Add Omarchy**. Open windows come back after a restart: `omarchy/session` is written into a new
