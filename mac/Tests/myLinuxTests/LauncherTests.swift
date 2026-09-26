@@ -644,6 +644,12 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(CommandPalette.search("install", in: alpine).first?.run, false, "left on the prompt for the name")
     }
 
+    func testCmdSpaceIsOnlyTakenForServerWindows() {
+        XCTAssertNil(SpaceHotkey.target(front: nil))
+        XCTAssertNil(SpaceHotkey.target(front: NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first), "Spotlight's elsewhere")
+        XCTAssertTrue(SpaceHotkey.enabled || UserDefaults.standard.object(forKey: SpaceHotkey.settingKey) != nil, "on unless turned off")
+    }
+
     func testMachineStatusAndNumbersRead() {
         var p = ProfileStore.newProfile(named: "Work box", kind: .alpine)
         p.memoryGB = 2; p.sshPort = 2293

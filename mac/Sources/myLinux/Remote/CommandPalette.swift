@@ -1,7 +1,8 @@
 import SwiftUI
 import AppKit
 
-/// ⌥Space in a server's terminal window (Omarchy's Super+Space, with Option as Super as on the Mac): a search over
+/// ⌘Space (SpaceHotkey, with the launcher's Accessibility permission) or ⌥Space in a server's terminal window, as
+/// Super+Space in Omarchy: a search over
 /// what can be run on the machine. Friendly names for the programs that are installed (type "cla", get Claude
 /// Code), the Commands menu's entries, and every other program on the machine's PATH; Return types the command into
 /// the terminal and runs it.
@@ -181,7 +182,7 @@ struct CommandPaletteView: View {
                 Text("↑↓ choose").font(.caption)
                 Text("esc close").font(.caption)
                 Spacer()
-                Text("⌥Space").font(.caption.weight(.semibold))
+                Text("⌘Space or ⌥Space").font(.caption.weight(.semibold))
             }
             .foregroundStyle(.secondary).padding(.horizontal, 14).padding(.vertical, 7)
         }

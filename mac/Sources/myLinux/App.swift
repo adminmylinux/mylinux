@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
         MachineLink.serve()                              // the servers' own apps: their state, their requests
         MachineStats.shared.start()                      // CPU, memory and disk under each running machine
+        SpaceHotkey.shared.update()                      // ⌘Space: Find and Run in the servers' windows
         let args = CommandLine.arguments
         // MYLINUX_TEST_AUTOSTART=omarchy,debian:2291,… (a scratch MYLINUX_SUPPORT_DIR only): start these machines at
         // launch, for photographs of the launcher with machines running; an optional port for a server
@@ -649,6 +650,8 @@ struct SettingsView: View {
     @StateObject private var images = ImageManager.shared
     @StateObject private var runtime = RuntimeManager.shared
     @AppStorage(TerminalEngine.settingKey, store: TerminalEngine.defaults) private var terminalEngine = TerminalEngine.ghostty.rawValue
+    @AppStorage(SpaceHotkey.settingKey) private var cmdSpace = true
+    private var axTrusted: Bool { AXIsProcessTrusted() }
 
     var body: some View {
         Form {
@@ -660,6 +663,15 @@ struct SettingsView: View {
                      ? "Ghostty's terminal (GhosttyKit): drawn on the GPU, with Ghostty's fonts and text handling. ⌘C, ⌘V, ⌘A, ⌘K and ⌘+/⌘− work as in Ghostty; the window's own keys stay the same. New terminals use the choice; open ones keep theirs."
                      : "SwiftTerm, the terminal the launcher used before Ghostty. New terminals use the choice; open ones keep theirs.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Toggle("⌘Space opens Find and Run in Debian and Alpine windows", isOn: $cmdSpace)
+                    .onChange(of: cmdSpace) { _, _ in SpaceHotkey.shared.update() }
+                HStack(alignment: .firstTextBaseline) {
+                    Text(cmdSpace && !axTrusted
+                         ? "Needs the Accessibility permission for myLinux Launcher (the one Omarchy's \"every key\" mode uses); until then ⌥Space does it. Spotlight keeps ⌘Space everywhere else."
+                         : "Like Super+Space in Omarchy: search what is installed and run it. Only while a server's window is in front; Spotlight keeps ⌘Space everywhere else, and ⌥Space works too.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if cmdSpace && !axTrusted { Button("Allow…") { KeyboardGrab.askPermission() } }
+                }
             }
             Section("myLinux image") {
                 LabeledContent("Source") {

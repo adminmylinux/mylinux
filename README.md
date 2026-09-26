@@ -93,8 +93,9 @@ name as its host name, and the share folder mounted at `/mnt/mac` and linked fro
 to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
 and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
 page has the settings, the Console tab the serial console, and Start opens an SSH terminal with the machine's key
-as soon as its sshd answers (the Terminal button opens it again). That terminal window has **Find and Run** on ⌥Space (Omarchy's Super+Space; ⌘Space stays
-Spotlight's): a search over the programs installed on the machine, read over ssh from its PATH plus `~/.local/bin`
+as soon as its sshd answers (the Terminal button opens it again). That terminal window has **Find and Run** on ⌘Space, as Super+Space in Omarchy (`Remote/SpaceHotkey.swift`: the
+launcher's event tap, with the Accessibility permission Omarchy's "every key" mode uses, takes ⌘Space only while a
+server's window is in front; Spotlight keeps it everywhere else; Settings › Terminal turns it off) and on ⌥Space: a search over the programs installed on the machine, read over ssh from its PATH plus `~/.local/bin`
 and `~/.bun/bin`, with names for the well-known ones (type "cla", get Claude Code), and the Commands menu's entries;
 Return types the command into the terminal (`Remote/CommandPalette.swift`). It also has a **CMD** menu in the middle
 of its title bar (⌘P opens it); **Install Script…** (⇧⌘P) opens

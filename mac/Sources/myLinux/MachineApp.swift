@@ -229,6 +229,8 @@ enum MachineLink {
     /// launcher → app: the machine's state (Runner.report); open or reconnect the terminal
     static let report = Notification.Name("dev.mylinux.machine.report")
     static let show = Notification.Name("dev.mylinux.machine.show")
+    /// launcher → app: ⌘Space was pressed in this app's window (SpaceHotkey): Find and Run
+    static let palette = Notification.Name("dev.mylinux.machine.palette")
     /// app → launcher: "hello" (report now), "open" (start it, or open its terminal), "cloudFolders" (save, restart)
     static let request = Notification.Name("dev.mylinux.machine.request")
 
@@ -284,6 +286,11 @@ enum MachineLink {
             MachineApp.note("report: \(info["state"] as? String ?? "?")\(r.readyIn.map { " ready in " + Runner.seconds($0) } ?? "")")
             if !heard { heard = true; pending.forEach(send); pending = [] }
             MachineApp.noteState(r)
+        })
+        observers.append(center.addObserver(forName: palette, object: scope, queue: .main) { n in
+            guard n.userInfo?["id"] as? String == id.uuidString else { return }
+            let front = (NSApp.keyWindow ?? NSApp.mainWindow)?.windowController as? RemoteWindowController
+            (front ?? RemoteWindowController.open.last)?.showPalette()
         })
         observers.append(center.addObserver(forName: show, object: scope, queue: .main) { n in
             guard n.userInfo?["id"] as? String == id.uuidString else { return }
