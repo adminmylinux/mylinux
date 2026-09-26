@@ -10,7 +10,8 @@ for a in "$@"; do case "$a" in claude|codex|all) WHAT=$a ;; --latest) LATEST=1 ;
 apps-base || exit 1
 apps-mounts check
 apps-run apt-get update -q
-apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q curl wl-clipboard xdg-utils ca-certificates
+# no recommends: xdg-utils would otherwise bring X11, Mesa and LLVM (hundreds of MB) the agents do not use
+apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends curl wl-clipboard xdg-utils ca-certificates
 rc=0
 if [ "$WHAT" = all ] || [ "$WHAT" = claude ]; then
   echo "== Claude Code (installer from $CLAUDE_INSTALLER_URL; upstream publishes no checksum)"

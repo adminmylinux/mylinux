@@ -9,7 +9,8 @@ set -eu
 cd "$(dirname "$0")"
 HERE="$PWD"
 REV=$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
-[ -z "$(git status --porcelain 2>/dev/null)" ] || REV="$REV-dirty"
+# dirty: a change to a tracked file, or an untracked file among the build's inputs (a notes file elsewhere is not)
+[ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)$(git status --porcelain -- board shell package patches configs app Config.in external.mk external.desc 2>/dev/null)" ] || REV="$REV-dirty"
 # Buildroot re-syncs local-source packages (myapp, myshell) only on <pkg>-rebuild, so force it.
 TARGETS="${*:-myapp-rebuild myshell-rebuild all}"
 mkdir -p out/.staging board/overlay/etc
