@@ -214,3 +214,25 @@ render("machine-alpine", to: out) { ctx in
         mark(ctx, i, size: 600, tint: .white)
     }
 }
+
+// ---- the machines' apps as the Dock and ⌘Tab show them: each with myLinux's own icon in the bottom-right corner,
+// so they read as myLinux machines and not apps of their own (machine-<kind>-app.png → machine-<kind>.icns) ----
+func badged(_ name: String) {
+    guard let base = NSImage(contentsOfFile: out + "/" + name + ".png")?.cgImage(forProposedRect: nil, context: nil, hints: nil),
+          let mylinux = NSImage(contentsOfFile: out + "/myLinux.png")?.cgImage(forProposedRect: nil, context: nil, hints: nil),
+          let body = mylinux.cropping(to: CGRect(x: 100, y: 100, width: 824, height: 824)) else { return }
+    render(name + "-app", to: out) { ctx in
+        // everything drawn with y up (CGImage's way), then the badge: 34 % of the body, over the corner
+        ctx.saveGState(); ctx.translateBy(x: 0, y: S); ctx.scaleBy(x: 1, y: -1)
+        ctx.draw(base, in: CGRect(x: 0, y: 0, width: S, height: S))
+        let b = CGRect(x: 590, y: 70, width: 350, height: 350)            // y up: bottom right
+        let shape = squircle(b)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 22, color: rgb(0x000000, 0.45))
+        ctx.addPath(squircle(b.insetBy(dx: -12, dy: -12))); ctx.setFillColor(rgb(0x14161F)); ctx.fillPath()   // a dark ring apart from the icon
+        ctx.restoreGState()
+        ctx.saveGState(); ctx.addPath(shape); ctx.clip(); ctx.draw(body, in: b); ctx.restoreGState()
+        ctx.restoreGState()
+    }
+}
+for kind in ["omarchy", "debian", "alpine"] { badged("machine-" + kind) }
