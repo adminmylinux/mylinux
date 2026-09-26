@@ -1,9 +1,10 @@
 import QtQuick
 import MyShell
 
-// First-boot dialog, driven by what S45apps found (/run/apps-disk.state) and what apps-setup reports
-// (/run/apps-setup.status): a blank disk is offered for setup, an interrupted setup for continuation, a failed
-// stage for retry; disks that are not ours are reported and never formatted. Hidden while the setup window runs.
+// The apps-disk dialog, driven by what S45apps found (/run/apps-disk.state) and what apps-setup reports
+// (/run/apps-setup.status). Since the first boot formats a blank disk and every app installs itself when first
+// used (the Debian base with the first of them), there is no welcome dialog: this only shows when the disk cannot
+// be used (none, ambiguous, foreign, unreadable, mount-failed) or a full setup stopped. Hidden while it runs.
 Item {
     id: fr
     property Item backdrop
@@ -14,7 +15,8 @@ Item {
     property string setupStage: ""
     property string setupMessage: ""
     readonly property bool ready: Launcher.fileExists("/mnt/apps/.mylinux/ready")
-    readonly property bool needed: !ready && diskState !== "unknown"
+    readonly property bool problem: ["none", "ambiguous", "foreign", "unreadable", "mount-failed"].indexOf(diskState) >= 0
+    readonly property bool needed: diskState !== "unknown" && (problem || setupState === "failed")
     readonly property bool canSetup: diskState === "blank" || diskState === "setup" || (diskState === "mounted" && !ready)
     property bool dismissed: false
     anchors.fill: parent

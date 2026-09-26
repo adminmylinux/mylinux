@@ -5,10 +5,13 @@
 #   identify -> format (blank disks only) -> rootfs (pinned Debian, sha256 from the manifest) -> desktop
 #   (Chromium, fonts, GL, wl-clipboard, curl) -> devtools (git, btop) -> READY -> agents (Claude Code, Codex:
 #   optional; a failure here is reported as "partial" and retried with apps-setup-ai)
-# Usage: apps-setup
+# Usage: apps-setup          everything (what Setup › Install everything runs)
+#        apps-setup base     the Debian base only (apps-base runs it the first time an app needs it); apps install
+#                            themselves when first used (apps-install, apps-setup-ai)
 . /usr/lib/mylinux/disk.sh
 . /usr/lib/mylinux/fetch.sh
 A=/mnt/apps; M=$A/.mylinux; STATUS=/run/apps-setup.status; LOCKD=/run/apps-setup.lock.d
+MODE=${1:-all}; case "$MODE" in all|base) ;; *) echo "usage: apps-setup [base]" >&2; exit 2 ;; esac
 SETUP_VERSION=2
 STAGE=identify
 status() { { echo "state=$1"; echo "stage=$2"; echo "message=$3"; echo "time=$(date +%s)"; } > $STATUS.tmp && mv -f $STATUS.tmp $STATUS; }
@@ -84,6 +87,10 @@ if ! has_stage rootfs; then
   done_stage rootfs
 fi
 apps-mounts prepare || fail "preparing the chroot mounts failed"
+# The base is what an app needs: from here the shell may start apps, which install their own packages.
+echo "$SETUP_VERSION" > $M/ready.tmp && mv -f $M/ready.tmp $M/ready
+echo mounted > /run/apps-disk.state; echo "$DEV mounted at $A" > /run/apps-disk.info
+if [ "$MODE" = base ]; then status done rootfs "the Debian base is ready"; step "The Debian base is ready."; exit 0; fi
 
 # An interrupted earlier run (power cut, killed installer) leaves dpkg half-configured; finish that first, it is a
 # no-op otherwise.
@@ -105,9 +112,6 @@ if ! has_stage devtools; then
   apt_install git openssh-client less btop || fail "installing git/btop failed"
   done_stage devtools
 fi
-# Everything an app needs is in place: the shell may autostart browsers from here on.
-echo "$SETUP_VERSION" > $M/ready.tmp && mv -f $M/ready.tmp $M/ready
-echo mounted > /run/apps-disk.state; echo "$DEV mounted at $A" > /run/apps-disk.info
 apps-path
 
 STAGE=agents

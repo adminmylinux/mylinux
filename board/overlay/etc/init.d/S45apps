@@ -1,7 +1,9 @@
 #!/bin/sh
 # The apps disk (virtio-blk, ext4, label "apps"): found by its virtio serial (see /usr/lib/mylinux/disk.sh),
 # mounted at /mnt/apps, its /root bound over the RAM home. The chroot mounts and helper files are prepared
-# once here (apps-mounts); apps-run only checks them. Nothing is ever formatted here.
+# once here (apps-mounts); apps-run only checks them. A disk whose whole first MiB reads back as zeros (the blank
+# file run.sh creates) is formatted here on the first boot, so the home folder persists from the start; nothing is
+# downloaded: the Debian base and every app install when first used (apps-base, apps-install).
 # State for the shell's first-run dialog: /run/apps-disk (device), /run/apps-disk.state, /run/apps-disk.info.
 #   states: mounted | setup (mounted, setup incomplete) | blank | none | ambiguous | foreign | unreadable | mount-failed
 . /usr/lib/mylinux/disk.sh
@@ -17,7 +19,10 @@ case "$1" in
     [ $rc -eq 2 ] && { state ambiguous "several disks carry the apps serial ($DEV); none of them mounted"; exit 0; }
     echo "$DEV" > /run/apps-disk
     case "$(disk_state "$DEV")" in
-      blank) state blank "$DEV is blank (first boot: apps-setup formats it)"; exit 0 ;;
+      blank)
+        echo "apps disk: $DEV is blank; formatting it (ext4, label apps)"
+        mke2fs -q -t ext4 -L apps "$DEV" && [ "$(disk_state "$DEV")" = apps ] \
+          || { state unreadable "$DEV was blank but could not be formatted"; exit 0; } ;;
       unreadable) state unreadable "$DEV cannot be read; left untouched"; exit 0 ;;
       foreign) state foreign "$DEV is not a myLinux apps disk (no ext4 label 'apps'); left untouched"; exit 0 ;;
     esac
@@ -36,7 +41,7 @@ case "$1" in
     fi
 
     apps-mounts prepare || echo "apps disk: chroot preparation failed; apps-run will refuse to start (apps-mounts prepare to retry)"
-    if [ -f $A/.mylinux/ready ]; then state mounted "$DEV mounted at $A"; else state setup "$DEV mounted at $A; setup is incomplete (apps-setup continues it)"; fi
+    if [ -f $A/.mylinux/ready ]; then state mounted "$DEV mounted at $A"; else state setup "$DEV mounted at $A; the Debian base installs when an app first needs it"; fi
     apps-path &   # apps-disk commands on the PATH (background: ~1 s)
     ;;
   stop)

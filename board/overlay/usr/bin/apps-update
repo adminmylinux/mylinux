@@ -1,4 +1,4 @@
 #!/bin/sh
 # Update everything on the apps disk in a terminal window.
-exec foot -T "Update apps disk" sh -c 'apps-run env DEBIAN_FRONTEND=noninteractive dpkg --configure -a; apps-run apt-get update && apps-run apt-get upgrade -y; apps-path; echo; echo "Done. Press Enter to close."; read x'
+exec foot -T "Update apps disk" sh -c 'apps-base && apps-run env DEBIAN_FRONTEND=noninteractive dpkg --configure -a; apps-run apt-get update && apps-run apt-get upgrade -y; apps-path; echo; echo "Done. Press Enter to close."; read x'
 

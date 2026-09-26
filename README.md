@@ -7,7 +7,7 @@ keyboard-driven workflow and themes from [Omarchy](https://omarchy.org): tiling 
 Super+Space launcher, Super+K keybinding sheet, Omarchy theme packs and backgrounds.
 
 Persistent things (your home directory, Debian apps, browsers, Claude Code, Codex) live on a
-separate "apps disk" image that the system sets itself up on first boot.
+separate "apps disk" image that the system formats on first boot; apps install onto it when first opened.
 
 ![Screenshot](docs/screenshot.png)
 
@@ -154,10 +154,14 @@ Mac with 24 GB or more).
 size of the display under your mouse pointer; if the first start puts it on another display, give your
 terminal app Accessibility permission (System Settings › Privacy & Security) and it is moved automatically.
 
-The first boot shows a welcome dialog. "Set up the apps disk" formats the blank
-`out/apps.img` (a sparse 16 GB file created by `run.sh`), downloads Debian's minimal rootfs
-and installs the desktop apps plus Claude Code and Codex. It takes a few minutes and uses
-about 1.3 GB. Everything you install or save afterwards persists on that disk.
+The first boot formats the blank `out/apps.img` (a sparse 16 GB file created by `run.sh`) by itself, in a few
+seconds and without downloading anything, so your home folder persists from the start, and opens the menu
+(Option+Space). Apps install when you first open them: **Install** in the menu lists Claude Code, Codex,
+Chromium (also behind the ChatGPT and Claude web apps), Firefox and the developer tools (git, ssh, btop), each
+marked installed or not, and typing a name finds it. The first of them puts Debian's minimal rootfs on the disk
+first (`apps-base`, once); each runs in a terminal that shows the command it runs. *Install everything at once*
+(`apps-setup`) is still there for a machine that should have it all. Everything you install or save persists on
+that disk.
 
 Useful environment variables for `run.sh`: `RES=1600x1000` guest resolution (default is your
 screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,

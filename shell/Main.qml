@@ -35,6 +35,7 @@ WaylandCompositor {
     // Entries that need the apps disk are skipped until apps-setup has written its ready marker (every required
     // stage done, not merely a Chromium binary present); FirstRun runs this again when the marker appears.
     property bool autostarted: false
+    property bool menuShown: false
     function runAutostart() {
         if (autostarted) return
         const ready = Launcher.fileExists("/mnt/apps/.mylinux/ready")
@@ -50,8 +51,8 @@ WaylandCompositor {
         }
         // the VNC/SSH viewer left tabs open when the shell or the machine went down: bring them back
         if (ready && Launcher.fileExists("/root/.config/mylinux/vnc/session.json")) { Launcher.launch("/usr/bin/vnc", ["--restore"]); launched++ }
-        if (!ready && launched === 0) Launcher.launch("/usr/bin/foot")
-        if (ready && launched === 0) startupMenu.start()
+        // nothing to start: the menu, where Install has the apps (they install themselves when picked)
+        if (launched === 0 && !menuShown) { menuShown = true; startupMenu.start() }
         if (ready) autostarted = true
     }
     Timer { id: startupMenu; interval: 900; onTriggered: desktop.openSpotlight("menu") }   // after the first frame

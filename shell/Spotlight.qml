@@ -98,16 +98,21 @@ Item {
             { label: "Clipboard sharing: on", hint: "Mac clipboard text appears here on its own" + (Theme.clipboardSharing ? "  ✓" : ""), glyph: "⇪", run: () => Theme.setClipboardSharing(true) },
             { label: "Clipboard sharing: off", hint: "nothing copied in; ⌘⌃C still sends text to the Mac" + (Theme.clipboardSharing ? "" : "  ✓"), glyph: "⇪", run: () => Theme.setClipboardSharing(false) },
 
-            { label: "Set up / repair the apps disk", hint: "apps-setup", glyph: "⤓", run: () => desktop.launch("/usr/bin/apps-setup-window") },
+            { label: "Install everything / repair the apps disk", hint: "apps-setup: Debian, Chromium, developer tools, agents", glyph: "⤓", run: () => desktop.launch("/usr/bin/apps-setup-window") },
             { label: "Install / update Claude Code and Codex", hint: "apps-setup-ai", glyph: "✳", run: () => inTerminal("Installing agents", "apps-setup-ai") },
             { label: "Tailscale: connect", hint: "join your tailnet as \"mylinux\" (opens the login page)", glyph: "⬡", run: () => desktop.launch("/usr/bin/tailscale-login") },
             { label: "Tailscale: status", hint: "peers, IP", glyph: "⬡", run: () => desktop.launch("/usr/bin/tailscale-status") } ])
         case "install": return [
+            appEntry("Claude Code", "Anthropic's coding agent in a terminal", "/root/.local/bin/claude", "/usr/bin/claude-code", "claude"),
+            appEntry("Codex", "OpenAI's coding agent in a terminal", "/root/.local/bin/codex", "/usr/bin/codex", "codex openai"),
+            appEntry("Chromium", "web browser, and the ChatGPT and Claude web apps", "/usr/bin/chromium", "/usr/bin/chromium", "browser web chrome"),
+            appEntry("Firefox", "web browser", "/usr/bin/firefox-esr", "/usr/bin/firefox", "browser web"),
+            { label: "Developer tools", hint: installedHint("/usr/bin/git", "git, ssh, less, btop"), glyph: "⤓", keys: "git ssh btop",
+              run: () => desktop.launchArgs("/usr/bin/apps-install", ["Developer tools", "git openssh-client less btop", "/usr/bin/git", "/usr/bin/true"]) },
+            { label: "Install everything at once", hint: "Debian, Chromium, developer tools, Claude Code and Codex (apps-setup)", glyph: "⤓", run: () => desktop.launch("/usr/bin/apps-setup-window") },
             { label: "Install a package…", hint: "type: install <name>", glyph: "⤓", run: () => { input.text = "install " } },
-            { label: "Firefox", hint: "firefox-esr", glyph: "⤓", run: () => desktop.launch("/usr/bin/firefox") },
             { label: "VNC viewer", hint: "vnc: tabs, fullscreen with all keys (⌘⌃G grabs, ⌃⌥G releases); type: vnc host[:port]", glyph: "▣", run: () => desktop.launch("/usr/bin/vnc") },
             { label: "Remote Desktop", hint: "Remmina: VNC, RDP, SSH in tabs", glyph: "⤓", run: () => desktop.launch("/usr/bin/remmina") },
-            { label: "Claude Code", hint: "claude", glyph: "⤓", run: () => desktop.launch("/usr/bin/claude-code") },
             { label: "LibreOffice", hint: "apt: libreoffice", glyph: "⤓", run: () => installPkg("libreoffice") },
             { label: "VS Code (Codium)", hint: "apt: codium", glyph: "⤓", run: () => installPkg("codium") },
             { label: "GIMP", hint: "apt: gimp", glyph: "⤓", run: () => installPkg("gimp") } ]
@@ -128,6 +133,12 @@ Item {
         let all = categories.map(c => ({ label: c.label, hint: c.hint, glyph: c.glyph, category: c.id }))
         for (const c of categories) all = all.concat(categoryItems(c.id).map(e => Object.assign({}, e, { hint: c.label + (e.hint ? " · " + e.hint : "") })))
         return all
+    }
+    // an app on the apps disk: opens it when installed, installs it (and the Debian base, the first time) otherwise
+    function installedHint(path, what) { return Launcher.fileExists("/mnt/apps" + path) ? what + "  ·  installed ✓" : what + "  ·  installs when opened" }
+    function appEntry(label, what, path, exec, keys) {
+        const has = Launcher.fileExists("/mnt/apps" + path)
+        return { label: label, hint: installedHint(path, what), glyph: has ? "▶" : "⤓", keys: keys, run: () => desktop.launch(exec) }
     }
     function installPkg(p) { desktop.launchArgs("/usr/bin/apps-install", [p, p, "/usr/bin/" + p, "/usr/bin/true"]) }
 

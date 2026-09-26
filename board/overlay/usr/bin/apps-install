@@ -5,8 +5,10 @@ TITLE="$1"; PKG="$2"; TEST="$3"; shift 3
 if apps-run test -e "$TEST" 2>/dev/null; then exec "$@"; fi
 exec foot -T "Installing $TITLE" sh -c '
   TITLE="$1"; PKG="$2"; TEST="$3"; shift 3
-  echo "$TITLE is not on the apps disk yet - installing it now (needs network)..."; echo
-  if ! mountpoint -q /mnt/apps; then echo "No apps disk mounted. Build one with tools/make-apps-disk.sh on the Mac."; exec sh; fi
+  echo "$TITLE is not on the apps disk yet - installing it now (needs network)."
+  printf "Runs: apt-get install %s  (on the apps disk)\n\n" "$PKG"
+  if ! mountpoint -q /mnt/apps; then echo "No apps disk mounted (see /run/apps-disk.info)."; echo "Press Enter to close."; read x; exit 1; fi
+  apps-base || { echo; echo "The Debian base did not install - see above. Press Enter to close."; read x; exit 1; }
   apps-run env DEBIAN_FRONTEND=noninteractive dpkg --configure -a; apps-run apt-get update -q && apps-run apt-get install -y -q --no-install-recommends $PKG \
 
     && apps-run test -e "$TEST" && { apps-path; echo; echo "Installed. Starting $TITLE..."; sleep 1

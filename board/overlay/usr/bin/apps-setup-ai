@@ -7,6 +7,7 @@ set -e
 . /usr/lib/mylinux/fetch.sh
 WHAT=all; LATEST=0
 for a in "$@"; do case "$a" in claude|codex|all) WHAT=$a ;; --latest) LATEST=1 ;; *) echo "usage: apps-setup-ai [claude|codex|all] [--latest]" >&2; exit 2 ;; esac; done
+apps-base || exit 1
 apps-mounts check
 apps-run apt-get update -q
 apps-run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q curl wl-clipboard xdg-utils ca-certificates
