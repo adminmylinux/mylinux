@@ -30,7 +30,7 @@
  - (void)zoomToFit:(id) sender;
 +- (void)installSizeButtons;
 +- (void)sizeButtonLarger:(id)sender;
-+- (void)sizeButtonBase:(id)sender;
++- (void)sizeButtonSmaller:(id)sender;
 +- (void)showFullScreenPanel;
 +- (NSMenu *)sessionMenuForPanel:(BOOL)panel;
 +- (void)sessionSave:(id)sender;
@@ -81,21 +81,21 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1675,6 +1708,308 @@
+@@ -1675,6 +1708,325 @@
  }
  
  /* Stretches video to fit host monitor size */
 +/*
-+ * myLinux: the window's own controls, in a toolbar. At the right: minus (back to the content size the window came up
-+ * with), plus (10% larger) and full screen; the first two turn Zoom To Fit on (the window becomes resizable and the
-+ * picture scales to it), and a guest that follows the window's size gets more room that way. Centred: a Session
++ * myLinux: the window's own controls, in a toolbar. At the right: minus (10% smaller), plus (10% larger) and full
++ * screen; the first two turn Zoom To Fit on (the window becomes resizable and the picture scales to it: myLinux's
++ * desktop is zoomed, and a guest that follows the window's size, Omarchy, gets more or less room that way). Centred: a Session
 + * menu, when MYLINUX_SESSION_CMD names a helper that hands "save", "restore" or "interval N" to the guest (run
 + * without a shell, with the share folder from MYLINUX_SESSION_SHARE as its first argument; MYLINUX_SESSION_STATUS
 + * is the status file the guest keeps for the menu). The size buttons are
-+ * only there with MYLINUX_SIZE_BUTTONS set (run-omarchy.sh); a window without either keeps its plain title bar.
++ * only there with MYLINUX_SIZE_BUTTONS set (run.sh, run-omarchy.sh); a window without either keeps its plain title bar.
 + * In full screen, where the title bar is hidden, a small floating box carries the Session menu and an exit button.
 + */
-+static NSSize size_button_base;
++static NSMenuItem *zoom_to_fit_item;
 +static NSPanel *fullscreen_panel;
 +static bool fullscreen_panel_placed;
 +static NSSize prefullscreen_size;
@@ -157,7 +157,7 @@
 +        [item setMenu:[self sessionMenuForPanel:NO]];
 +        return item;
 +    } else if ([identifier isEqualToString:@"mylinux.smaller"]) {
-+        symbol = @"minus"; tip = @"Back to the starting size"; action = @selector(sizeButtonBase:);
++        symbol = @"minus"; tip = @"Smaller window (-10%)"; action = @selector(sizeButtonSmaller:);
 +    } else if ([identifier isEqualToString:@"mylinux.larger"]) {
 +        symbol = @"plus"; tip = @"Larger window (+10%)"; action = @selector(sizeButtonLarger:);
 +    } else if ([identifier isEqualToString:@"mylinux.fullscreen"]) {
@@ -343,11 +343,19 @@
 +    [fullscreen_panel orderFront:nil];
 +}
 +
-+- (void)sizeButtonRememberBase
++/* View > Zoom To Fit, to keep its check mark true when a size button makes the window resizable */
++static NSMenuItem *mylinux_zoom_item(NSMenu *menu)
 +{
-+    if (size_button_base.width == 0) {
-+        size_button_base = [[[cocoaView window] contentView] frame].size;
++    for (NSMenuItem *item in [menu itemArray]) {
++        if ([item action] == @selector(zoomToFit:)) {
++            return item;
++        }
++        NSMenuItem *found = [item submenu] ? mylinux_zoom_item([item submenu]) : nil;
++        if (found) {
++            return found;
++        }
 +    }
++    return nil;
 +}
 +
 +- (void)sizeButtonSetContentSize:(NSSize)size
@@ -359,6 +367,10 @@
 +    }
 +    if (!([window styleMask] & NSWindowStyleMaskResizable)) {
 +        [window setStyleMask:[window styleMask] | NSWindowStyleMaskResizable];
++        if (!zoom_to_fit_item) {
++            zoom_to_fit_item = mylinux_zoom_item([NSApp mainMenu]);
++        }
++        [zoom_to_fit_item setState:NSControlStateValueOn];
 +    }
 +    NSRect visible = [[window screen] visibleFrame];
 +    NSRect frame = [window frame];
@@ -376,15 +388,20 @@
 +
 +- (void)sizeButtonLarger:(id)sender
 +{
-+    [self sizeButtonRememberBase];
 +    NSSize size = [[[cocoaView window] contentView] frame].size;
 +    [self sizeButtonSetContentSize:NSMakeSize(round(size.width * 1.1), round(size.height * 1.1))];
 +}
 +
-+- (void)sizeButtonBase:(id)sender
++/* 10% smaller, down to about 480 points wide */
++- (void)sizeButtonSmaller:(id)sender
 +{
-+    [self sizeButtonRememberBase];
-+    [self sizeButtonSetContentSize:size_button_base];
++    NSSize size = [[[cocoaView window] contentView] frame].size;
++    NSSize smaller = NSMakeSize(round(size.width / 1.1), round(size.height / 1.1));
++    if (smaller.width < 480) {
++        NSBeep();
++        return;
++    }
++    [self sizeButtonSetContentSize:smaller];
 +}
 +
  - (void)zoomToFit:(id) sender

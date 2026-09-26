@@ -37,9 +37,12 @@ SCREEN=$(osascript -l JavaScript -e '
   [Math.round(v.size.width), Math.round(v.size.height), Math.round(v.origin.x), Math.round(mainH - (v.origin.y + v.size.height))].join(" ")' 2>/dev/null || true)
 SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; SX=${REST%% *}; SY=${REST#* }
 case "$SW" in ''|*[!0-9]*) SW=""; SH=""; SX=0; SY=0 ;; esac
+# The accelerated runtime's window has a toolbar in its title bar (−10% / +10% / full screen): 52 points, not 28
+FLAVOUR=$(sh tools/qemu-flavour.sh "$OUT") || die "no usable QEMU"
+if [ "$FLAVOUR" = runtime ]; then TITLE=52; else TITLE=28; fi
 if [ -z "${RES:-}" ]; then
   if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then
-    RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - 28) / 8 * 8 ))"     # 28 = title bar
+    RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - TITLE) / 8 * 8 ))"
   else
     RES=1600x1000
   fi
@@ -96,7 +99,6 @@ done
 # virtio-gpu-gl -> virglrenderer -> ANGLE -> Metal, given a guest Mesa with the virgl driver (one without keeps
 # rendering in software on the same device). It carries no ROM or data files, hence romfile= on every PCI device,
 # and under HVF it has the in-kernel GICv3 only. MYLINUX_QEMU=brew|runtime overrides the choice.
-FLAVOUR=$(sh tools/qemu-flavour.sh "$OUT") || die "no usable QEMU"
 if [ "$FLAVOUR" = runtime ]; then
   MACHINE="virt,gic-version=3"; ROM=",romfile="; GPU="virtio-gpu-gl-pci,max_outputs=1"; GL=",gl=es"
 else
@@ -125,6 +127,8 @@ if [ "${DRYRUN:-0}" = 1 ]; then
   for a in "$@"; do printf '%s\n' "$a"; done
   exit 0
 fi
+# the window's −10% / +10% / full screen buttons (the accelerated runtime's QEMU; myLinux's desktop is zoomed)
+export MYLINUX_SIZE_BUTTONS=1
 # Launch through $OUT/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title.
 # With APP_ID (the launcher's machines) the machine has a bundle of its own, named after it: its own app in ⌘Tab.
 BUNDLE=$(tools/make-app-bundle.sh | sed -n 's/ ready$//p' | tail -1) || true

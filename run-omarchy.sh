@@ -133,7 +133,7 @@ if [ -n "$SHARE_DIR" ]; then
   # the window runs the helper directly with these as its first argument (no shell: paths with spaces or quotes are fine)
   export MYLINUX_SESSION_CMD="$REPO/tools/omarchy-session-mac.sh" MYLINUX_SESSION_SHARE="$SHARE_DIR" MYLINUX_SESSION_STATUS="$SHARE_DIR/mylinux-tools/control/status.json"
 fi
-export MYLINUX_SIZE_BUTTONS=1     # the window's size and full screen buttons are for Omarchy (the guest follows the window)
+export MYLINUX_SIZE_BUTTONS=1     # the window's −10% / +10% / full screen buttons (Omarchy's desktop follows the window)
 
 # ---- first start of this machine: unpack the factory disk, grow it, keep the matching kernel beside it ----------
 if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then

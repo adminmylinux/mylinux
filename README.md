@@ -58,8 +58,8 @@ guest's own checksums; nothing from it is run on the Mac), and `./run-omarchy.sh
 Mac's GPU. A machine is a folder holding its root disk (unpacked on first start, `DISK_SIZE_GB=32`, grown by the guest)
 and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up inside as `~/Work`; `GRAB`, `MEM`, `RES`
 work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. The window's
-title bar has three buttons at the right: back to the starting size, 10% larger (Omarchy follows with a higher
-resolution), and full screen; Control+Command+F toggles full screen in every keyboard mode, and a small floating
+title bar has three buttons at the right: 10% smaller, 10% larger (Omarchy follows with a lower or higher
+resolution; myLinux's window has the same buttons since runtime 11.1.1-3, and its desktop is zoomed), and full screen; Control+Command+F toggles full screen in every keyboard mode, and a small floating
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
 patch on the runtime. In the
 launcher it is **Add Omarchy**. Open windows come back after a restart: `omarchy/session` is written into a new
