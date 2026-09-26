@@ -225,11 +225,13 @@ func badged(_ name: String) {
         // everything drawn with y up (CGImage's way), then the badge: 34 % of the body, over the corner
         ctx.saveGState(); ctx.translateBy(x: 0, y: S); ctx.scaleBy(x: 1, y: -1)
         ctx.draw(base, in: CGRect(x: 0, y: 0, width: S, height: S))
-        let b = CGRect(x: 590, y: 70, width: 350, height: 350)            // y up: bottom right
+        // inside the icon's own outline, clear of its rounded corner: an icon whose shape is not the plain rounded
+        // square is put on a grey tile by macOS 26, as the first try (overhanging the corner) was
+        let b = CGRect(x: 566, y: 150, width: 306, height: 306)            // y up: bottom right
         let shape = squircle(b)
         ctx.saveGState()
         ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 22, color: rgb(0x000000, 0.45))
-        ctx.addPath(squircle(b.insetBy(dx: -12, dy: -12))); ctx.setFillColor(rgb(0x14161F)); ctx.fillPath()   // a dark ring apart from the icon
+        ctx.addPath(squircle(b.insetBy(dx: -10, dy: -10))); ctx.setFillColor(rgb(0x14161F)); ctx.fillPath()   // a dark ring apart from the icon
         ctx.restoreGState()
         ctx.saveGState(); ctx.addPath(shape); ctx.clip(); ctx.draw(body, in: b); ctx.restoreGState()
         ctx.restoreGState()
