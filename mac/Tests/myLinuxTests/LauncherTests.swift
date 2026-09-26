@@ -624,6 +624,21 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(Runner(profileID: id).report["state"] as? String, "stopped")
     }
 
+    func testMachineStatusAndNumbersRead() {
+        var p = ProfileStore.newProfile(named: "Work box", kind: .alpine)
+        p.memoryGB = 2; p.sshPort = 2293
+        let r = Runner(profileID: p.id)
+        XCTAssertEqual(MachineStatus.text(p, r), "Stopped · 2 GB · port 2293")
+        r.mirror(["state": "running", "startedAt": Date().timeIntervalSince1970 - 14, "readyAt": Date().timeIntervalSince1970])
+        XCTAssertEqual(MachineStatus.text(p, r), "Running · ready in 14 s")
+        XCTAssertTrue(MachineStatus.running(r))
+        XCTAssertEqual(Fmt.percent(0.244), "24%")
+        XCTAssertEqual(Fmt.gb(1.5 * 1_073_741_824), "1.5")
+        XCTAssertEqual(Fmt.gb(312 * 1_073_741_824), "312")
+        XCTAssertEqual(Fmt.size(995e9), "995 GB")
+        XCTAssertEqual(Fmt.size(2e12), "2 TB")
+    }
+
     func testStatsReadTheQemuCommandLine() {
         XCTAssertEqual(MachineStats.smp("qemu-system-aarch64 -name x -smp 4 -m 2G"), 4)
         XCTAssertEqual(MachineStats.smp("qemu -smp cpus=6,cores=6 -m 8G"), 6)

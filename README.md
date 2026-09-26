@@ -190,6 +190,14 @@ the app, and the app's Cloud tab asks it for the restart (distributed notificati
 kept in the Dock, the app starts its machine (opening the launcher in the background when needed) and counts the
 seconds until the terminal opens. One launcher runs at a time: a newer one takes over from an older one.
 
+**Overview and machine pages** (0.7.0). The sidebar starts with *Overview*: the whole Mac's CPU, memory in use (as
+Activity Monitor counts it) and the free space where the machines live, the memory given to the running machines,
+and a table of every machine with its share of the Mac's CPU, memory and disk. A machine's page leads with its icon,
+state and actions (Start, Terminal or Show Window, Shut Down), then while it runs the last minute of CPU and memory
+as graphs, its disk, and for a server the `ssh` command and whether SSH answers; the settings fold away below as
+*Machine configuration*, *Files & sharing* and *Console & diagnostics* (the serial console and the log), each
+remembering whether it was left open (`MachineUI.swift`).
+
 **Numbers in the sidebar.** Under each running machine: CPU (its QEMU's share of the machine's virtual CPUs),
 memory in use of what it was given, and its disk's free space, as bars. Debian, Alpine and Omarchy report their
 memory from inside through QEMU's balloon statistics; myLinux shows the memory its QEMU holds on the Mac. A

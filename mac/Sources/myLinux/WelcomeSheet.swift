@@ -58,7 +58,7 @@ struct WelcomeSheet: View {
             Image(nsImage: WelcomeSheet.icon("launcher") ?? NSApp.applicationIconImage).resizable().frame(width: 64, height: 64)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Welcome to myLinux").font(.system(size: 24, weight: .bold))
-                Text("Pick the Linux machines you want on this Mac. Each one downloads once and runs in its own window with its own disk. You can add the others later with the + button.")
+                Text("Pick the Linux machines you want on this Mac. Each one downloads once and runs as its own app, with its own disk. You can add the others later with the + button.")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }

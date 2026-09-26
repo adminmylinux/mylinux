@@ -12,11 +12,17 @@ struct ContentView: View {
     @State private var selection: UUID?
 
     private var selected: Profile? { store.profiles.first { $0.id == selection } }
+    /// The Overview's place in the selection (no machine has this id).
+    static let overviewID = UUID(uuidString: "00000000-0000-0000-0000-00000000000F")!
+    static let selectNotification = Notification.Name("mylinux.select")
     private var selectedRemote: RemoteProfile? { remote.profiles.first { $0.id == selection } }
 
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
+                // the Mac and every machine at a glance
+                OverviewRow()
+                    .tag(ContentView.overviewID)
                 Section("Machines") {
                     ForEach(store.profiles) { p in
                         MachineRow(profile: p, runner: runs.runner(for: p.id)).tag(p.id)
@@ -48,12 +54,14 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 210, ideal: 230)
+            .navigationSplitViewColumnWidth(min: 230, ideal: 250)
             .safeAreaInset(edge: .bottom) { sidebarFooter }
             // in the sidebar's toolbar, not the section header: a click anywhere in a sidebar header folds the section
             .toolbar { ToolbarItem(placement: .automatic) { addMenu } }
         } detail: {
-            if let p = selected {
+            if selection == ContentView.overviewID {
+                OverviewView(store: store, runs: runs) { selection = $0 }
+            } else if let p = selected {
                 MachineView(profile: p, runner: runs.runner(for: p.id))
                     .id(p.id)
             } else if let r = selectedRemote {
@@ -66,7 +74,7 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            if selection == nil { selection = store.profiles.first?.id }
+            if selection == nil { selection = ContentView.overviewID }
             // tests (--start-machine): the page of the machine being started
             if let k = ProcessInfo.processInfo.environment["MYLINUX_TEST_SELECT"], let p = store.profiles.first(where: { $0.kind.rawValue == k }) { selection = p.id }
             images.refresh(settings); runtime.refresh(settings)
@@ -79,6 +87,8 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
+        // tests (MYLINUX_TEST_TOUR): a page by id
+        .onReceive(NotificationCenter.default.publisher(for: ContentView.selectNotification)) { n in if let id = n.object as? UUID { selection = id } }
         .sheet(isPresented: $showWelcome) {
             WelcomeSheet(images: images, omarchy: .shared, debian: .debian, alpine: .alpine, runtime: runtime, done: { kinds in
                 showWelcome = false
@@ -176,95 +186,6 @@ struct ContentView: View {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         if selection == p.id { selection = store.profiles.first { $0.id != p.id }?.id }
         store.remove(p.id)
-    }
-}
-
-private struct MachineRow: View {
-    let profile: Profile
-    @ObservedObject var runner: Runner
-    @ObservedObject private var stats = MachineStats.shared
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle().fill(color).frame(width: 8, height: 8).padding(.top, 5)      // beside the name, however tall the row
-            VStack(alignment: .leading, spacing: 1) {
-                Text(profile.name).lineLimit(1)
-                if runner.isActive && runner.readyAt == nil {
-                    // counting while it starts: a redraw every second
-                    TimelineView(.periodic(from: .now, by: 1)) { _ in Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1).monospacedDigit() }
-                } else {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                if let s = stats.stats[profile.id] { MachineGauges(stat: s).padding(.top, 3) }
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var color: Color {
-        switch runner.state {
-        case .running: return .green
-        case .starting, .stopping: return .orange
-        case .inUseElsewhere: return .yellow
-        case .failed: return .red
-        case .stopped: return .secondary.opacity(0.5)
-        }
-    }
-
-    private var subtitle: String {
-        switch runner.state {
-        case .running where profile.isServer && runner.readyAt == nil:
-            return "Starting… " + Runner.seconds(Date().timeIntervalSince(runner.startedAt ?? Date()))
-        case .running: return runner.readyIn.map { "Running · ready in " + Runner.seconds($0) } ?? "Running"
-        case .starting: return "Starting… " + Runner.seconds(Date().timeIntervalSince(runner.startedAt ?? Date()))
-        case .stopping: return "Shutting down…"
-        case .inUseElsewhere: return profile.isServer ? "Running · started by an earlier launcher" : "Running outside the app"
-        case .failed: return "Failed"
-        case .stopped:
-            if profile.isServer { return "\(profile.kind.title) server · \(profile.memoryGB) GB · ssh port \(String(profile.sshPort))" }
-            return "\(profile.memoryGB) GB · \(profile.grab == "opt" ? "Option as ⌘" : profile.grab == "full" ? "All keys" : "No key grab")"
-        }
-    }
-}
-
-/// A running machine's numbers in the sidebar: CPU and memory in percent, then a bar for the memory it uses of
-/// what it was given and one for its disk, with the free space.
-struct MachineGauges: View {
-    let stat: MachineStats.Stat
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 10) {
-                Text("CPU \(percent(stat.cpu))")
-                Text("MEM \(percent(stat.memFraction))")
-            }
-            .font(.caption2.weight(.medium)).monospacedDigit().foregroundStyle(.secondary)
-            gauge("memorychip", stat.memFraction, "\(gb(stat.memUsed)) of \(gb(stat.memTotal)) GB")
-                .help(stat.memFromGuest ? "Memory in use inside the machine, of what it was given"
-                                        : "Memory the machine holds on the Mac, of what it was given")
-            gauge("internaldrive", stat.diskFraction, "\(gb(stat.diskFree)) GB free")
-                .help(stat.diskFromGuest ? "Free space on the machine's disk, of \(gb(stat.diskTotal)) GB"
-                                         : "The disk is \(gb(stat.diskTotal)) GB; the Mac holds \(gb(stat.diskUsed)) GB of it (space freed inside is not counted back)")
-        }
-    }
-
-    private func gauge(_ symbol: String, _ f: Double, _ label: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol).font(.system(size: 9)).foregroundStyle(.secondary).frame(width: 12)
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.secondary.opacity(0.22))
-                Capsule().fill(color(f)).frame(width: max(3, 64 * f))
-            }
-            .frame(width: 64, height: 5)
-            Text(label).font(.caption2).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-        }
-    }
-
-    private func color(_ f: Double) -> Color { f >= 0.9 ? .red : f >= 0.75 ? .orange : .green }
-    private func percent(_ f: Double) -> String { "\(Int((f * 100).rounded()))%" }
-    private func gb(_ bytes: Double) -> String {
-        let g = bytes / 1_073_741_824
-        return g >= 10 ? String(Int(g.rounded())) : String(format: "%.1f", g)
     }
 }
 

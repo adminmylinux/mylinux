@@ -96,6 +96,7 @@ cp "tools/icons/myLinux Launcher.icns" "$NEW/Contents/Resources/myLinux Launcher
 # Omarchy) and Debian's Open Use Logo (Software in the Public Interest, LGPL-3 or CC-BY-SA 3.0)
 mkdir -p "$NEW/Contents/Resources/icons"
 cp "tools/icons/myLinux Launcher.png" tools/icons/myLinux.png tools/icons/omarchy.png tools/icons/debian.png "$NEW/Contents/Resources/icons/"
+cp tools/icons/machine-omarchy.png tools/icons/machine-debian.png tools/icons/machine-alpine.png "$NEW/Contents/Resources/icons/"
 cp tools/icons/myLinux.icns "$NEW/Contents/Resources/runtime/tools/icons/myLinux.icns"
 # each machine's own app (make-app-bundle.sh for the desktops, MachineApp.swift for the servers) has its kind's icon
 cp tools/icons/machine-omarchy.icns tools/icons/machine-debian.icns tools/icons/machine-alpine.icns "$NEW/Contents/Resources/runtime/tools/icons/"

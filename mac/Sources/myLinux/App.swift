@@ -74,6 +74,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 store.update(p)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { RunManager.shared.runner(for: p.id).start(p) }
             }
+            // MYLINUX_TEST_TOUR=<folder>: once the machines are up (MYLINUX_TEST_TOUR_WAIT seconds, default 70), photograph
+            // the Overview and each machine's page into the folder, then quit (the machines keep running)
+            if let dir = ProcessInfo.processInfo.environment["MYLINUX_TEST_TOUR"] {
+                let wait = Double(ProcessInfo.processInfo.environment["MYLINUX_TEST_TOUR_WAIT"] ?? "70") ?? 70
+                let pages = [("overview", ContentView.overviewID)] + ProfileStore.shared.profiles.map { ($0.kind.rawValue, $0.id) }
+                for (n, page) in pages.enumerated() {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + wait + Double(n) * 2.5) {
+                        NSApp.activate(ignoringOtherApps: true)
+                        NotificationCenter.default.post(name: ContentView.selectNotification, object: page.1)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + wait + Double(n) * 2.5 + 2) {
+                        guard let w = NSApp.windows.first(where: { $0.isVisible && $0.title == "myLinux Machines" }) else { return }
+                        let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                        cap.arguments = ["-x", "-o", "-l", String(w.windowNumber), "\(dir)/\(page.0).png"]
+                        try? cap.run(); cap.waitUntilExit(); print("photographed \(page.0)"); fflush(stdout)
+                        if n == pages.count - 1 { exit(0) }
+                    }
+                }
+            }
             // on a Retina display when there is one, for sharp photographs
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 if let retina = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }),

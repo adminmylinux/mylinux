@@ -15,6 +15,8 @@ final class MachineStats: ObservableObject {
 
     struct Stat: Equatable {
         var cpu: Double              // 0…1 of the machine's CPUs
+        var macCPU: Double = 0       // 0…1 of the whole Mac's CPUs (the Overview)
+        var vcpus = 1
         var memUsed: Double          // bytes
         var memTotal: Double
         var memFromGuest: Bool
@@ -27,6 +29,22 @@ final class MachineStats: ObservableObject {
     }
 
     @Published private(set) var stats: [UUID: Stat] = [:]
+    /// The last minute of each running machine, oldest first: CPU and memory, 0…1 (the machine page's graphs).
+    @Published private(set) var history: [UUID: [(cpu: Double, mem: Double)]] = [:]
+    static let historyLength = 20                           // 20 readings, 3 s apart
+
+    /// The Mac itself (the Overview): all of its CPUs, its memory in use (as Activity Monitor counts it) and the
+    /// disk the machines live on.
+    struct Host: Equatable {
+        var cpu: Double = 0
+        var memUsed: Double = 0
+        var memTotal: Double = Double(ProcessInfo.processInfo.physicalMemory)
+        var diskFree: Double = 0
+        var diskTotal: Double = 0
+        var cores = ProcessInfo.processInfo.activeProcessorCount
+    }
+    @Published private(set) var host = Host()
+    private var lastTicks: [UInt32]?
     private var timer: Timer?
     private let queue = DispatchQueue(label: "mylinux.stats", qos: .utility)
     private var busy = false
@@ -47,18 +65,20 @@ final class MachineStats: ObservableObject {
             let r = runs.runner(for: p.id)
             return r.state == .running || r.state == .inUseElsewhere ? (p, r) : nil
         }
-        if machines.isEmpty { if !stats.isEmpty { stats = [:] }; return }
         busy = true
         let sockets = Dictionary(uniqueKeysWithValues: machines.map { ($0.0.id, $0.1.qmpSocket) })
+        let diskURL = AppSettings.shared.outDir
         queue.async { [weak self] in
             guard let self else { return }
-            let procs = MachineStats.qemuProcesses()
+            let hostNow = self.readHost(disk: diskURL)
+            let procs = machines.isEmpty ? [] : MachineStats.qemuProcesses()
             var out: [UUID: Stat] = [:]
             for (p, _) in machines {
                 guard let proc = procs.first(where: { $0.command.range(of: Runner.diskPattern(p.appsDisk), options: .regularExpression) != nil }) else { continue }
                 let vcpus = max(1, MachineStats.smp(proc.command) ?? 1)
                 let allocated = Double(p.memoryGB) * 1_073_741_824
-                var s = Stat(cpu: min(1, proc.cpu / 100 / Double(vcpus)), memUsed: min(allocated, proc.rss), memTotal: allocated,
+                var s = Stat(cpu: min(1, proc.cpu / 100 / Double(vcpus)), macCPU: min(1, proc.cpu / 100 / Double(max(1, hostNow.cores))),
+                             vcpus: vcpus, memUsed: min(allocated, proc.rss), memTotal: allocated,
                              memFromGuest: false, diskUsed: 0, diskTotal: 0, diskFromGuest: false)
                 if p.kind != .mylinux, let socket = sockets[p.id], let m = self.balloon(socket, pid: proc.pid) {
                     s.memUsed = m.used; s.memTotal = m.total; s.memFromGuest = true
@@ -75,8 +95,49 @@ final class MachineStats: ObservableObject {
             DispatchQueue.main.async {
                 self.busy = false
                 if self.stats != out { self.stats = out }
+                if self.host != hostNow { self.host = hostNow }
+                var h: [UUID: [(cpu: Double, mem: Double)]] = [:]
+                for (id, st) in out { h[id] = Array(((self.history[id] ?? []) + [(st.cpu, st.memFraction)]).suffix(MachineStats.historyLength)) }
+                self.history = h
             }
         }
+    }
+
+    // ---- the Mac ----------------------------------------------------------------------------------------------------
+    /// CPU from the change in the kernel's tick counters since the last reading; memory as Activity Monitor's
+    /// "Memory Used" (app memory, wired and compressed); the free space of the volume holding `disk`.
+    private func readHost(disk: URL) -> Host {
+        var h = Host()
+        var info = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.stride / MemoryLayout<integer_t>.stride)
+        let ok = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count) }
+        }
+        if ok == KERN_SUCCESS {
+            let t = [info.cpu_ticks.0, info.cpu_ticks.1, info.cpu_ticks.2, info.cpu_ticks.3]     // user, system, idle, nice
+            if let last = lastTicks {
+                let d = zip(t, last).map { Double($0 &- $1) }
+                let total = d.reduce(0, +)
+                if total > 0 { h.cpu = min(1, (d[0] + d[1] + d[3]) / total) }
+            }
+            lastTicks = t
+        }
+        var vm = vm_statistics64()
+        var vmCount = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
+        let vmOK = withUnsafeMutablePointer(to: &vm) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(vmCount)) { host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &vmCount) }
+        }
+        if vmOK == KERN_SUCCESS {
+            let page = Double(vm_kernel_page_size)
+            let app = Double(vm.internal_page_count) - Double(vm.purgeable_count)
+            h.memUsed = max(0, (app + Double(vm.wire_count) + Double(vm.compressor_page_count)) * page)
+        }
+        let dir = FileManager.default.fileExists(atPath: disk.path) ? disk : FileManager.default.homeDirectoryForCurrentUser
+        if let v = try? dir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey]) {
+            h.diskFree = Double(v.volumeAvailableCapacityForImportantUsage ?? 0)
+            h.diskTotal = Double(v.volumeTotalCapacity ?? 0)
+        }
+        return h
     }
 
     // ---- the parts ------------------------------------------------------------------------------------------------
