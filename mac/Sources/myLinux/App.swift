@@ -200,6 +200,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 11.0) { print("last URL after reconnect:", c.testLastURL()?.absoluteString ?? "none") }
                 wait = 12
             }
+            // MYLINUX_TEST_KEYS=palette: ⌥Space as the keyboard sends it, a search, Return in the palette, and what the
+            // terminal ran (MYLINUX_TEST_QUERY, default "top"; the palette photographed as <png>-palette.png)
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "palette" {
+                let query = ProcessInfo.processInfo.environment["MYLINUX_TEST_QUERY"] ?? "top"
+                func key(_ w: NSWindow?, _ chars: String, _ code: UInt16, _ mods: NSEvent.ModifierFlags = []) {
+                    guard let w else { return }
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                                    context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) { NSApp.postEvent(e, atStart: false) }
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { NSApp.activate(ignoringOtherApps: true); c.window?.makeKeyAndOrderFront(nil); key(c.window, " ", 49, [.option]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                    print("palette open after option-space:", c.window?.attachedSheet != nil, "programs read:", c.testPaletteLoaded)
+                    print("at first:", (c.testPalette("") ?? []).prefix(8).map(\.title).joined(separator: ", "))
+                    print("for \"\(query)\":", (c.testPalette(query) ?? []).prefix(6).map { "\($0.title) [\($0.command)]" }.joined(separator: ", "))
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
+                    if let sheet = c.window?.attachedSheet {
+                        let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                        cap.arguments = ["-x", "-o", "-l", String(sheet.windowNumber), args[i + 1].replacingOccurrences(of: ".png", with: "-palette.png")]
+                        try? cap.run(); cap.waitUntilExit()
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 8) { key(c.window?.attachedSheet, "\r", 36) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 11) {
+                    let text = c.testScreenText() ?? ""
+                    print("palette closed:", c.window?.attachedSheet == nil, "terminal shows the command's output:", text.contains("Mem:") || text.contains("PID"))
+                }
+                wait = 13
+            }
             // MYLINUX_GHOSTTY_CONFIG=1: what Ghostty was given, and any issue it reported
             if ProcessInfo.processInfo.environment["MYLINUX_GHOSTTY_CONFIG"] == "1" {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

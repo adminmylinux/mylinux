@@ -93,7 +93,11 @@ name as its host name, and the share folder mounted at `/mnt/mac` and linked fro
 to `SSH_PORT` on 127.0.0.1 (default 2223; `FORWARD=host:guest` adds more ports), the serial console goes to `SERIAL`,
 and `QMP` gives the socket a clean `system_powerdown` uses. In the launcher it is **Debian Server**: the machine
 page has the settings, the Console tab the serial console, and Start opens an SSH terminal with the machine's key
-as soon as its sshd answers (the Terminal button opens it again). That terminal window has a **CMD** menu in the middle of its title bar (⌘P opens it); **Install Script…** (⇧⌘P) opens
+as soon as its sshd answers (the Terminal button opens it again). That terminal window has **Find and Run** on ⌥Space (Omarchy's Super+Space; ⌘Space stays
+Spotlight's): a search over the programs installed on the machine, read over ssh from its PATH plus `~/.local/bin`
+and `~/.bun/bin`, with names for the well-known ones (type "cla", get Claude Code), and the Commands menu's entries;
+Return types the command into the terminal (`Remote/CommandPalette.swift`). It also has a **CMD** menu in the middle
+of its title bar (⌘P opens it); **Install Script…** (⇧⌘P) opens
 [`debian_install.sh`](debian_install.sh), loaded from this repository on GitHub (the copy built into the launcher
 stands in when GitHub can't be reached), in an editable text field. Above it is a checkbox for each option the
 script declares (a `NAME=1   # option: Label` line: Claude Code, Codex, btop and Tailscale, all on). Ticking a box

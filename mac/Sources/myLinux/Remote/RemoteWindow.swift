@@ -96,6 +96,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                 guard let self, e.window === self.window, let key = e.charactersIgnoringModifiers?.lowercased() else { return e }
                 let mods = e.modifierFlags.intersection([.command, .shift, .option, .control])
                 if key == "p", mods == [.command] { self.cmdMenu?.performClick(nil); return nil }
+                // ⌥Space: find and run (Omarchy's Super+Space; ⌘Space stays Spotlight's)
+                if e.keyCode == 49, mods == [.option] { self.showPalette(); return nil }
                 if key == "p", mods == [.command, .shift] { self.installScript(); return nil }
                 if key == "w", mods == [.command], self.closeFocusedPane() { return nil }
                 return e
@@ -326,6 +328,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             pop.bezelStyle = .texturedRounded
             pop.addItem(withTitle: "CMD")
             pop.toolTip = "Commands for this machine (⌘P)"
+            let find = NSMenuItem(title: "Find and Run…", action: #selector(showPalette), keyEquivalent: " "); find.keyEquivalentModifierMask = [.option]; find.target = self
+            pop.menu?.addItem(find)
             let install = NSMenuItem(title: "Install Script…", action: #selector(installScript), keyEquivalent: "p"); install.keyEquivalentModifierMask = [.command, .shift]; install.target = self
             pop.menu?.addItem(install)
             pop.menu?.addItem(.separator())
@@ -542,6 +546,41 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         window.beginSheet(sheet) { _ in }
     }
     func testShowRestartProgress() { showRestartProgress() }
+
+    // ---- ⌥Space: find and run (CommandPalette) ----
+    private var paletteModel: PaletteModel?
+    @objc func showPalette() {
+        guard let window, sheetWindow == nil else { return }
+        let target = ssh
+        let key = "\(profile.host):\(profile.port)"
+        let model = PaletteModel(alpine: profile.installScriptFile.hasPrefix("alpine"), programs: CommandPalette.cache[key])
+        CommandPalette.loadPrograms(profile) { [weak model] names in
+            model?.loading = false
+            if let names { CommandPalette.cache[key] = names; model?.programs = names }
+        }
+        paletteModel = model
+        let machine = ProfileStore.shared.profiles.first { $0.id == (profile.machineID ?? profile.id) }?.name ?? profile.name
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: CommandPaletteView(
+            model: model, machine: machine,
+            pick: { [weak self] e in
+                self?.endSheet()
+                guard let self, let t = target ?? self.ssh else { return }
+                t.type(e.command + (e.run ? "\n" : ""))
+                self.window?.makeFirstResponder(t.keyView)
+            },
+            dismiss: { [weak self] in self?.endSheet() })))
+        sheet.styleMask = [.titled]
+        sheetWindow = sheet
+        window.beginSheet(sheet) { _ in }
+    }
+    /// For the tests: the palette with a query typed, and what it would run.
+    func testPalette(_ query: String) -> [PaletteEntry]? {
+        if sheetWindow == nil { showPalette() }
+        paletteModel?.query = query
+        return paletteModel?.results
+    }
+    var testPaletteLoaded: Bool { paletteModel?.loading == false }
+    func testScreenText() -> String? { (ssh as? GhosttySshTerminal)?.screenText() }
     private func endSheet() {
         guard let window, let sheet = sheetWindow else { return }
         window.endSheet(sheet); sheetWindow = nil

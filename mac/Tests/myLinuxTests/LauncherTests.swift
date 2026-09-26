@@ -624,6 +624,26 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(Runner(profileID: id).report["state"] as? String, "stopped")
     }
 
+    func testPaletteFindsInstalledProgramsByName() {
+        let all = CommandPalette.entries(programs: ["claude", "btop", "bash", "clang", "claude-helper"], alpine: false)
+        XCTAssertEqual(CommandPalette.search("cla", in: all).first?.title, "Claude Code", "a named app before plain programs")
+        XCTAssertEqual(CommandPalette.search("cla", in: all).first?.command, "claude")
+        XCTAssertTrue(CommandPalette.search("cla", in: all).contains { $0.command == "clang" }, "other programs are found too")
+        XCTAssertFalse(CommandPalette.search("", in: all).contains { $0.source == .program }, "plain programs only once something is typed")
+        XCTAssertTrue(CommandPalette.search("", in: all).contains { $0.title == "btop" })
+        XCTAssertFalse(all.contains { $0.title == "Codex" }, "only what is installed gets a name")
+        XCTAssertTrue(all.contains { $0.command == "cc" }, "the cc alias when Claude Code is installed")
+        XCTAssertFalse(all.contains { $0.command == "cx" }, "no cx without Codex")
+        XCTAssertFalse(all.contains { $0.command.contains("tailscale") }, "no Tailscale commands without it")
+        XCTAssertTrue(CommandPalette.entries(programs: nil, alpine: false).contains { $0.command == "cx" }, "all of them while the list is loading")
+        XCTAssertEqual(CommandPalette.search("update", in: all).first?.command, "sudo apt update && sudo apt upgrade -y")
+        XCTAssertTrue(CommandPalette.subsequence("cc", of: "claude code"))
+        XCTAssertFalse(CommandPalette.subsequence("cx", of: "claude"))
+        let alpine = CommandPalette.entries(programs: nil, alpine: true)
+        XCTAssertEqual(CommandPalette.search("install", in: alpine).first?.command, "doas apk add ")
+        XCTAssertEqual(CommandPalette.search("install", in: alpine).first?.run, false, "left on the prompt for the name")
+    }
+
     func testMachineStatusAndNumbersRead() {
         var p = ProfileStore.newProfile(named: "Work box", kind: .alpine)
         p.memoryGB = 2; p.sshPort = 2293
