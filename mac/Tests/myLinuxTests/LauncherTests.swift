@@ -662,6 +662,8 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(Fmt.gb(1.5 * 1_073_741_824), "1.5")
         XCTAssertEqual(Fmt.gb(312 * 1_073_741_824), "312")
         XCTAssertEqual(Fmt.size(995e9), "995 GB")
+        XCTAssertEqual(Fmt.size(312e6), "312 MB", "under a gigabyte in MB")
+        XCTAssertEqual(Fmt.size(0), "0 MB")
         XCTAssertEqual(Fmt.size(2e12), "2 TB")
     }
 

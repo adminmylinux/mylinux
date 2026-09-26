@@ -203,6 +203,12 @@ as graphs, its disk, and for a server the `ssh` command and whether SSH answers;
 *Machine configuration*, *Files & sharing* and *Console & diagnostics* (the serial console and the log), each
 remembering whether it was left open (`MachineUI.swift`).
 
+**Settings** (0.7.4, `SettingsView.swift`) has a category list: *Terminal* (Ghostty or SwiftTerm, as cards with a
+drawn sample of each, and ⌘Space for Find and Run with its permission), *Images & runtime* (each Linux download and
+the QEMU runtime with its version and an Update or Download button), *Windows* (window placement, with a picture of
+what it does), *Storage* (what the launcher keeps and the space each part takes, and Clear All Data with a list of
+what it deletes) and *Developer* (the checkout); technical notes fold away under *Details*.
+
 **Numbers in the sidebar.** Under each running machine: CPU (its QEMU's share of the machine's virtual CPUs),
 memory in use of what it was given, and its disk's free space, as bars. Debian, Alpine and Omarchy report their
 memory from inside through QEMU's balloon statistics; myLinux shows the memory its QEMU holds on the Mac. A

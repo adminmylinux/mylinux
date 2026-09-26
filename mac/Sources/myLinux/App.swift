@@ -117,14 +117,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // `myLinux --render-settings <png>`: draw the Settings window's content to a file
         if let i = args.firstIndex(of: "--render-settings"), i + 1 < args.count {
-            let view = NSHostingView(rootView: SettingsView().environmentObject(AppSettings.shared).frame(width: 560, height: 700))
-            view.frame = NSRect(x: 0, y: 0, width: 560, height: 700); view.appearance = NSAppearance(named: .darkAqua)
-            let w = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false); w.contentView = view; w.orderFront(nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-                    view.cacheDisplay(in: view.bounds, to: rep)
-                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
-                }
+            // MYLINUX_SETTINGS_PAGE: which page (terminal, images, windows, storage, developer)
+            if let page = ProcessInfo.processInfo.environment["MYLINUX_SETTINGS_PAGE"] { UserDefaults.standard.set(page, forKey: "settings.page") }
+            let view = NSHostingView(rootView: SettingsView().environmentObject(AppSettings.shared))
+            view.frame = NSRect(x: 0, y: 0, width: 760, height: 580); view.appearance = NSAppearance(named: .darkAqua)
+            let w = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false); w.contentView = view; w.title = "Settings"
+            if let retina = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }) { w.setFrameOrigin(NSPoint(x: retina.visibleFrame.midX - 380, y: retina.visibleFrame.midY - 300)) }
+            w.orderFront(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                cap.arguments = ["-x", "-o", "-l", String(w.windowNumber), args[i + 1]]
+                try? cap.run(); cap.waitUntilExit()
                 exit(0)
             }
             return
@@ -643,119 +646,3 @@ enum QuickStart {
     }
 }
 
-struct SettingsView: View {
-    @EnvironmentObject var settings: AppSettings
-    @State private var confirmClear = false
-    @State private var clearError: String?
-    @StateObject private var images = ImageManager.shared
-    @StateObject private var runtime = RuntimeManager.shared
-    @AppStorage(TerminalEngine.settingKey, store: TerminalEngine.defaults) private var terminalEngine = TerminalEngine.ghostty.rawValue
-    @AppStorage(SpaceHotkey.settingKey) private var cmdSpace = true
-    private var axTrusted: Bool { AXIsProcessTrusted() }
-
-    var body: some View {
-        Form {
-            Section("Terminal") {
-                Picker("Terminal for servers and SSH", selection: $terminalEngine) {
-                    ForEach(TerminalEngine.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
-                }
-                Text(terminalEngine == TerminalEngine.ghostty.rawValue
-                     ? "Ghostty's terminal (GhosttyKit): drawn on the GPU, with Ghostty's fonts and text handling. ⌘C, ⌘V, ⌘A, ⌘K and ⌘+/⌘− work as in Ghostty; the window's own keys stay the same. New terminals use the choice; open ones keep theirs."
-                     : "SwiftTerm, the terminal the launcher used before Ghostty. New terminals use the choice; open ones keep theirs.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Toggle("⌘Space opens Find and Run in Debian and Alpine windows", isOn: $cmdSpace)
-                    .onChange(of: cmdSpace) { _, _ in SpaceHotkey.shared.update() }
-                HStack(alignment: .firstTextBaseline) {
-                    Text(cmdSpace && !axTrusted
-                         ? "Needs the Accessibility permission for myLinux Launcher (the one Omarchy's \"every key\" mode uses); until then ⌥Space does it. Spotlight keeps ⌘Space everywhere else."
-                         : "Like Super+Space in Omarchy: search what is installed and run it. Only while a server's window is in front; Spotlight keeps ⌘Space everywhere else, and ⌥Space works too.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    if cmdSpace && !axTrusted { Button("Allow…") { KeyboardGrab.askPermission() } }
-                }
-            }
-            Section("myLinux image") {
-                LabeledContent("Source") {
-                    Text(settings.developerMode ? "The checkout's out/ folder" : "Downloaded releases")
-                        .foregroundStyle(.secondary)
-                }
-                LabeledContent("Folder") { Text(settings.outDir.path).lineLimit(1).truncationMode(.head).foregroundStyle(.secondary) }
-                LabeledContent("Version") { Text(images.revision ?? "none yet").foregroundStyle(.secondary) }
-                if !settings.developerMode {
-                    Button(images.present ? "Download the latest release" : "Download myLinux") { images.download(settings) }
-                        .disabled(images.busy)
-                }
-            }
-            Section("QEMU") {
-                LabeledContent("In use") {
-                    Text(runtime.present ? "Accelerated runtime \((runtime.revision ?? "").replacingOccurrences(of: "qemu-runtime-", with: ""))" : (Paths.qemu() ?? "none — download below, or brew install qemu"))
-                        .foregroundStyle(settings.qemuAvailable ? Color.secondary : Color.orange)
-                        .lineLimit(1).truncationMode(.head)
-                }
-                if runtime.busy {
-                    HStack {
-                        ProgressView().controlSize(.small)
-                        Text(runtime.progress).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer()
-                        Button("Cancel") { runtime.cancel() }
-                    }
-                } else {
-                    HStack {
-                        Button(runtime.present ? "Check for a newer runtime" : "Download the accelerated QEMU") { runtime.download(settings) }
-                        if runtime.present { Button("Remove") { runtime.remove(settings) } }
-                    }
-                }
-                if let e = runtime.lastError { Banner(text: e, kind: .error) }
-                Text(RuntimeManager.bundledTarball != nil
-                     ? "myLinux's own QEMU with GPU support (VirGL, drawn through Metal) came with the app and is installed on its first start; the button fetches a newer one if there is one. Its sources and licences are in the runtime's NOTICES.md."
-                     : "myLinux's own QEMU with GPU support (VirGL, drawn through Metal): about 10 MB to download, no Homebrew needed. Machines use it from their next start; without it they start with Homebrew's QEMU. Its sources and licences are in the runtime's NOTICES.md.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Section("Developer") {
-                LabeledContent("myLinux checkout") {
-                    HStack {
-                        Text(settings.repoPath.isEmpty ? "none" : settings.repoPath)
-                            .lineLimit(1).truncationMode(.head).foregroundStyle(.secondary)
-                        Button("Choose…", action: chooseRepo)
-                        Button("Clear") { settings.repoPath = "" }.disabled(settings.repoPath.isEmpty)
-                    }
-                }
-                Text("With a checkout, machines start from its run.sh, tools/ and out/ — so a locally built image and hot-swapped binaries in share/ are what you get. Without one, the app uses its own copy of the scripts and the downloaded release.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if !settings.repoPath.isEmpty && !settings.developerMode {
-                    Banner(text: "That folder has no run.sh and tools/get-image.sh, so it is ignored.", kind: .warning)
-                }
-            }
-            Section("Window") {
-                Toggle("Move the machine window onto the screen it was sized for", isOn: $settings.placeWindow)
-                Text("macOS asks for permission to control System Events the first time, because moving another app's window goes through AppleScript. Without it the window opens wherever macOS puts it, which on a second display can be the wrong size.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Section("Storage") {
-                LabeledContent("Machines folder") { Text(Paths.support.path).lineLimit(1).truncationMode(.head).foregroundStyle(.secondary) }
-            }
-            Section("Start over") {
-                Button("Clear All Data on This Mac…", role: .destructive) { confirmClear = true }
-                Text("Deletes every machine and its disk, the downloaded Linuxes and QEMU, the launcher's settings, saved remote passwords and the browser's data, then restarts the launcher as if it were new. A developer checkout's out/ folder is not touched.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if let clearError { Banner(text: clearError, kind: .error) }
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 560, height: 640)
-        .confirmationDialog("Clear all myLinux data on this Mac?", isPresented: $confirmClear) {
-            Button("Delete Everything and Restart", role: .destructive) { clearError = StartOver.clearAll() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Every machine, its disk and everything inside it is deleted, along with the downloads and settings. This cannot be undone.")
-        }
-        .onAppear { images.refresh(settings); runtime.refresh(settings) }
-        .onChange(of: settings.repoPath) { _, _ in images.refresh(settings); runtime.refresh(settings) }
-    }
-
-    private func chooseRepo() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true; panel.canChooseFiles = false
-        panel.message = "Pick a myLinux source checkout (the folder with run.sh)."
-        if panel.runModal() == .OK, let url = panel.url { settings.repoPath = url.path }
-    }
-}

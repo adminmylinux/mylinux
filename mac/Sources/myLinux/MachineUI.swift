@@ -66,6 +66,7 @@ enum Fmt {
     /// "1 TB", "512 GB": a disk's size.
     static func size(_ bytes: Double) -> String {
         let g = bytes / 1_000_000_000
+        if g < 1 { return bytes < 1_000_000 ? (bytes > 0 ? "<1 MB" : "0 MB") : "\(Int((bytes / 1_000_000).rounded())) MB" }
         return g >= 1000 ? String(format: g >= 10_000 ? "%.0f TB" : "%.1f TB", g / 1000).replacingOccurrences(of: ".0 TB", with: " TB") : "\(Int(g.rounded())) GB"
     }
     static func level(_ f: Double) -> Color { f >= 0.9 ? .red : f >= 0.75 ? .orange : .green }
