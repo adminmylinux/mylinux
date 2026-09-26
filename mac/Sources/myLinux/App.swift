@@ -61,6 +61,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MachineLink.serve()                              // the servers' own apps: their state, their requests
         MachineStats.shared.start()                      // CPU, memory and disk under each running machine
         let args = CommandLine.arguments
+        // MYLINUX_TEST_AUTOSTART=omarchy,debian:2291,… (a scratch MYLINUX_SUPPORT_DIR only): start these machines at
+        // launch, for photographs of the launcher with machines running; an optional port for a server
+        if let list = ProcessInfo.processInfo.environment["MYLINUX_TEST_AUTOSTART"], ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            for item in list.split(separator: ",") {
+                let parts = item.split(separator: ":")
+                guard let kind = Profile.Kind(rawValue: String(parts[0])) else { continue }
+                let store = ProfileStore.shared
+                var p = store.profiles.first(where: { $0.kind == kind }) ?? store.add(kind: kind)
+                if kind.isServer, parts.count > 1, let port = Int(parts[1]) { p.sshPort = port }
+                if !kind.isServer { p.grab = "opt"; p.name = kind.title }
+                store.update(p)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { RunManager.shared.runner(for: p.id).start(p) }
+            }
+            // on a Retina display when there is one, for sharp photographs
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if let retina = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }),
+                   let w = NSApp.windows.first(where: { $0.isVisible && $0.title == "myLinux Machines" }) {
+                    let v = retina.visibleFrame
+                    w.setFrameOrigin(NSPoint(x: v.midX - w.frame.width / 2, y: v.midY - w.frame.height / 2))
+                }
+            }
+        }
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
             if let ago = ProcessInfo.processInfo.environment["MYLINUX_RENDER_STARTED_AGO"].flatMap(Double.init) { WelcomeSheet.renderStartedAt = Date().addingTimeInterval(-ago) }
