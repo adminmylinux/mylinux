@@ -148,6 +148,11 @@ fi
 
 # the launcher's version: from the v* tags (the runtime has tags of its own), without the v
 VERSION=$(git -C "$REPO" describe --tags --match 'v*' --always 2>/dev/null | sed 's/^v//'); [ -n "$VERSION" ] || VERSION=0.1
+# CFBundleVersion decides which copy macOS opens when several share the bundle id (Spotlight, the Dock, a URL): a
+# release carries its version, a developer build 0, so a build in out/mac never stands in for the installed release
+# (it did: its "0.6.0-2-g…" sorted above 0.6.0, and it opened in developer mode without the download dialog)
+if [ "${MYLINUX_RELEASE:-0}" = 1 ]; then BUNDLE_VERSION=$(printf '%s' "$VERSION" | sed 's/[^0-9.].*//'); else BUNDLE_VERSION=0; fi
+[ -n "$BUNDLE_VERSION" ] || BUNDLE_VERSION=0
 cat > "$NEW/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -159,6 +164,7 @@ cat > "$NEW/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>myLinux Launcher</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUNDLE_VERSION</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <!-- mylinux-launcher://start: what the myLinux app in the Dock sends when clicked;
@@ -179,6 +185,8 @@ codesign --verify --strict "$NEW" >/dev/null 2>&1 || echo "warning: the app's si
 [ "$IDENTITY" = - ] && echo "signed ad hoc (no signing certificate)" || echo "signed with: $IDENTITY$([ "$HARDENED" = 1 ] && echo ', hardened runtime')"
 rm -rf "$APP"
 mv "$NEW" "$APP"
+# a developer build is not offered to Spotlight and the Dock as "myLinux Launcher" (opening it by path still works)
+[ "${MYLINUX_RELEASE:-0}" = 1 ] || /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$REPO/$APP" 2>/dev/null || true
 echo "$APP ready"
 
 if [ "${1:-}" = --install ]; then
