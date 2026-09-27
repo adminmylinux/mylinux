@@ -8,8 +8,9 @@ enum ServerApps {
     static let files = ["run.sh", "mylinux_apps.py", "catalog.json"]
     /// Where they go in the Mac share; the share is /mnt/mac inside (run-server.sh).
     static let shareFolder = ".mylinux/apps"
-    /// Typed into the terminal; the leading space keeps it out of the history.
-    static let command = " sh /mnt/mac/.mylinux/apps/run.sh"
+    /// Typed into the terminal; the leading space keeps it out of the history. Leaving the app starts a fresh login
+    /// shell, which reads the PATH run.sh keeps in ~/.profile and ~/.bashrc: what was just installed is found.
+    static let command = #" MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh && exec "${SHELL:-/bin/sh}" -l"#
 
     static func url(_ file: String) -> URL { InstallScript.url("server-apps/\(file)") }
 

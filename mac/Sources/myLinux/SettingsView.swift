@@ -1,11 +1,11 @@
 import SwiftUI
 import AppKit
 
-/// The launcher's Settings: a category list on the left (Terminal, Images & runtime, Windows, Storage, Developer)
+/// The launcher's Settings: a category list on the left (Terminal, Images & runtime, Windows, Storage, Updates, Developer)
 /// and one page at a time, each short, with the technical details folded under "Details".
 struct SettingsView: View {
     enum Page: String, CaseIterable, Identifiable {
-        case terminal, images, windows, storage, developer
+        case terminal, images, windows, storage, updates, developer
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -13,6 +13,7 @@ struct SettingsView: View {
             case .images: return "Images & runtime"
             case .windows: return "Windows"
             case .storage: return "Storage"
+            case .updates: return "Updates"
             case .developer: return "Developer"
             }
         }
@@ -22,6 +23,7 @@ struct SettingsView: View {
             case .images: return "shippingbox"
             case .windows: return "macwindow.on.rectangle"
             case .storage: return "internaldrive"
+            case .updates: return "arrow.down.circle"
             case .developer: return "chevron.left.forwardslash.chevron.right"
             }
         }
@@ -63,6 +65,7 @@ struct SettingsView: View {
                     case .images: ImagesSettingsPage()
                     case .windows: WindowsSettingsPage()
                     case .storage: StorageSettingsPage()
+                    case .updates: UpdatesSettingsPage()
                     case .developer: DeveloperSettingsPage()
                     }
                 }
@@ -344,6 +347,89 @@ private struct WindowsSettingsPage: View {
             .frame(width: width, height: height)
             .clipped()
             Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+}
+
+// ---- Updates --------------------------------------------------------------------------------------------------------
+private struct UpdatesSettingsPage: View {
+    @ObservedObject private var updater = LauncherUpdater.shared
+
+    var body: some View {
+        PageHeader(title: "Updates", subtitle: "The launcher updates itself from myLinux's releases.")
+        Card(padding: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 44, height: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("myLinux Launcher").fontWeight(.semibold)
+                        Text(LauncherUpdater.currentVersion.isEmpty ? "Development build" : "Version \(LauncherUpdater.currentVersion)")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    button
+                }
+                status
+            }
+        }
+        if let why = LauncherUpdater.cannotReplace() {
+            Banner(text: why, kind: .warning)
+        } else {
+            Text("Machines keep running while the launcher updates: the new launcher opens and takes over their windows.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        Color.clear.frame(height: 0).onAppear {
+            // a fresh look each time the page opens, unless one is under way or was just made
+            let recent = updater.checkedAt.map { Date().timeIntervalSince($0) < 60 } ?? false
+            switch updater.state {
+            case .idle, .failed: updater.check()
+            case .upToDate, .available: if !recent { updater.check() }
+            default: break
+            }
+        }
+    }
+
+    @ViewBuilder private var button: some View {
+        switch updater.state {
+        case .available(let r):
+            Button("Update to \(r.version)") { updater.update(to: r) }
+                .buttonStyle(.borderedProminent).disabled(LauncherUpdater.cannotReplace() != nil)
+        case .checking, .downloading, .installing:
+            ProgressView().controlSize(.small)
+        default:
+            Button("Check for Updates") { updater.check() }
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch updater.state {
+        case .idle, .checking:
+            Text("Looking for a newer version…").font(.callout).foregroundStyle(.secondary)
+        case .upToDate:
+            Label("Up to date" + (updater.checkedAt.map { ", checked \($0.formatted(date: .omitted, time: .shortened))" } ?? ""), systemImage: "checkmark.circle.fill")
+                .font(.callout).foregroundStyle(.green)
+        case .available(let r):
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Version \(r.version) is available" + (r.size.map { " · \(Fmt.size(Double($0)))" } ?? ""), systemImage: "arrow.down.circle.fill")
+                    .font(.callout.weight(.semibold)).foregroundStyle(Color.accentColor)
+                if let notes = r.notes, !notes.isEmpty {
+                    ScrollView {
+                        Text((try? AttributedString(markdown: notes, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(notes))
+                            .font(.callout).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 180)
+                }
+            }
+        case .downloading(let done, let total):
+            VStack(alignment: .leading, spacing: 6) {
+                if total > 0 { ProgressView(value: Double(done), total: Double(total)) } else { ProgressView() }
+                Text("Downloading \(Fmt.size(Double(done)))" + (total > 0 ? " of \(Fmt.size(Double(total)))" : "") + "…")
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+        case .installing:
+            Text("Installing; the launcher opens again in a moment…").font(.callout).foregroundStyle(.secondary)
+        case .failed(let why):
+            Banner(text: why, kind: .error)
         }
     }
 }

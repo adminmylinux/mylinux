@@ -318,6 +318,23 @@ final class CloudFolderTests: XCTestCase {
         let old = try JSONDecoder().decode(Profile.self, from: Data(#"{"kind":"alpine","name":"A","appsDisk":"/a","shareDir":""}"#.utf8))
         XCTAssertEqual(old.cloudFolders, [], "saved before cloud folders existed")
     }
+    func testNewerVersions() {
+        XCTAssertTrue(LauncherUpdater.isNewer("0.7.17", than: "0.7.16"))
+        XCTAssertTrue(LauncherUpdater.isNewer("0.8", than: "0.7.99"))
+        XCTAssertTrue(LauncherUpdater.isNewer("0.7.10", than: "0.7.9"), "numbers, not text")
+        XCTAssertFalse(LauncherUpdater.isNewer("0.7.16", than: "0.7.16"))
+        XCTAssertFalse(LauncherUpdater.isNewer("0.7.16", than: "0.7.17"))
+        XCTAssertFalse(LauncherUpdater.isNewer("0.7", than: "0.7.0"), "0.7 is 0.7.0")
+        XCTAssertTrue(LauncherUpdater.isNewer("0.7.17", than: "0.7.16-3-gabc1234"), "a development build of 0.7.16 is older")
+    }
+    func testTheUpdateFeedReads() throws {
+        let json = #"{"version": "0.7.17", "sha256": "ab", "size": 27455816, "notes": "**New**", "dmg": "https://github.com/adminmylinux/mylinux-releases/releases/download/launcher-0.7.17/myLinux-Launcher.dmg"}"#
+        let r = try JSONDecoder().decode(LauncherUpdater.Release.self, from: Data(json.utf8))
+        XCTAssertEqual(r.version, "0.7.17")
+        XCTAssertEqual(r.dmg.lastPathComponent, "myLinux-Launcher.dmg")
+        XCTAssertEqual(r.size, 27455816)
+        XCTAssertEqual(r.notes, "**New**")
+    }
     func testOmarchysPastedCommandsAskSudoForThePassword() {
         let s = CloudFolder.pasteScript(["dropbox"])
         XCTAssertTrue(s.hasPrefix("# myLinux:"), "a comment says what the paste is")

@@ -60,6 +60,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
         Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
         MachineLink.serve()                              // the servers' own apps: their state, their requests
+        // MYLINUX_TEST_UPDATE=1 (a scratch MYLINUX_SUPPORT_DIR, with MYLINUX_UPDATE_FEED): check, update, and say how it went
+        if ProcessInfo.processInfo.environment["MYLINUX_TEST_UPDATE"] == "1", ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let u = LauncherUpdater.shared
+            print("update test: running \(LauncherUpdater.currentVersion) from \(Bundle.main.bundlePath), pid \(getpid())"); fflush(stdout)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { u.check() }
+            var last = ""
+            Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+                let st: String
+                switch u.state {
+                case .downloading: st = "downloading"
+                default: st = "\(u.state)"
+                }
+                if st != last { last = st; print("update test: \(st)"); fflush(stdout) }
+                if case .available(let r) = u.state { u.update(to: r) }
+                if case .failed = u.state { exit(1) }
+            }
+        }
         MachineStats.shared.start()                      // CPU, memory and disk under each running machine
         SpaceHotkey.shared.update()                      // ⌘Space: Find and Run in the servers' windows
         let args = CommandLine.arguments

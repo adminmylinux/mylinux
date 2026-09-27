@@ -4,7 +4,8 @@
 #                       which tools/get-image.sh resolves)
 #   launcher-latest     always the newest launcher, so a link never needs changing:
 #                       https://github.com/adminmylinux/mylinux-releases/releases/download/launcher-latest/myLinux-Launcher.dmg
-# Both carry the stable asset name myLinux-Launcher.dmg (+ .sha256).
+# Both carry the stable asset name myLinux-Launcher.dmg (+ .sha256), and latest.json: the version, this version's DMG
+# link, its SHA-256, size and notes, which Settings › Updates in the launcher reads (Updater.swift).
 # Usage: mac/publish-release.sh NOTES_FILE   (the version comes from the v* tag, as in mac/release.sh)
 set -eu
 cd "$(dirname "$0")/.."
@@ -19,14 +20,21 @@ xcrun stapler validate "$SRC" >/dev/null || { echo "$SRC is not notarised" >&2; 
 STAGE=$(mktemp -d); trap 'rm -rf "$STAGE"' EXIT
 cp "$SRC" "$STAGE/myLinux-Launcher.dmg"
 (cd "$STAGE" && shasum -a 256 myLinux-Launcher.dmg > myLinux-Launcher.dmg.sha256)
+SHA=$(cut -d' ' -f1 "$STAGE/myLinux-Launcher.dmg.sha256")
+python3 - "$VERSION" "$SHA" "$(stat -f %z "$STAGE/myLinux-Launcher.dmg")" "$NOTES" "$STAGE/latest.json" "$REPO" <<'PY'
+import json, sys
+version, sha, size, notes, out, repo = sys.argv[1:7]
+json.dump({"version": version, "sha256": sha, "size": int(size), "notes": open(notes).read().strip(),
+           "dmg": f"https://github.com/{repo}/releases/download/launcher-{version}/myLinux-Launcher.dmg"}, open(out, "w"), indent=1)
+PY
 
 # this version
 if gh release view "launcher-$VERSION" -R "$REPO" >/dev/null 2>&1; then
-  gh release upload "launcher-$VERSION" -R "$REPO" --clobber "$STAGE/myLinux-Launcher.dmg" "$STAGE/myLinux-Launcher.dmg.sha256"
+  gh release upload "launcher-$VERSION" -R "$REPO" --clobber "$STAGE/myLinux-Launcher.dmg" "$STAGE/myLinux-Launcher.dmg.sha256" "$STAGE/latest.json"
   gh release edit "launcher-$VERSION" -R "$REPO" --notes-file "$NOTES"
 else
   gh release create "launcher-$VERSION" -R "$REPO" --latest=false --title "myLinux Launcher $VERSION" \
-    --notes-file "$NOTES" "$STAGE/myLinux-Launcher.dmg" "$STAGE/myLinux-Launcher.dmg.sha256"
+    --notes-file "$NOTES" "$STAGE/myLinux-Launcher.dmg" "$STAGE/myLinux-Launcher.dmg.sha256" "$STAGE/latest.json"
 fi
 
 # the newest: new files go up under a temporary name and are renamed over the old ones, so the link is never broken
@@ -35,12 +43,12 @@ LATEST=launcher-latest
   echo; cat "$NOTES"; } > "$STAGE/latest-notes.md"
 if ! gh release view "$LATEST" -R "$REPO" >/dev/null 2>&1; then
   gh release create "$LATEST" -R "$REPO" --latest=false --title "myLinux Launcher (latest: $VERSION)" \
-    --notes-file "$STAGE/latest-notes.md" "$STAGE/myLinux-Launcher.dmg" "$STAGE/myLinux-Launcher.dmg.sha256"
+    --notes-file "$STAGE/latest-notes.md" "$STAGE/myLinux-Launcher.dmg" "$STAGE/myLinux-Launcher.dmg.sha256" "$STAGE/latest.json"
 else
-  for f in myLinux-Launcher.dmg myLinux-Launcher.dmg.sha256; do cp "$STAGE/$f" "$STAGE/new-$f"; done
-  gh release upload "$LATEST" -R "$REPO" --clobber "$STAGE/new-myLinux-Launcher.dmg" "$STAGE/new-myLinux-Launcher.dmg.sha256"
+  for f in myLinux-Launcher.dmg myLinux-Launcher.dmg.sha256 latest.json; do cp "$STAGE/$f" "$STAGE/new-$f"; done
+  gh release upload "$LATEST" -R "$REPO" --clobber "$STAGE/new-myLinux-Launcher.dmg" "$STAGE/new-myLinux-Launcher.dmg.sha256" "$STAGE/new-latest.json"
   ID=$(gh api "repos/$REPO/releases/tags/$LATEST" --jq .id)
-  for f in myLinux-Launcher.dmg myLinux-Launcher.dmg.sha256; do
+  for f in myLinux-Launcher.dmg myLinux-Launcher.dmg.sha256 latest.json; do
     old=$(gh api "repos/$REPO/releases/$ID/assets" --jq ".[] | select(.name == \"$f\") | .id")
     new=$(gh api "repos/$REPO/releases/$ID/assets" --jq ".[] | select(.name == \"new-$f\") | .id")
     [ -z "$old" ] || gh api -X DELETE "repos/$REPO/releases/assets/$old" >/dev/null
@@ -53,5 +61,7 @@ fi
 URL="https://github.com/$REPO/releases/download/$LATEST/myLinux-Launcher.dmg"
 GOT=$(curl -fsSL "$URL.sha256" | cut -d' ' -f1); WANT=$(cut -d' ' -f1 "$STAGE/myLinux-Launcher.dmg.sha256")
 [ "$GOT" = "$WANT" ] || { echo "the latest link serves $GOT, expected $WANT" >&2; exit 1; }
+GOTV=$(curl -fsSL "https://github.com/$REPO/releases/download/$LATEST/latest.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+[ "$GOTV" = "$VERSION" ] || { echo "latest.json says $GOTV, expected $VERSION" >&2; exit 1; }
 echo "published $VERSION: https://github.com/$REPO/releases/tag/launcher-$VERSION"
 echo "latest link: $URL"
