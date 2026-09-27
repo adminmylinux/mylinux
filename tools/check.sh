@@ -29,6 +29,7 @@ for a in json.load(open("server-apps/catalog.json"))["apps"]:
     if a.get("id") in ids: miss.append("unique id")
     ids.add(a.get("id"))
     if not any(a.get(k) for k in ("apk", "apt", "alpine", "debian", "script")): miss.append("a way to install it")
+    if a.get("icon") and not all(c in "0123456789abcdef" for c in a["icon"].lower()): miss.append("a hex icon")
     if miss: print("CATALOG:", a.get("id"), "has no", ", ".join(miss)); bad += 1
 print("ok" if not bad else f"{bad} file(s) failed"); sys.exit(1 if bad else 0)
 PY

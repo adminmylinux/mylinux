@@ -41,6 +41,6 @@ for rc in "$HOME/.profile" "$HOME/.bashrc"; do
 done
 # nothing compiled into the Mac's folder
 export PYTHONDONTWRITEBYTECODE=1
-python3 "$HERE/mylinux_apps.py" "$HERE/catalog.json"
+python3 "$HERE/mylinux_apps.py" "$HERE/catalog.json" "$@"
 # the shell this was started from still has the PATH it began with: a new program is found in a new shell
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) [ -n "${MYLINUX_APPS_RELOGIN:-}" ] || echo "myLinux Apps: new programs are found in a new shell (exec \$SHELL -l)" ;; esac

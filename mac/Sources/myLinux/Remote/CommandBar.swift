@@ -46,7 +46,7 @@ final class CommandBar: NSView {
     static let height: CGFloat = 26
     /// The window's keys, as the line shows them.
     static let keys: [(String, String)] = [("⌘Space", "find & run"), ("⌘↩", "split"), ("⇧⌘↩", "browser"), ("⌘T", "tab"),
-                                           ("⌘W", "close pane"), ("⌘P", "menu"), ("⇧⌘P", "install"), ("⌘+ ⌘−", "text size"), ("⌘K", "clear")]
+                                           ("⌘W", "close pane"), ("⌘P", "menu"), ("⇧⌘A", "apps"), ("⌘+ ⌘−", "text size"), ("⌘K", "clear")]
     private let label = NSTextField(labelWithString: "")
     private let menuButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private var commands: [Int: MachineCommand] = [:]

@@ -129,7 +129,10 @@ a catalog change on `main` reaches every machine the next time Apps… opens. Th
 the launcher writes beside the app (this Mac's cloud folders and the machine's); Enter adds or takes one away after a
 confirmation: the app writes `.mylinux/cloud-request.json` and quits, and the launcher (its 4-second machine watch,
 `RunManager`) saves the machine's folders and restarts it, after which they are mounted as above. `run.sh`'s block in
-`~/.profile` and `~/.bashrc` also has the aliases `cc` and `cx`. **Show
+`~/.profile` and `~/.bashrc` also has the aliases `cc` and `cx`. The screen is a category sidebar (← → change it while typing
+in the search), the list, and a details panel with what Enter runs or installs and Run / Install / Update / Remove
+buttons, in Nerd Font symbols, which Ghostty has built in (`MYLINUX_APPS_PLAIN=1` for plain ones elsewhere);
+`mylinux-apps claude` opens with that search. Narrow terminals lose the details, then the sidebar. **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
 forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says

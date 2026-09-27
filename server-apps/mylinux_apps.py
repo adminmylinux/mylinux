@@ -24,11 +24,34 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Static
+from textual.widgets import Button, DataTable, Footer, Header, Input, OptionList, Static
+from rich.markup import escape
+from rich.text import Text
 
 HOME = Path.home()
 # where the installers put things, found also when the shell's PATH does not have them yet
 EXTRA_PATH = [HOME / ".local/bin", HOME / ".bun/bin", HOME / ".npm-global/bin", HOME / ".cargo/bin", Path("/usr/local/bin")]
+
+# ---- the look: Nerd Font symbols, which Ghostty has built in (MYLINUX_APPS_PLAIN=1 for a terminal without them) ------
+PLAIN = os.environ.get("MYLINUX_APPS_PLAIN") == "1"
+GLYPHS = {
+    "search": "f002", "run": "f04b", "install": "f019", "remove": "f1f8", "update": "f021", "add": "f0c2",
+    "installed": "f058", "available": "f10c", "unavailable": "f05e", "pending": "f017",
+    "All": "f00a", "Installed": "f058", "Cloud drives": "f0c2", "Agents": "f06a9", "System": "f0e4", "Terminal": "f120",
+    "Files": "f07c", "Editors": "f040", "Code": "f121", "Tools": "f0ad", "Other": "f013",
+}
+PLAIN_GLYPHS = {"installed": "●", "available": "○", "unavailable": "–", "pending": "◐", "run": "▶", "install": "↓",
+                "remove": "✕", "update": "↻", "add": "+", "search": "›"}
+CATEGORIES = ["All", "Installed", "Cloud drives", "Agents", "System", "Terminal", "Files", "Editors", "Code", "Tools"]
+ACCENT, MUTED, GOOD, WAIT = "#2563eb", "#94a3b8", "#22c55e", "#eab308"
+
+
+def glyph(name: str | None, code: str = "") -> str:
+    """A symbol by its name (or an app's own code point, hex), or in plain mode a simple character."""
+    if PLAIN:
+        return PLAIN_GLYPHS.get(name or "", "")
+    code = code or GLYPHS.get(name or "", "")
+    return chr(int(code, 16)) if code else ""
 
 
 def distribution() -> str:
@@ -64,6 +87,7 @@ class AppEntry:
     steps: list[str]
     env: dict[str, str] = field(default_factory=dict)
     found: str | None = None          # the program found on the PATH, when installed
+    icon: str = ""                    # its own Nerd Font symbol (hex), else its category's
     cloud: dict | None = None         # a cloud drive: {"id", "title", "guest", "onMac"}
     chosen: bool = False              # a cloud drive the machine has (attached at its start)
 
@@ -93,7 +117,7 @@ def load_catalog(path: Path, distro: str) -> list[AppEntry]:
         apps.append(AppEntry(id=a["id"], name=a["name"], category=a.get("category", "Other"),
                              description=a.get("description", ""), bins=list(a.get("bin", [])),
                              run=a.get("run", a["id"]), packages=packages, steps=steps,
-                             env=dict(a.get("env", {})) | dict(a.get(f"{distro}_env", {}))))
+                             env=dict(a.get("env", {})) | dict(a.get(f"{distro}_env", {})), icon=a.get("icon", "")))
     return apps
 
 
@@ -106,9 +130,10 @@ def load_cloud(state: Path) -> tuple[list[AppEntry], str]:
     chosen = set(data.get("selected", []))
     drives = []
     for f in data.get("folders", []):
+        icons = {"dropbox": "f16b", "onedrive": "f03ca", "icloud": "f179", "googledrive": "f02b6"}
         drives.append(AppEntry(id="cloud:" + f["id"], name=f["title"], category="Cloud drives", description="",
                                bins=[], run=f"cd ~/{f['guest']} && ls", packages=[], steps=[],
-                               cloud=f, chosen=f["id"] in chosen))
+                               cloud=f, chosen=f["id"] in chosen, icon=icons.get(f["id"], "")))
     return drives, data.get("machine", "")
 
 
@@ -117,10 +142,10 @@ def describe_cloud(a: AppEntry) -> str:
     if a.chosen and a.installed:
         return f"Your Mac's {f['title']}, in ~/{f['guest']}"
     if a.chosen:
-        return "Chosen: attached at the machine's next start"
+        return f"Your Mac's {f['title']}, at the next start"
     if f.get("onMac"):
-        return f"Your Mac's {f['title']} folder, as ~/{f['guest']} (restarts the machine)"
-    return "Not on this Mac"
+        return f"Your Mac's {f['title']}, as ~/{f['guest']}"
+    return f"Sign in to {f['title']} on the Mac first"
 
 
 def install_script(app: AppEntry, distro: str) -> str:
@@ -154,15 +179,17 @@ def refresh(apps: list[AppEntry]) -> None:
 
 
 class Confirm(ModalScreen[bool]):
-    """What is about to run, and Install / Cancel."""
+    """What is about to happen, and OK / Cancel."""
     BINDINGS = [Binding("escape", "cancel", "Cancel"), Binding("enter", "ok", "OK", show=False)]
-    DEFAULT_CSS = """
-    Confirm { align: center middle; }
-    #box { width: 90; max-width: 95%; height: auto; max-height: 90%; border: round $accent; background: $surface; padding: 1 2; }
-    #title { text-style: bold; margin-bottom: 1; }
-    #script { color: $text-muted; margin-bottom: 1; }
-    #buttons { height: auto; align-horizontal: right; }
-    #buttons Button { margin-left: 2; }
+    DEFAULT_CSS = f"""
+    Confirm {{ align: center middle; background: #0b1220 70%; }}
+    #box {{ width: 90; max-width: 95%; height: auto; max-height: 90%; border: round {ACCENT}; background: #182235; padding: 1 2; }}
+    #title {{ text-style: bold; margin-bottom: 1; }}
+    #script {{ color: {MUTED}; margin-bottom: 1; }}
+    #buttons {{ height: auto; align-horizontal: right; }}
+    #buttons Button {{ margin-left: 2; border: none; height: 1; min-width: 12; background: #243247; }}
+    #buttons Button:hover {{ background: #334155; }}
+    #buttons #ok {{ background: {ACCENT}; color: #ffffff; text-style: bold; }}
     """
 
     def __init__(self, title: str, script: str, ok: str) -> None:
@@ -171,14 +198,14 @@ class Confirm(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="box"):
-            yield Static(self.title_text, id="title")
+            yield Static(self.title_text, id="title", markup=False)
             yield Static(self.script, id="script", markup=False)
             with Horizontal(id="buttons"):
                 yield Button("Cancel", id="cancel")
-                yield Button(self.ok_label, id="ok", variant="primary")
+                yield Button(self.ok_label, id="ok")
 
     def on_mount(self) -> None:
-        self.query_one("#ok", Button).focus()
+        self.query_one("#ok", Button).focus()       # Enter confirms, Escape cancels
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "ok")
@@ -192,25 +219,57 @@ class Confirm(ModalScreen[bool]):
 
 class MyLinuxApps(App):
     TITLE = "myLinux Apps"
-    CSS = """
-    #search { margin: 0 1; }
-    DataTable { height: 1fr; margin: 0 1; }
-    #detail { height: auto; min-height: 2; margin: 0 1; padding: 0 1; color: $text-muted; }
+    CSS = f"""
+    Screen {{ background: #111827; color: #e5e7eb; }}
+    Header {{ background: #182235; color: #e5e7eb; }}
+    Footer {{ background: #182235; }}
+    #body {{ height: 1fr; }}
+    #sidebar {{ width: 26; height: 1fr; background: #182235; border: none; padding: 1 1; }}
+    #sidebar:focus {{ border: none; }}
+    #sidebar > .option-list--option-highlighted {{ background: {ACCENT}; color: #ffffff; text-style: bold; }}
+    #sidebar > .option-list--option-hover {{ background: #243247; }}
+    #main {{ width: 1fr; height: 1fr; padding: 0 1; }}
+    #search {{ margin: 1 0; border: round #334155; background: #111827; }}
+    #search:focus {{ border: round {ACCENT}; }}
+    #apps {{ height: 1fr; background: #111827; overflow-x: hidden; }}
+    #apps > .datatable--cursor {{ background: {ACCENT}; color: #ffffff; }}
+    #apps > .datatable--header {{ background: #111827; color: {MUTED}; }}
+    #apps > .datatable--hover {{ background: #1f2a3d; }}
+    #details {{ width: 46; height: 1fr; border: round #334155; padding: 1 2; margin: 1 1 1 0; background: #111827; }}
+    #info {{ height: 1fr; }}
+    #actions {{ height: auto; }}
+    #actions Button {{ border: none; height: 1; min-width: 10; margin: 0 1 0 0; background: #243247; color: #e5e7eb; }}
+    #actions Button:hover {{ background: #334155; }}
+    #actions .primary {{ background: {ACCENT}; color: #ffffff; text-style: bold; }}
+    #status {{ height: 1; padding: 0 2; background: #111827; color: {MUTED}; }}
     """
-    # the search field keeps the keyboard: arrows move in the list, Enter runs or installs, Ctrl chords do the rest
+    # the search field keeps the keyboard: ↑↓ move in the list, ←→ change the category, Enter runs or installs
     BINDINGS = [
         Binding("down", "down", "Down", show=False, priority=True),
         Binding("up", "up", "Up", show=False, priority=True),
+        Binding("right", "category(1)", "Category", show=False, priority=True),
+        Binding("left", "category(-1)", "Category", show=False, priority=True),
         Binding("pagedown", "page_down", "Page down", show=False, priority=True),
         Binding("pageup", "page_up", "Page up", show=False, priority=True),
+        Binding("enter", "open", "Run / Install", priority=True),
         Binding("ctrl+u", "install", "Update", priority=True),
         Binding("ctrl+r", "remove", "Remove", priority=True),
         Binding("escape", "clear", "Clear / Quit", priority=True),
         Binding("ctrl+q", "quit", "Quit", priority=True),
     ]
 
-    def __init__(self, catalog: Path) -> None:
+    ENABLE_COMMAND_PALETTE = False
+    MAIN_KEYS = {"down", "up", "category", "page_down", "page_up", "open", "install", "remove", "clear"}
+
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        # with a dialog open, its own keys (Enter, Escape) are its own
+        if action in self.MAIN_KEYS and isinstance(self.screen, ModalScreen):
+            return False
+        return True
+
+    def __init__(self, catalog: Path, query: str = "") -> None:
         super().__init__()
+        self.query0 = query
         self.distro = distribution()
         self.cloud_state = catalog.parent.parent / "cloud.json"
         self.cloud_request = catalog.parent.parent / "cloud-request.json"
@@ -218,45 +277,124 @@ class MyLinuxApps(App):
         self.apps = drives + load_catalog(catalog, self.distro)
         refresh(self.apps)
         self.shown: list[AppEntry] = []
+        self.categories = [c for c in CATEGORIES if c in ("All", "Installed") or any(a.category == c for a in self.apps)]
+        self.category = "All"
         self.sub_title = f"{'Alpine' if self.distro == 'alpine' else 'Debian'} · {os.uname().nodename}"
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Input(placeholder="Search apps (claude, editor, git…)", id="search")
-        yield DataTable(id="apps", cursor_type="row", zebra_stripes=True)
-        yield Static("", id="detail")
+        with Horizontal(id="body"):
+            yield OptionList(id="sidebar")
+            with Vertical(id="main"):
+                yield Input(value=self.query0, placeholder="Search apps: claude, editor, git…", id="search")
+                yield DataTable(id="apps", cursor_type="row", show_header=False)
+            with Vertical(id="details"):
+                yield Static("", id="info")
+                with Horizontal(id="actions"):
+                    yield Button("", id="run")
+                    yield Button("", id="install")
+                    yield Button("", id="remove")
+        yield Static("", id="status")
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        table.add_columns("", "App", "Category", "What it is")
+        # the list, the categories and the buttons answer the mouse; the keyboard stays in the search field
+        for w in (self.query_one("#apps", DataTable), self.query_one("#sidebar", OptionList), *self.query("#actions Button")):
+            w.can_focus = False
+        self.query_one("#apps", DataTable).add_columns("state", "app", "what")
+        self.fill_sidebar()
         self.fill()
         self.query_one(Input).focus()
+        self.fit(self.size.width)
+
+    # ---- narrow terminals: the details, then the categories, fold away -------------------------------------------
+    def on_resize(self, event) -> None:
+        self.fit(event.size.width)
+
+    def fit(self, width: int) -> None:
+        self.query_one("#details").display = width >= 110
+        self.query_one("#sidebar").display = width >= 74
+
+    # ---- the categories ------------------------------------------------------------------------------------------
+    def count(self, category: str) -> int:
+        return sum(1 for a in self.apps if self.in_category(a, category))
+
+    def in_category(self, a: AppEntry, category: str) -> bool:
+        if category == "All":
+            return True
+        if category == "Installed":
+            return a.installed and a.cloud is None
+        return a.category == category
+
+    def fill_sidebar(self) -> None:
+        side = self.query_one("#sidebar", OptionList)
+        keep = self.categories.index(self.category)
+        side.clear_options()
+        for c in self.categories:
+            label = Text.assemble((f"{glyph(c)}  " if glyph(c) else "", ""), (f"{c:<14}", "bold" if c == self.category else ""),
+                                  (f"{self.count(c):>3}", MUTED))
+            side.add_option(label)
+        side.highlighted = keep
+
+    def action_category(self, step: int) -> None:
+        i = (self.categories.index(self.category) + step) % len(self.categories)
+        self.set_category(self.categories[i])
+
+    def set_category(self, category: str) -> None:
+        if category != self.category:
+            self.category = category
+            self.fill_sidebar()
+            self.fill()
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id == "sidebar" and event.option_index is not None and event.option_index < len(self.categories):
+            self.set_category(self.categories[event.option_index])
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.on_option_list_option_highlighted(event)
 
     # ---- the list ----------------------------------------------------------------------------------------------------
     def matches(self, a: AppEntry, q: str) -> bool:
         return not q or any(q in s.lower() for s in (a.name, a.id, a.category, a.description, " ".join(a.bins)))
 
+    def state(self, a: AppEntry) -> tuple[str, str, str]:
+        """Its state: symbol name, colour, words."""
+        if a.cloud is not None:
+            if a.chosen and a.installed:
+                return "installed", GOOD, f"In ~/{a.cloud['guest']}"
+            if a.chosen:
+                return "pending", WAIT, "Attached at the next start"
+            return ("available", "", "On your Mac") if a.installable else ("unavailable", MUTED, "Not on this Mac")
+        if a.installed:
+            return "installed", GOOD, "Installed"
+        if a.installable:
+            return "available", "", "Not installed"
+        return "unavailable", MUTED, f"Not packaged for {'Alpine' if self.distro == 'alpine' else 'Debian'}"
+
     def fill(self, keep: str | None = None) -> None:
         q = self.query_one(Input).value.strip().lower()
-        table = self.query_one(DataTable)
+        table = self.query_one("#apps", DataTable)
+        current = self.current()
+        keep = keep or (current.id if current else None)
         table.clear()
         # the cloud drives on top; then installed, then what can be installed here, then the rest; by category and name
         order = lambda a: (-1 if a.cloud is not None else 0 if a.installed else 1 if a.installable else 2, a.category, a.name.lower())
-        self.shown = sorted((a for a in self.apps if self.matches(a, q)), key=order)
+        # a search looks in every category
+        self.shown = sorted((a for a in self.apps if (q or self.in_category(a, self.category)) and self.matches(a, q)), key=order)
         for a in self.shown:
-            if a.cloud is not None and a.chosen and not a.installed:
-                mark = "[yellow]◐[/]"
-            else:
-                mark = "[green]●[/]" if a.installed else ("○" if a.installable else "[dim]–[/]")
-            name = a.name if a.installable or a.installed else f"[dim]{a.name}[/]"
-            table.add_row(mark, name, a.category, a.description, key=a.id)
-        if keep and any(a.id == keep for a in self.shown):
-            table.move_cursor(row=[a.id for a in self.shown].index(keep))
+            name_style = "bold" if a.installable or a.installed else f"bold {MUTED}"
+            sym, colour, _ = self.state(a)
+            icon = glyph(None, a.icon) or glyph(a.category)
+            table.add_row(Text(glyph(sym), style=colour or "#e5e7eb"),
+                          Text.assemble((f"{icon}  " if icon else "", MUTED if not (a.installable or a.installed) else ""), (a.name, name_style)),
+                          Text(a.description, style=MUTED), key=a.id)
+        ids = [a.id for a in self.shown]
+        if keep in ids:
+            table.move_cursor(row=ids.index(keep))
         self.show_detail()
 
     def current(self) -> AppEntry | None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#apps", DataTable)
         if not self.shown or table.cursor_row is None or table.cursor_row >= len(self.shown):
             return None
         return self.shown[table.cursor_row]
@@ -265,23 +403,65 @@ class MyLinuxApps(App):
         a = self.current()
         programs = [x for x in self.apps if x.cloud is None]
         head = f"{sum(1 for x in programs if x.installed)} of {len(programs)} installed"
+        run, install, remove = (self.query_one(f"#{i}", Button) for i in ("run", "install", "remove"))
+        for b in (run, install, remove):
+            b.display = False
+            b.remove_class("primary")
         if a is None:
-            text = f"{head} · nothing matches"
-        elif a.cloud is not None:
-            text = f"{head} · " + ("Enter takes it away" if a.chosen else "Enter adds it" if a.installable else "sign in to it on the Mac first")
-        elif a.installed:
-            text = f"{head} · Enter runs: {a.command()}" + (" · Ctrl-R removes" if remove_script(a, self.distro) else "")
-        elif a.installable:
-            text = f"{head} · Enter installs {a.name}"
+            self.query_one("#info", Static).update(f"[{MUTED}]Nothing matches “{escape(self.query_one(Input).value)}”.[/]")
+            self.query_one("#status", Static).update(f"{head} · nothing matches")
+            return
+        sym, colour, words = self.state(a)
+        icon = glyph(None, a.icon) or glyph(a.category)
+        lines = [f"[b]{icon}  {escape(a.name)}[/b]" if icon else f"[b]{escape(a.name)}[/b]",
+                 f"[{MUTED}]{glyph(a.category)}  {escape(a.category)}[/]", "",
+                 f"[{colour or '#e5e7eb'}]{glyph(sym)}  {escape(words)}[/]"]
+        lines += ["", escape(a.description), ""] if a.cloud is None else [""]
+        if a.cloud is not None:
+            f = a.cloud
+            lines += [f"[{MUTED}]Your Mac's {escape(f['title'])} folder as ~/{escape(f['guest'])}; the Mac keeps it in sync."
+                      f" Adding or taking it away restarts the machine.[/]"]
+            if a.chosen:
+                remove.label = f"{glyph('remove')}  Take Away"; remove.display = True
+            elif a.installable:
+                install.label = f"{glyph('add')}  Add"; install.display = True; install.add_class("primary")
+            hint = "Enter takes it away" if a.chosen else "Enter adds it" if a.installable else "sign in to it on the Mac first"
         else:
-            text = f"{head} · {a.name} is not packaged for {'Alpine' if self.distro == 'alpine' else 'Debian'}"
-        self.query_one("#detail", Static).update(text)
+            if a.installed:
+                lines += [f"[{MUTED}]Runs[/]", f"  {escape(a.command())}", ""]
+            if a.installable:
+                lines += [f"[{MUTED}]{'Updates' if a.installed else 'Installs'} with[/]"]
+                lines += [f"  [{MUTED}]{escape(l)}[/]" for l in install_script(a, self.distro).splitlines()]
+            if a.installed:
+                run.label = f"{glyph('run')}  Run"; run.display = True; run.add_class("primary")
+                if a.installable:
+                    install.label = f"{glyph('update')}  Update"; install.display = True
+                if remove_script(a, self.distro):
+                    remove.label = f"{glyph('remove')}  Remove"; remove.display = True
+                hint = f"Enter runs {a.command()}" + (" · ^R removes" if remove_script(a, self.distro) else "")
+            elif a.installable:
+                install.label = f"{glyph('install')}  Install"; install.display = True; install.add_class("primary")
+                hint = f"Enter installs {a.name}"
+            else:
+                hint = words
+        self.query_one("#info", Static).update("\n".join(lines))
+        where = f" · {self.category}" if not self.query_one(Input).value.strip() else " · all categories"
+        self.query_one("#status", Static).update(f"{head}{where} · {escape(hint)}")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        a = self.current()
+        if a is None:
+            return
+        if event.button.id == "run":
+            self.run_app(a)
+        elif event.button.id == "install":
+            self.toggle_cloud(a) if a.cloud is not None else self.action_install()
+        elif event.button.id == "remove":
+            self.action_remove()
+        self.query_one(Input).focus()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self.fill()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.action_open()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         self.show_detail()
@@ -290,21 +470,23 @@ class MyLinuxApps(App):
         self.action_open()
 
     def action_down(self) -> None:
-        self.query_one(DataTable).action_cursor_down()
+        self.query_one("#apps", DataTable).action_cursor_down()
 
     def action_up(self) -> None:
-        self.query_one(DataTable).action_cursor_up()
+        self.query_one("#apps", DataTable).action_cursor_up()
 
     def action_page_down(self) -> None:
-        self.query_one(DataTable).action_page_down()
+        self.query_one("#apps", DataTable).action_page_down()
 
     def action_page_up(self) -> None:
-        self.query_one(DataTable).action_page_up()
+        self.query_one("#apps", DataTable).action_page_up()
 
     def action_clear(self) -> None:
         field = self.query_one(Input)
         if field.value:
             field.value = ""
+        elif self.category != "All":
+            self.set_category("All")
         else:
             self.exit()
         field.focus()
@@ -363,6 +545,7 @@ class MyLinuxApps(App):
             if ok:
                 self.hand_over(script, f"{verb}ing {a.name}", wait=True)
                 refresh(self.apps)
+                self.fill_sidebar()
                 self.fill(keep=a.id)
                 self.notify(f"{a.name} is installed." if a.installed else f"{a.name} did not install; see the output above.",
                             severity="information" if a.installed else "error")
@@ -384,6 +567,7 @@ class MyLinuxApps(App):
             if ok:
                 self.hand_over(script, f"Removing {a.name}", wait=True)
                 refresh(self.apps)
+                self.fill_sidebar()
                 self.fill(keep=a.id)
         self.push_screen(Confirm(f"Remove {a.name}?", script, "Remove"), answered)
 
@@ -415,7 +599,8 @@ class MyLinuxApps(App):
 def main() -> None:
     here = Path(__file__).resolve().parent
     catalog = Path(sys.argv[1]) if len(sys.argv) > 1 else here / "catalog.json"
-    MyLinuxApps(catalog).run()
+    # mylinux-apps claude: starts with that search
+    MyLinuxApps(catalog, " ".join(sys.argv[2:])).run()
 
 
 if __name__ == "__main__":

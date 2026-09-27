@@ -355,6 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { c.testShowBrowser(URL(string: ProcessInfo.processInfo.environment["MYLINUX_TEST_URL"] ?? "http://localhost:8000/")!) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 9.0) { c.testScreenshotToMachine() }
             }
+            if let w = ProcessInfo.processInfo.environment["MYLINUX_TEST_WAIT"].flatMap(Double.init) { wait = w }
             DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
                 let n = c.window?.windowNumber ?? 0
                 let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); t.arguments = ["-x", "-l", String(n), args[i + 1]]

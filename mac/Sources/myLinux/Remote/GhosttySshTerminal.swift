@@ -81,6 +81,8 @@ final class GhosttySshTerminal: NSView, MachineTerminal {
         // MYLINUX_LOCAL_SHELL=1: a local shell instead of ssh, for looking at the window without a machine
         if ProcessInfo.processInfo.environment["MYLINUX_LOCAL_SHELL"] == "1" {
             command = GhosttySshTerminal.commandLine("/bin/sh", ["-c", "printf 'Xabcdefghij first column check\\n0123456789 second line\\n'; exec /bin/sh -i"])
+            // MYLINUX_LOCAL_COMMAND: that command instead (a terminal app drawn by this Ghostty, for its pictures)
+            if let c = ProcessInfo.processInfo.environment["MYLINUX_LOCAL_COMMAND"] { command = GhosttySshTerminal.commandLine("/bin/sh", ["-c", c]) }
         }
         surfaceView.delegate = self
         surfaceView.configuration = TerminalSurfaceOptions(
