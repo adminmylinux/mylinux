@@ -122,7 +122,16 @@ asks the launcher through MachineLink, also with every key going to the machine)
 its page, opens the dialog. myLinux gets them mounted through its root console at every start (its root filesystem is
 in RAM, so no fstab), bound into the apps chroot and linked as `~/Dropbox`; for Omarchy the dialog shows the commands
 to paste once into a terminal inside (sudo asks for the password), which write the `/etc/fstab` lines. Dropbox has no
-Linux client for ARM, so the Mac's own Dropbox app is the way in. **Show
+Linux client for ARM, so the Mac's own Dropbox app is the way in. **Apps…** (⇧⌘A, in the CMD menu) opens
+**myLinux Apps** in the terminal: a [Textual](https://textual.textualize.io) app (`server-apps/`) that lists what can
+run on the machine, installed ones first, with a search; Enter runs a program (the app hands the terminal over and
+comes back when it ends) or installs it after showing the commands, Ctrl-R removes one that is only packages.
+`catalog.json` says per app which program shows it is installed, how it starts, and how it installs: Alpine's and
+Debian's packages, then lines of shell (Claude Code's and Codex's own installers, npm, Tailscale's service); an app a
+distribution does not package is listed dimmed there. The launcher copies the three files from `main` (or the copy
+inside the app) into the Mac share's `.mylinux/apps` and types `sh /mnt/mac/.mylinux/apps/run.sh`; the first run
+installs the distribution's Textual (`py3-textual`, `python3-textual`) and adds `mylinux-apps` to `~/.local/bin`, so
+a catalog change on `main` reaches every machine the next time Apps… opens. **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
 forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says

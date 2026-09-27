@@ -83,6 +83,9 @@ done
 cp run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh "$NEW/Contents/Resources/runtime/"
 # Install Script… (a server's terminal) loads <distro>_install.sh from GitHub; these copies stand in when it can't
 cp debian_install.sh alpine_install.sh "$NEW/Contents/Resources/"
+# myLinux Apps (Apps… in a server's terminal) comes from GitHub too; this copy stands in when it can't
+mkdir -p "$NEW/Contents/Resources/server-apps"
+cp server-apps/run.sh server-apps/mylinux_apps.py server-apps/catalog.json "$NEW/Contents/Resources/server-apps/"
 # GhosttyKit's resources (Ghostty's resource folder and terminfo), found there by its patched lookup
 cp -R "$(dirname "$BIN")/GhosttyKit_GhosttyTerminal.bundle" "$NEW/Contents/Resources/"
 mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session "$NEW/Contents/Resources/runtime/omarchy/"

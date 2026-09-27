@@ -11,16 +11,25 @@ step "shell scripts: sh -n"
 find board/overlay tools omarchy -type f \( -name '*.sh' -o -path '*/usr/bin/*' -o -path '*/init.d/*' \) 2>/dev/null | while read -r f; do
   head -1 "$f" | grep -q '^#!.*sh' && { sh -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; }
 done
-for f in run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh debian_install.sh alpine_install.sh build.sh mac/build-app.sh; do bash -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; done
+for f in run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh debian_install.sh alpine_install.sh build.sh mac/build-app.sh server-apps/run.sh; do bash -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; done
 if [ -s "$FAILED" ]; then : > "$FAILED"; fail=$((fail + 1)); else echo ok; fi
 
 step "python: ast"
 python3 - <<'PY' || fail=$((fail + 1))
 import ast, glob, sys
 bad = 0
-for f in glob.glob("tools/**/*.py", recursive=True) + ["omarchy/session/omarchy-session"]:
+for f in glob.glob("tools/**/*.py", recursive=True) + glob.glob("server-apps/*.py") + ["omarchy/session/omarchy-session"]:
     try: ast.parse(open(f).read(), f)
     except SyntaxError as e: print("SYNTAX:", f, e); bad += 1
+# myLinux Apps' catalog: every app named, found by a program, runnable, and installable somewhere
+import json
+ids = set()
+for a in json.load(open("server-apps/catalog.json"))["apps"]:
+    miss = [k for k in ("id", "name", "category", "description", "bin", "run") if not a.get(k)]
+    if a.get("id") in ids: miss.append("unique id")
+    ids.add(a.get("id"))
+    if not any(a.get(k) for k in ("apk", "apt", "alpine", "debian", "script")): miss.append("a way to install it")
+    if miss: print("CATALOG:", a.get("id"), "has no", ", ".join(miss)); bad += 1
 print("ok" if not bad else f"{bad} file(s) failed"); sys.exit(1 if bad else 0)
 PY
 

@@ -90,7 +90,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                       e.modifierFlags.intersection([.command, .shift, .option, .control]) == [.command] else { return e }
                 self.newTerminal(); return nil
             }
-            // ⌘P opens the CMD menu, ⇧⌘P Install Script…, ⌘W closes the pane with the keyboard (the browser, or one
+            // ⌘P opens the CMD menu, ⇧⌘P Install Script…, ⇧⌘A Apps…, ⌘W closes the pane with the keyboard (the browser, or one
             // terminal of several); with a single terminal ⌘W goes on to close the window as usual
             keyMonitorP = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
                 guard let self, e.window === self.window, let key = e.charactersIgnoringModifiers?.lowercased() else { return e }
@@ -99,6 +99,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                 // ⌥Space: find and run (Omarchy's Super+Space; ⌘Space stays Spotlight's)
                 if e.keyCode == 49, mods == [.option] { self.showPalette(); return nil }
                 if key == "p", mods == [.command, .shift] { self.installScript(); return nil }
+                if key == "a", mods == [.command, .shift], self.profile.launcherMachine { self.openApps(); return nil }
                 if key == "w", mods == [.command], self.closeFocusedPane() { return nil }
                 return e
             }
@@ -332,6 +333,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             pop.menu?.addItem(find)
             let install = NSMenuItem(title: "Install Script…", action: #selector(installScript), keyEquivalent: "p"); install.keyEquivalentModifierMask = [.command, .shift]; install.target = self
             pop.menu?.addItem(install)
+            let apps = NSMenuItem(title: "Apps…", action: #selector(openApps), keyEquivalent: "a"); apps.keyEquivalentModifierMask = [.command, .shift]; apps.target = self
+            apps.toolTip = "myLinux Apps: find, run and install programs in the terminal"
+            pop.menu?.addItem(apps)
             pop.menu?.addItem(.separator())
             let tab = NSMenuItem(title: "New Terminal Tab", action: #selector(newTerminal), keyEquivalent: "t"); tab.target = self; pop.menu?.addItem(tab)
             let term = NSMenuItem(title: "Split Terminal", action: #selector(splitTerminal), keyEquivalent: "\r"); term.target = self; pop.menu?.addItem(term)
@@ -531,6 +535,21 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         sheetWindow = sheet
         window.beginSheet(sheet) { _ in }
     }
+    /// myLinux Apps (ServerApps): the app into the Mac share, then its line into the terminal.
+    @objc func openApps() {
+        guard let t = ssh else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if let problem = await ServerApps.copy(to: self.profile.shareMacPath) {
+                let alert = NSAlert(); alert.messageText = "myLinux Apps could not start"; alert.informativeText = problem
+                if let window = self.window { alert.beginSheetModal(for: window, completionHandler: nil) } else { alert.runModal() }
+                return
+            }
+            t.type(ServerApps.command + "\n")
+            self.window?.makeFirstResponder(t.keyView)
+        }
+    }
+
     /// The restart for new cloud folders, step by step with its seconds, over this window.
     private func showRestartProgress() {
         guard let window, sheetWindow == nil else { return }

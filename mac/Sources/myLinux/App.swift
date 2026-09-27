@@ -236,6 +236,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 wait = 13
             }
+            // MYLINUX_TEST_KEYS=apps: Apps… once the terminal is up, and what the terminal shows after
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_KEYS"] == "apps" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { print("Apps… pressed"); c.openApps() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 17) {
+                    let dir = URL(fileURLWithPath: p.shareMacPath).appendingPathComponent(ServerApps.shareFolder)
+                    print("in the share:", ServerApps.files.filter { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) }.joined(separator: ", "))
+                    let text = c.testScreenText() ?? ""
+                    print("terminal shows myLinux Apps:", text.contains("myLinux Apps"), "| search field:", text.contains("Search apps"), "| installed count:", text.range(of: #"\d+ of \d+ installed"#, options: .regularExpression).map { String(text[$0]) } ?? "none")
+                }
+                wait = 18
+            }
             // MYLINUX_GHOSTTY_CONFIG=1: what Ghostty was given, and any issue it reported
             if ProcessInfo.processInfo.environment["MYLINUX_GHOSTTY_CONFIG"] == "1" {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

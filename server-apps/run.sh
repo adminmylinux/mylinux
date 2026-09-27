@@ -1,0 +1,25 @@
+#!/bin/sh
+# myLinux Apps on a Debian or Alpine machine: find, run and install programs (mylinux_apps.py, catalog.json).
+# Apps… in the launcher's CMD menu copies this folder into the machine's Mac share (/mnt/mac/.mylinux/apps) and
+# types `sh /mnt/mac/.mylinux/apps/run.sh` into the terminal. The first time, it installs Python's Textual from the
+# distribution (Alpine: py3-textual, Debian: python3-textual) and adds the command mylinux-apps to ~/.local/bin.
+set -eu
+HERE=$(cd "$(dirname "$0")" && pwd)
+if command -v apk >/dev/null 2>&1; then
+  ROOT=doas; INSTALL="doas apk add -q python3 py3-textual"
+else
+  ROOT=sudo; INSTALL="sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 python3-textual"
+fi
+if ! python3 -c 'import textual' >/dev/null 2>&1; then
+  echo "myLinux Apps: installing Python's Textual (once) ..."
+  if [ "$ROOT" = sudo ]; then sudo apt-get update -q >/dev/null; else doas apk update -q >/dev/null; fi
+  $INSTALL
+fi
+# mylinux-apps starts it again from any shell (the share is there whenever the machine runs)
+mkdir -p "$HOME/.local/bin"
+CMD="$HOME/.local/bin/mylinux-apps"
+WANT=$(printf '#!/bin/sh\n# myLinux Apps (the launcher'"'"'s Apps… keeps the files up to date in the Mac share)\nexec sh "%s/run.sh" "$@"\n' "$HERE")
+if [ "$(cat "$CMD" 2>/dev/null)" != "$WANT" ]; then printf '%s\n' "$WANT" > "$CMD" && chmod 755 "$CMD"; fi
+# nothing compiled into the Mac's folder
+export PYTHONDONTWRITEBYTECODE=1
+exec python3 "$HERE/mylinux_apps.py" "$HERE/catalog.json"
