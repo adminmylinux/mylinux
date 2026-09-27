@@ -8,29 +8,53 @@
 #  - the firmware: QEMU's own edk2 UEFI build, pinned by checksum (tools/get-edk2.sh)
 # Usage: tools/get-alpine.sh            the latest image
 #        tools/get-alpine.sh --remove   delete the download (machines keep their own disks)
+#        tools/get-alpine.sh --check    the saved and the latest image (tools/download-cache.sh)
 set -eu
 cd "$(dirname "$0")/.."
+. tools/download-cache.sh
 BASE="https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/cloud"
 FETCH="--retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 20"
 OUT="${MYLINUX_OUT:-out}"
 DEST="$OUT/alpine"
 if [ "${1:-}" = --remove ]; then rm -rf "$DEST" "$DEST.prev"; echo "removed $DEST"; exit 0; fi
+CHECK=0; [ "${1:-}" = --check ] && { CHECK=1; FETCH="--retry 1 --retry-delay 2 --connect-timeout 10"; }
+CACHED=$(cache_rev alpine ALPINE-REVISION)
 [ "$(uname -sm)" = "Darwin arm64" ] || { echo "the Alpine machine is for Apple-silicon Macs" >&2; exit 1; }
 mkdir -p "$OUT"
-STAGE="$OUT/.staging-alpine"
+STAGE="$OUT/.staging-alpine$([ "$CHECK" = 1 ] && echo -check || true)"
 rm -rf "$STAGE"; mkdir -p "$STAGE/new"; trap 'rm -rf "$STAGE"' EXIT
-echo "looking up the latest Alpine image ..."
-# shellcheck disable=SC2086
-curl -fsSL $FETCH --max-time 60 -o "$STAGE/listing.html" "$BASE/" \
-  || { echo "Alpine's download server is not answering right now (dl-cdn.alpinelinux.org); try again in a few minutes" >&2; exit 1; }
-# alpine-3.24.2-aarch64-cloudinit-r0.raw.tar.gz: the highest release, then the highest image revision
-IMAGE=$(grep -oE 'alpine-[0-9]+\.[0-9]+\.[0-9]+-aarch64-cloudinit-r[0-9]+\.raw\.tar\.gz' "$STAGE/listing.html" | sort -u \
-  | sed -E 's/^alpine-([0-9]+)\.([0-9]+)\.([0-9]+)-aarch64-cloudinit-r([0-9]+)\.raw\.tar\.gz$/\1 \2 \3 \4 &/' \
-  | sort -n -k1,1 -k2,2 -k3,3 -k4,4 | tail -1 | cut -d' ' -f5)
-[ -n "$IMAGE" ] || { echo "no aarch64 cloud-init image in $BASE/" >&2; exit 1; }
-REVISION=$(printf '%s' "$IMAGE" | sed -E 's/^alpine-(.*)-aarch64-cloudinit-(r[0-9]+)\.raw\.tar\.gz$/\1 \2/')
+REVISION=""
+if [ "${MYLINUX_FROM_CACHE:-0}" = 1 ] && [ -n "$CACHED" ]; then
+  REVISION=$CACHED
+else
+  echo "looking up the latest Alpine image ..."
+  # shellcheck disable=SC2086
+  if curl -fsSL $FETCH --max-time 60 -o "$STAGE/listing.html" "$BASE/"; then
+    # alpine-3.24.2-aarch64-cloudinit-r0.raw.tar.gz: the highest release, then the highest image revision
+    IMAGE=$(grep -oE 'alpine-[0-9]+\.[0-9]+\.[0-9]+-aarch64-cloudinit-r[0-9]+\.raw\.tar\.gz' "$STAGE/listing.html" | sort -u \
+      | sed -E 's/^alpine-([0-9]+)\.([0-9]+)\.([0-9]+)-aarch64-cloudinit-r([0-9]+)\.raw\.tar\.gz$/\1 \2 \3 \4 &/' \
+      | sort -n -k1,1 -k2,2 -k3,3 -k4,4 | tail -1 | cut -d' ' -f5)
+    [ -n "$IMAGE" ] || { echo "no aarch64 cloud-init image in $BASE/" >&2; exit 1; }
+    REVISION=$(printf '%s' "$IMAGE" | sed -E 's/^alpine-(.*)-aarch64-cloudinit-(r[0-9]+)\.raw\.tar\.gz$/\1 \2/')
+  fi
+  [ "$CHECK" = 1 ] && { check_report "$CACHED" "$REVISION"; exit 0; }
+  if [ -z "$REVISION" ]; then
+    [ -n "$CACHED" ] || { echo "Alpine's download server is not answering right now (dl-cdn.alpinelinux.org); try again in a few minutes" >&2; exit 1; }
+    echo "Alpine's download server is not answering; installing the saved Alpine $CACHED"
+    REVISION=$CACHED
+  fi
+fi
 if [ "$(cat "$DEST/ALPINE-REVISION" 2>/dev/null)" = "$REVISION" ] && [ -s "$DEST/alpine.raw" ] && [ -s "$DEST/edk2-aarch64-code.fd" ]; then
   echo "ok: $DEST already is Alpine $REVISION"; exit 0
+fi
+if [ -n "$CACHED" ] && [ "$CACHED" = "$REVISION" ]; then
+  echo "installing Alpine $REVISION from the saved download ..."
+  rm -rf "$STAGE/new"; cache_clone "$CACHE/alpine" "$STAGE/new"
+  [ -s "$STAGE/new/alpine.raw" ] && [ -s "$STAGE/new/edk2-aarch64-code.fd" ] || { echo "the saved Alpine is incomplete: nothing installed (Settings › Storage can remove the saved downloads)" >&2; exit 1; }
+  rm -rf "$DEST.prev"; [ -d "$DEST" ] && mv "$DEST" "$DEST.prev"
+  mv "$STAGE/new" "$DEST"; rm -rf "$DEST.prev"
+  echo "ok: $DEST is Alpine $REVISION (alpine.raw, edk2-aarch64-code.fd). Start a machine with ./run-alpine.sh"
+  exit 0
 fi
 echo "downloading Alpine $REVISION ($IMAGE, about 100 MB) ..."
 # shellcheck disable=SC2086
@@ -61,4 +85,5 @@ fi
 printf '%s\n' "$REVISION" > "$STAGE/new/ALPINE-REVISION"
 rm -rf "$DEST.prev"; [ -d "$DEST" ] && mv "$DEST" "$DEST.prev"
 mv "$STAGE/new" "$DEST"; rm -rf "$DEST.prev"
+cache_store alpine "$DEST"
 echo "ok: $DEST is Alpine $REVISION (alpine.raw, edk2-aarch64-code.fd). Start a machine with ./run-alpine.sh"

@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -83,6 +83,29 @@ G="$T/data dir"
 is_rc "MYLINUX_OUT: download into another directory" $rc 0
 file_is "MYLINUX_OUT: kernel lands there" "$G/Image" "v9 kernel"
 file_is "MYLINUX_OUT: revision recorded there" "$G/IMAGE-REVISION" "v9"
+echo "saved downloads (tools/download-cache.sh)"
+C="$T/saved downloads"; F="$T/fresh data"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$F" MYLINUX_CACHE="$C" sh tools/get-image.sh >/dev/null 2>&1); rc=$?
+is_rc "a download with MYLINUX_CACHE succeeds" $rc 0
+file_is "the download is saved" "$C/mylinux/IMAGE-REVISION" "v9"
+rm -rf "$F"
+# after Clear All Data: the kernel's download would fail, the saved one installs
+(cd "$W" && PATH="$W/bin:$PATH" FAKE_CURL_FAIL=Image MYLINUX_OUT="$F" MYLINUX_CACHE="$C" sh tools/get-image.sh >/dev/null 2>&1); rc=$?
+is_rc "the saved release installs without a download" $rc 0
+file_is "the saved kernel is installed" "$F/Image" "v9 kernel"
+out=$(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_CACHE="$C" sh tools/get-image.sh --check 2>&1)
+has "--check names the saved release" "$out" "cached: v9"
+has "--check names the latest release" "$out" "latest: v9"
+printf 'v8' > "$C/mylinux/IMAGE-REVISION"
+out=$(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_CACHE="$C" sh tools/get-image.sh --check 2>&1)
+has "--check shows an older saved release" "$out" "cached: v8"
+rm -rf "$F"
+(cd "$W" && PATH="$W/bin:$PATH" FAKE_CURL_FAIL=Image MYLINUX_FROM_CACHE=1 MYLINUX_OUT="$F" MYLINUX_CACHE="$C" sh tools/get-image.sh >/dev/null 2>&1); rc=$?
+is_rc "MYLINUX_FROM_CACHE installs the older saved release" $rc 0
+file_is "the older saved release is recorded" "$F/IMAGE-REVISION" "v8"
+printf 'v9' > "$C/mylinux/IMAGE-REVISION"
+out=$(cd "$W" && PATH="$W/bin:$PATH" sh tools/get-image.sh --check 2>&1)
+has "without MYLINUX_CACHE nothing is saved" "$out" "cached: none"
 
 echo "run.sh (DRYRUN)"
 out=$(cd / && DRYRUN=1 SHARE_DIR="$T/my share" APPS_IMG="$T/app's disk.img" NAME="test vm" sh "$W/run.sh" -qmp none 2>&1); rc=$?

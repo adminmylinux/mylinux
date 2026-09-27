@@ -7,8 +7,10 @@
 #  - the firmware: QEMU's own edk2 UEFI build, pinned by checksum (tools/get-edk2.sh)
 # Usage: tools/get-debian.sh            the latest image of the release below
 #        tools/get-debian.sh --remove   delete the download (machines keep their own disks)
+#        tools/get-debian.sh --check    the saved and the latest image (tools/download-cache.sh)
 set -eu
 cd "$(dirname "$0")/.."
+. tools/download-cache.sh
 RELEASE=trixie; RELEASE_ID=13
 IMAGE="debian-$RELEASE_ID-generic-arm64"
 # Debian publishes the cloud images from two hosts; cdimage sends the big file on to its mirror network. The first
@@ -18,25 +20,48 @@ FETCH="--retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 20"
 OUT="${MYLINUX_OUT:-out}"
 DEST="$OUT/debian"
 if [ "${1:-}" = --remove ]; then rm -rf "$DEST" "$DEST.prev"; echo "removed $DEST"; exit 0; fi
+CHECK=0; [ "${1:-}" = --check ] && { CHECK=1; FETCH="--retry 1 --retry-delay 2 --connect-timeout 10"; }
+CACHED=$(cache_rev debian DEBIAN-REVISION)
 [ "$(uname -sm)" = "Darwin arm64" ] || { echo "the Debian machine is for Apple-silicon Macs" >&2; exit 1; }
 mkdir -p "$OUT"
-STAGE="$OUT/.staging-debian"
+STAGE="$OUT/.staging-debian$([ "$CHECK" = 1 ] && echo -check || true)"
 rm -rf "$STAGE"; mkdir -p "$STAGE/new"; trap 'rm -rf "$STAGE"' EXIT
-echo "looking up the latest $RELEASE image ..."
-BASE=""
-for s in $SOURCES; do
-  # shellcheck disable=SC2086
-  if curl -fsSL $FETCH --max-time 60 -o "$STAGE/SHA512SUMS" "$s/SHA512SUMS" && curl -fsSL $FETCH --max-time 60 -o "$STAGE/$IMAGE.json" "$s/$IMAGE.json"; then
-    BASE=$s; break
+REVISION=""
+if [ "${MYLINUX_FROM_CACHE:-0}" = 1 ] && [ -n "$CACHED" ]; then
+  REVISION=$CACHED
+else
+  echo "looking up the latest $RELEASE image ..."
+  BASE=""
+  for s in $SOURCES; do
+    # shellcheck disable=SC2086
+    if curl -fsSL $FETCH --max-time 60 -o "$STAGE/SHA512SUMS" "$s/SHA512SUMS" && curl -fsSL $FETCH --max-time 60 -o "$STAGE/$IMAGE.json" "$s/$IMAGE.json"; then
+      BASE=$s; break
+    fi
+    echo "no answer from ${s%%/images*}; trying the next source ..."
+  done
+  if [ -n "$BASE" ]; then
+    VERSION=$(plutil -extract items.0.data.info.version raw -o - "$STAGE/$IMAGE.json" 2>/dev/null || true)
+    [ -n "$VERSION" ] || { echo "could not read the image version from $IMAGE.json" >&2; exit 1; }
+    REVISION="$RELEASE $VERSION"
   fi
-  echo "no answer from ${s%%/images*}; trying the next source ..."
-done
-[ -n "$BASE" ] || { echo "Debian's image servers are not answering right now (cdimage.debian.org, cloud.debian.org); try again in a few minutes" >&2; exit 1; }
-VERSION=$(plutil -extract items.0.data.info.version raw -o - "$STAGE/$IMAGE.json" 2>/dev/null || true)
-[ -n "$VERSION" ] || { echo "could not read the image version from $IMAGE.json" >&2; exit 1; }
-REVISION="$RELEASE $VERSION"
+  [ "$CHECK" = 1 ] && { check_report "$CACHED" "$REVISION"; exit 0; }
+  if [ -z "$REVISION" ]; then
+    [ -n "$CACHED" ] || { echo "Debian's image servers are not answering right now (cdimage.debian.org, cloud.debian.org); try again in a few minutes" >&2; exit 1; }
+    echo "Debian's image servers are not answering; installing the saved Debian $CACHED"
+    REVISION=$CACHED
+  fi
+fi
 if [ "$(cat "$DEST/DEBIAN-REVISION" 2>/dev/null)" = "$REVISION" ] && [ -s "$DEST/debian.raw" ] && [ -s "$DEST/edk2-aarch64-code.fd" ]; then
   echo "ok: $DEST already is Debian $REVISION"; exit 0
+fi
+if [ -n "$CACHED" ] && [ "$CACHED" = "$REVISION" ]; then
+  echo "installing Debian $REVISION from the saved download ..."
+  rm -rf "$STAGE/new"; cache_clone "$CACHE/debian" "$STAGE/new"
+  [ -s "$STAGE/new/debian.raw" ] && [ -s "$STAGE/new/edk2-aarch64-code.fd" ] || { echo "the saved Debian is incomplete: nothing installed (Settings › Storage can remove the saved downloads)" >&2; exit 1; }
+  rm -rf "$DEST.prev"; [ -d "$DEST" ] && mv "$DEST" "$DEST.prev"
+  mv "$STAGE/new" "$DEST"; rm -rf "$DEST.prev"
+  echo "ok: $DEST is Debian $REVISION (debian.raw, edk2-aarch64-code.fd). Start a machine with ./run-debian.sh"
+  exit 0
 fi
 echo "downloading Debian $REVISION ($IMAGE.tar.xz, about 300 MB) ..."
 # shellcheck disable=SC2086
@@ -54,4 +79,5 @@ cp "$STAGE/$IMAGE.json" "$STAGE/new/image.json"
 printf '%s\n' "$REVISION" > "$STAGE/new/DEBIAN-REVISION"
 rm -rf "$DEST.prev"; [ -d "$DEST" ] && mv "$DEST" "$DEST.prev"
 mv "$STAGE/new" "$DEST"; rm -rf "$DEST.prev"
+cache_store debian "$DEST"
 echo "ok: $DEST is Debian $REVISION (debian.raw, edk2-aarch64-code.fd). Start a machine with ./run-debian.sh"

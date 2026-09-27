@@ -7,9 +7,11 @@
 # Nothing from the disk image is run. About 1.4 GB to download, 1.5 GB kept.
 # Usage: tools/get-omarchy.sh            the pinned release
 #        tools/get-omarchy.sh --remove   delete the downloaded guest (machines keep their own disks)
+#        tools/get-omarchy.sh --check    the saved and the pinned release (tools/download-cache.sh)
 #        MYLINUX_OMARCHY_DMG=path/TryOmarchy.dmg uses a disk image that is already here (same checks)
 set -eu
 cd "$(dirname "$0")/.."
+. tools/download-cache.sh
 TAG=v0.4.1
 DMG_SHA256=e2f172f67e5d8a99df8e46fa6f7814a061c0af249f100a6bdc7836b922f47674
 TEAM=RZC79MPD34
@@ -17,6 +19,9 @@ URL="https://github.com/omacom/try-omarchy/releases/download/$TAG/TryOmarchy.dmg
 OUT="${MYLINUX_OUT:-out}"
 DEST="$OUT/omarchy"
 if [ "${1:-}" = --remove ]; then rm -rf "$DEST"; echo "removed $DEST"; exit 0; fi
+CACHED=$(cache_rev omarchy OMARCHY-REVISION)
+[ "${1:-}" = --check ] && { check_report "$CACHED" "$TAG"; exit 0; }
+[ "${MYLINUX_FROM_CACHE:-0}" = 1 ] && [ -n "$CACHED" ] && TAG=$CACHED
 [ "$(uname -sm)" = "Darwin arm64" ] || { echo "the Omarchy guest is for Apple-silicon Macs" >&2; exit 1; }
 if [ "$(cat "$DEST/OMARCHY-REVISION" 2>/dev/null)" = "$TAG" ] && [ -s "$DEST/rootfs.ext4.zst" ]; then
   echo "ok: $DEST already is Try Omarchy $TAG"; exit 0
@@ -25,7 +30,18 @@ mkdir -p "$OUT"
 STAGE="$OUT/.staging-omarchy"
 MNT="$STAGE/mnt"
 cleanup() { [ -d "$MNT" ] && hdiutil detach "$MNT" -quiet 2>/dev/null || true; rm -rf "$STAGE"; }
-rm -rf "$STAGE"; mkdir -p "$STAGE/new"; trap cleanup EXIT
+rm -rf "$STAGE"; mkdir -p "$STAGE"; trap cleanup EXIT
+if [ -n "$CACHED" ] && [ "$CACHED" = "$TAG" ]; then
+  # the saved guest, checked against its checksums again, as a download would be
+  echo "installing Try Omarchy $TAG from the saved download ..."
+  cache_clone "$CACHE/omarchy" "$STAGE/new"
+  (cd "$STAGE/new" && grep -E '  (vmlinuz-linux|initramfs-linux.img|rootfs.ext4.zst)$' SHA256SUMS | shasum -a 256 -c - >/dev/null) || { echo "the saved guest does not match its checksums: nothing installed (Settings › Storage can remove the saved downloads)" >&2; exit 1; }
+  rm -rf "$DEST.prev"; [ -d "$DEST" ] && mv "$DEST" "$DEST.prev"
+  mv "$STAGE/new" "$DEST"; rm -rf "$DEST.prev"
+  echo "ok: $DEST is Try Omarchy $TAG. Start a machine with ./run-omarchy.sh"
+  exit 0
+fi
+mkdir -p "$STAGE/new"
 if [ -n "${MYLINUX_OMARCHY_DMG:-}" ]; then
   DMG="$MYLINUX_OMARCHY_DMG"; echo "using $DMG ..."
 else
@@ -53,4 +69,5 @@ hdiutil detach "$MNT" -quiet || true
 printf '%s\n' "$TAG" > "$STAGE/new/OMARCHY-REVISION"
 rm -rf "$DEST.prev"; [ -d "$DEST" ] && mv "$DEST" "$DEST.prev"
 mv "$STAGE/new" "$DEST"; rm -rf "$DEST.prev"
+cache_store omarchy "$DEST"
 echo "ok: $DEST is Try Omarchy $TAG. Start a machine with ./run-omarchy.sh"

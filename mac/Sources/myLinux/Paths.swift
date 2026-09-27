@@ -14,6 +14,11 @@ enum Paths {
     static var machines: URL { support.appendingPathComponent("machines", isDirectory: true) }
     static var standaloneImage: URL { support.appendingPathComponent("image", isDirectory: true) }
     static var bundledRuntime: URL? { Bundle.main.resourceURL?.appendingPathComponent("runtime", isDirectory: true) }
+    /// Saved downloads (tools/download-cache.sh): each Linux as last downloaded, so installing it again (after
+    /// Clear All Data, say) copies it from here instead of downloading it. Outside `support` on purpose: Clear All
+    /// Data leaves it; Settings › Storage removes it. A test's MYLINUX_SUPPORT_DIR gets one of its own beside it.
+    static let downloadCache: URL = ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"].map { URL(fileURLWithPath: $0 + "-saved-downloads", isDirectory: true) }
+        ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("dev.mylinux.downloads", isDirectory: true)
     /// The checkout the app was built from (Info.plist), offered as the developer checkout when it exists.
     static var buildRepo: String? { Bundle.main.object(forInfoDictionaryKey: "MyLinuxRepo") as? String }
 

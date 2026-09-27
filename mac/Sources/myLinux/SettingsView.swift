@@ -383,6 +383,9 @@ private struct StorageSettingsPage: View {
     @State private var usage: StorageUsage?
     @State private var confirm = false
     @State private var clearError: String?
+    @State private var saved: [SavedDownloads.Item]?
+    @State private var confirmRemoveSaved = false
+    @State private var savedError: String?
 
     var body: some View {
         PageHeader(title: "Storage", subtitle: "What the launcher keeps on this Mac.")
@@ -413,6 +416,49 @@ private struct StorageSettingsPage: View {
                 }
             }
         }
+        if !settings.developerMode {
+            Text("Saved downloads").font(.headline).padding(.top, 6)
+            Card(padding: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Each Linux is kept as downloaded, so a new machine installs it in seconds without a download, also after Clear All Data. When a newer version is out, the launcher asks which one to install. The saved copies share disk space with the installed ones.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if let saved {
+                        if saved.isEmpty {
+                            Text("Nothing is saved yet: a Linux is saved when it is downloaded.").font(.callout)
+                        }
+                        ForEach(saved, id: \.name) { item in
+                            HStack(spacing: 10) {
+                                Text(item.name).frame(width: 170, alignment: .leading)
+                                Text(item.revision).foregroundStyle(.secondary).lineLimit(1)
+                                Spacer()
+                                Text(Fmt.size(item.bytes)).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                            .font(.callout)
+                        }
+                        if !saved.isEmpty {
+                            HStack {
+                                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([Paths.downloadCache]) }
+                                Spacer()
+                                Button("Remove Saved Downloads…", role: .destructive) { confirmRemoveSaved = true }
+                            }
+                        }
+                    } else {
+                        HStack { ProgressView().controlSize(.small); Text("Measuring…").foregroundStyle(.secondary) }
+                    }
+                    if let savedError { Banner(text: savedError, kind: .error) }
+                }
+            }
+            .confirmationDialog("Remove the saved downloads?", isPresented: $confirmRemoveSaved) {
+                Button("Remove", role: .destructive) {
+                    savedError = SavedDownloads.removeAll()
+                    Task { saved = await Task.detached(priority: .utility) { SavedDownloads.list() }.value }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Installed Linuxes and machines stay. The next install of a Linux downloads it again.")
+            }
+            .task { saved = await Task.detached(priority: .utility) { SavedDownloads.list() }.value }
+        }
         Text("Start over").font(.headline).padding(.top, 6)
         VStack(alignment: .leading, spacing: 10) {
             Text("Deletes everything the launcher keeps and restarts it as new:").font(.callout)
@@ -421,7 +467,8 @@ private struct StorageSettingsPage: View {
                 if settings.developerMode {
                     bullet("not the checkout's out/ folder: its images and QEMU stay")
                 } else {
-                    bullet("the downloaded Linuxes and QEMU" + (usage.map { " (\(Fmt.size($0.downloads)))" } ?? ""))
+                    bullet("the installed Linuxes and QEMU" + (usage.map { " (\(Fmt.size($0.downloads)))" } ?? ""))
+                    bullet("not the saved downloads above: machines install again from them, without a download")
                 }
                 bullet("the launcher's settings, saved remote passwords, the browser's data and macOS permissions")
             }
@@ -439,9 +486,16 @@ private struct StorageSettingsPage: View {
             Button("Delete Everything and Restart", role: .destructive) { clearError = StartOver.clearAll() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("\(store.profiles.count) machine\(store.profiles.count == 1 ? "" : "s") with everything inside" + (usage.map { ", \(Fmt.size($0.total)) in all" } ?? "") + ", the downloads and the settings are deleted. This cannot be undone.")
+            Text(clearMessage)
         }
         .task { usage = await StorageUsage.measure(profiles: store.profiles, settings: settings) }
+    }
+
+    private var clearMessage: String {
+        let n = store.profiles.count
+        let total: String = usage.map { ", \(Fmt.size($0.total)) in all" } ?? ""
+        let kept: String = settings.developerMode ? "" : "; the saved downloads stay"
+        return "\(n) machine\(n == 1 ? "" : "s") with everything inside\(total), the installed Linuxes and the settings are deleted\(kept). This cannot be undone."
     }
 
     private func bullet(_ s: String) -> some View {

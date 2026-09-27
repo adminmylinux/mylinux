@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ImageManager.shared.refresh()
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
+        SavedDownloads.saveInstalled()                   // the Linuxes already here are kept through Clear All Data
         RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
         Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
         MachineLink.serve()                              // the servers' own apps: their state, their requests
@@ -363,11 +364,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // and once Start is back (<png>)
             if ProcessInfo.processInfo.environment["MYLINUX_TEST_DOWNLOAD"] == "1", kind.isServer {
                 let m = ServerImageManager.shared(kind), t0 = Date()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { print("download pressed"); m.download(AppSettings.shared) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    print("download pressed (saved: \(SavedDownloads.list().map { "\($0.name) \($0.revision)" }.joined(separator: ", ")))")
+                    m.download(AppSettings.shared)
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 6) { shoot(args[i + 2].replacingOccurrences(of: ".png", with: "-busy.png")); print("photographed while downloading: \(m.progress)") }
                 Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { tm in
                     if !m.busy && m.present && Date().timeIntervalSince(t0) > 7 {
-                        tm.invalidate(); print("downloaded in \(Int(Date().timeIntervalSince(t0)) - 2) s")
+                        tm.invalidate(); print("downloaded in \(Int(Date().timeIntervalSince(t0)) - 2) s: \(kind.title) \(m.revision ?? "?")")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { shoot(args[i + 2]); exit(0) }
                     } else if let e = m.lastError, !m.busy { print("download failed: \(e)"); exit(1) }
                     else if Date().timeIntervalSince(t0) > 600 { print("gave up"); exit(2) }
