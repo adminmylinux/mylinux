@@ -325,6 +325,19 @@ final class CloudFolderTests: XCTestCase {
         XCTAssertFalse(s.contains("sudo -n"), "a terminal can answer sudo's password question")
         XCTAssertTrue(s.contains(#"want="dropbox:Dropbox""#) && s.contains("/etc/fstab"), "mounted at every start from then on")
     }
+    func testTheCloudFolderScriptsAreValidShell() throws {
+        for (what, script) in [("server", CloudFolder.mountScript(["dropbox"])), ("paste", CloudFolder.pasteScript(["dropbox", "icloud"])),
+                               ("console", CloudFolder.consoleScript(["dropbox"])), ("none", CloudFolder.mountScript([]))] {
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/sh"); p.arguments = ["-n"]
+            let input = Pipe(); p.standardInput = input; p.standardError = Pipe()
+            try p.run(); input.fileHandleForWriting.write(Data(script.utf8)); try input.fileHandleForWriting.close()
+            p.waitUntilExit()
+            XCTAssertEqual(p.terminationStatus, 0, "\(what): sh -n")
+        }
+        let s = CloudFolder.pasteScript(["dropbox"])
+        XCTAssertTrue(s.contains("systemctl daemon-reload"), "systemd learns of the fstab change (no hint about it)")
+        XCTAssertTrue(s.contains(#"echo "myLinux: ~/$name is ready""#), "the paste says when it worked")
+    }
     func testMyLinuxMountsItsCloudFoldersThroughTheConsole() {
         let s = CloudFolder.consoleScript(["dropbox", "icloud"])
         XCTAssertFalse(s.contains("\n"), "one line typed into the console")

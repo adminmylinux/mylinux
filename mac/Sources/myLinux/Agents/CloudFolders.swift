@@ -61,23 +61,26 @@ enum CloudFolder: String, CaseIterable, Codable, Identifiable {
         let r = root.map { "R=; [ \"$(id -u)\" = 0 ] || R=\"\($0)\"" } ?? #"R=; [ "$(id -u)" = 0 ] || { command -v doas >/dev/null && R="doas" || R="sudo -n"; }"#
         return """
         \(r)
-        want="\(want)"
+        want="\(want)"; changed=
         for pair in \(all); do
           tag=${pair%%:*}; name=${pair#*:}; mp=/mnt/$tag
           case " $want " in
             *" $pair "*)
               $R mkdir -p "$mp"
-              grep -q "^$tag $mp " /etc/fstab || echo "$tag $mp 9p trans=virtio,version=9p2000.L,msize=512000,nofail,_netdev 0 0" | $R tee -a /etc/fstab >/dev/null
-              mountpoint -q "$mp" || $R mount "$mp" || echo "myLinux: could not mount $tag (restart the machine to attach it)"
-              if [ ! -e "$HOME/$name" ] || [ -L "$HOME/$name" ]; then ln -sfn "$mp" "$HOME/$name"; fi ;;
+              grep -q "^$tag $mp " /etc/fstab || { echo "$tag $mp 9p trans=virtio,version=9p2000.L,msize=512000,nofail,_netdev 0 0" | $R tee -a /etc/fstab >/dev/null; changed=1; }
+              mountpoint -q "$mp" || $R mount "$mp" 2>/dev/null || echo "myLinux: could not mount $tag (restart the machine to attach it)"
+              if [ ! -e "$HOME/$name" ] || [ -L "$HOME/$name" ]; then ln -sfn "$mp" "$HOME/$name"; fi
+              ! mountpoint -q "$mp" || echo "myLinux: ~/$name is ready" ;;
             *)
               if grep -q "^$tag $mp " /etc/fstab; then
                 ! mountpoint -q "$mp" || $R umount "$mp"
-                $R sed -i "\\#^$tag $mp #d" /etc/fstab
+                $R sed -i "\\#^$tag $mp #d" /etc/fstab; changed=1
               fi
               [ "$(readlink "$HOME/$name" 2>/dev/null)" != "$mp" ] || rm -f "$HOME/$name" ;;
           esac
         done
+        # systemd reads fstab into mount units: tell it about the change (no "fstab has been modified" hint)
+        [ -z "${changed:-}" ] || ! command -v systemctl >/dev/null || $R systemctl daemon-reload 2>/dev/null || true
         """
     }
 
