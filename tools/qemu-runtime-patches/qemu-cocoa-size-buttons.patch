@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,7 +117,34 @@
+@@ -117,6 +117,33 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
@@ -11,7 +11,7 @@
 + * the keyboard stayed captured while the window was in front.)
 + */
 +static bool mylinux_keys_released;
- 
++
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
 + * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
@@ -31,10 +31,9 @@
 +static bool mylinux_follows_mode(NSWindow *window);
 +static void mylinux_desktop_reached(NSWindow *window, int w, int h);
 +static void mylinux_center(NSWindow *window);
-+
+ 
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
- static QemuEvent cbevent;
 @@ -696,12 +723,16 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
@@ -66,11 +65,10 @@
  
      /*
       * Check -[NSEvent modifierFlags] here.
-@@ -1125,6 +1161,16 @@
-             return true;
+@@ -1126,6 +1162,16 @@
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
-+
+ 
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -80,9 +78,10 @@
 +                dispatch_async(dispatch_get_main_queue(), ^{ [[self window] toggleFullScreen:nil]; });
 +                return true;
 +            }
- 
++
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
+             if (![self isKeyboardCaptured] &&
 @@ -1147,9 +1193,12 @@
                              [self selectConsoleLocked:key - '0' - 1]; /* ascii math */
                              return true;
@@ -107,13 +106,11 @@
      return isMouseGrabbed ||
             (full_grab_enabled && [[self window] isKeyWindow]);
  }
-@@ -1401,8 +1453,27 @@
-     });
- }
+@@ -1403,6 +1455,25 @@
  @end
+ 
+ 
 +
- 
- 
 +/*
 + * myLinux: while the window follows the guest's mode, macOS may move it (the title bar stays on a screen) but not
 + * shrink it to fit a screen, as it never shrank the fixed window: the mode is sized for the display the window is
@@ -157,7 +154,15 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1475,7 +1554,7 @@
+@@ -1423,6 +1502,7 @@
+ - (void)removePause;
+ - (void)restartQEMU:(id)sender;
+ - (void)powerDownQEMU:(id)sender;
++- (void)mylinuxRestart:(id)sender;
+ - (void)ejectDeviceMedia:(id)sender;
+ - (void)changeDeviceMedia:(id)sender;
+ - (BOOL)verifyQuit;
+@@ -1475,7 +1555,7 @@
          }
  
          // create a window
@@ -166,7 +171,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1568,9 @@
+@@ -1489,8 +1569,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -177,7 +182,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1633,62 @@
+@@ -1553,28 +1634,62 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -241,7 +246,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1696,23 @@
+@@ -1582,6 +1697,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -265,7 +270,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1806,397 @@
+@@ -1675,12 +1807,397 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -663,3 +668,54 @@
      [cocoaView resizeWindow];
  }
  
+@@ -1754,6 +2271,40 @@
+     with_bql(^{
+         qmp_system_powerdown(NULL);
+     });
++}
++
++/* myLinux: Machine › Restart. The launcher that started this machine (MYLINUX_LAUNCHER_ID, MYLINUX_LINK_SCOPE, APP_ID
++ * from its Runner) shuts it down and starts it again: a new QEMU, so a runtime installed since is used (Reset only
++ * reboots the guest in this one). Only shown when the launcher started the machine.
++ */
++static bool mylinux_restart_available(void)
++{
++    return getenv("MYLINUX_LAUNCHER_ID") && getenv("MYLINUX_LINK_SCOPE") && getenv("APP_ID");
++}
++
++- (void)mylinuxRestart:(id)sender
++{
++    NSString *launcher = [NSString stringWithUTF8String:getenv("MYLINUX_LAUNCHER_ID")];
++    if ([[NSRunningApplication runningApplicationsWithBundleIdentifier:launcher] count] == 0) {
++        NSAlert *alert = [[NSAlert alloc] init];
++        [alert setMessageText:@"Restart needs myLinux Launcher"];
++        [alert setInformativeText:@"Open myLinux Launcher and press Restart on this machine, or use Power Down and then Start."];
++        [alert addButtonWithTitle:@"Open myLinux Launcher"];
++        [alert addButtonWithTitle:@"Cancel"];
++        if ([alert runModal] == NSAlertFirstButtonReturn) {
++            NSURL *url = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:launcher];
++            if (url) {
++                [[NSWorkspace sharedWorkspace] openURL:url];
++            }
++        }
++        [alert release];
++        return;
++    }
++    [[NSDistributedNotificationCenter defaultCenter]
++        postNotificationName:@"dev.mylinux.machine.request"
++                      object:[NSString stringWithUTF8String:getenv("MYLINUX_LINK_SCOPE")]
++                    userInfo:@{ @"id": [NSString stringWithUTF8String:getenv("APP_ID")], @"action": @"restart" }
++          deliverImmediately:YES];
+ }
+ 
+ /* Ejects the media.
+@@ -1935,6 +2486,9 @@
+     menu = [[NSMenu alloc] initWithTitle: @"Machine"];
+     [menu setAutoenablesItems: NO];
+     [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
++    if (mylinux_restart_available()) {
++        [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Restart" action: @selector(mylinuxRestart:) keyEquivalent: @""] autorelease]];
++    }
+     [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Power Down" action: @selector(powerDownQEMU:) keyEquivalent: @""] autorelease]];
+     menuItem = [[[NSMenuItem alloc] initWithTitle: @"Machine" action:nil keyEquivalent:@""] autorelease];
+     [menuItem setSubmenu:menu];

@@ -176,10 +176,12 @@ struct MachineView: View {
                         Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
                             .buttonStyle(.borderedProminent)
                     }
+                    restartButton
                     Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
                 } else {
                     Button { showWindow() } label: { Label("Show Window", systemImage: "macwindow") }
                         .buttonStyle(.borderedProminent)
+                    restartButton
                     Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
                 }
             case .stopping:
@@ -193,17 +195,27 @@ struct MachineView: View {
                     Button { openTerminal() } label: { Label("Terminal", systemImage: "terminal") }
                         .buttonStyle(.borderedProminent)
                 }
+                restartButton
                 Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
                 Button("Force Quit", role: .destructive) { runner.forceQuit() }
             case .inUseElsewhere:
                 Button { showWindow() } label: { Label("Show Window", systemImage: "macwindow") }
-                if runner.consoleConnected {
+                if runner.canStopElsewhere {
+                    restartButton
                     Button { runner.stop() } label: { Label("Shut Down", systemImage: "power") }
                         .buttonStyle(.borderedProminent)
                 }
                 Button("Force Quit", role: .destructive) { runner.forceQuit() }
             }
         }
+    }
+
+    /// Shut down and start again: a new QEMU, so a runtime installed since the start is used (Reset in the
+    /// machine's Machine menu only reboots the guest in the same QEMU). The machine's Machine › Restart asks for this.
+    private var restartButton: some View {
+        Button { runner.restart(draft) } label: { Label("Restart", systemImage: "arrow.clockwise") }
+            .disabled(!draft.problems.isEmpty)
+            .help("Shuts \(draft.name) down and starts it again, on the newest runtime")
     }
 
     /// A desktop's window: its own app (MachineApp), or any myLinux desktop from before 0.6.

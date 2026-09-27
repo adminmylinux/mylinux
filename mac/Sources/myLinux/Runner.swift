@@ -117,6 +117,9 @@ final class Runner: ObservableObject {
         // the launcher's own binary does the Omarchy clipboard bridge (--omarchy-clipboard), no python3 needed
         if let helper = Bundle.main.executablePath { env["MYLINUX_HELPER"] = helper }
         env["PLACER"] = settings.placeWindow ? "1" : "0"
+        // the machine's Machine › Restart (QEMU runtime patch) asks this launcher through MachineLink
+        env["MYLINUX_LINK_SCOPE"] = Paths.support.path
+        if let id = Bundle.main.bundleIdentifier { env["MYLINUX_LAUNCHER_ID"] = id }
         proc.environment = env
         // straight into the log file, not a pipe: a machine outlives the launcher, and writing to the pipe of a
         // quit launcher would kill run.sh (SIGPIPE) and leave its helper processes behind
@@ -325,8 +328,7 @@ final class Runner: ObservableObject {
     // ---- stop --------------------------------------------------------------------------------------------------
     func stop() {
         // a server started by an earlier launcher is still reachable: its QMP socket is named after the machine
-        let adoptedServer = state == .inUseElsewhere && profile?.isServer == true && FileManager.default.fileExists(atPath: qmpSocket)
-        guard state == .running || state == .starting || (state == .inUseElsewhere && consoleConnected) || adoptedServer else { return }
+        guard state == .running || state == .starting || canStopElsewhere else { return }
         if profile?.kind == .omarchy || profile?.isServer == true {
             state = .stopping; stoppingSince = Date()
             let path = qmpSocket
@@ -340,6 +342,14 @@ final class Runner: ObservableObject {
         state = .stopping; stoppingSince = Date()
         send("\u{03}")                       // interrupt whatever the console shell is running
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.send("\npoweroff\n") }
+    }
+
+    /// A machine started by an earlier launcher (updated or restarted since) can still be shut down from here: over
+    /// its console, or a server's or Omarchy's QMP socket (named after the machine).
+    var canStopElsewhere: Bool {
+        guard state == .inUseElsewhere else { return false }
+        let qmp = profile?.isServer == true || profile?.kind == .omarchy
+        return consoleConnected || (qmp && FileManager.default.fileExists(atPath: qmpSocket))
     }
 
     /// Ends QEMU without a guest shutdown (the apps disk is journalled, but recent writes can be lost).

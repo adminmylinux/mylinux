@@ -231,7 +231,8 @@ enum MachineLink {
     static let show = Notification.Name("dev.mylinux.machine.show")
     /// launcher → app: ⌘Space was pressed in this app's window (SpaceHotkey): Find and Run
     static let palette = Notification.Name("dev.mylinux.machine.palette")
-    /// app → launcher: "hello" (report now), "open" (start it, or open its terminal), "cloudFolders" (save, restart)
+    /// app → launcher: "hello" (report now), "open" (start it, or open its terminal), "cloudFolders" (save, restart);
+    /// "restart" also comes from a desktop's QEMU (Machine › Restart, with MYLINUX_LINK_SCOPE from Runner.start)
     static let request = Notification.Name("dev.mylinux.machine.request")
 
     private static var scope: String { Paths.support.path }
@@ -256,6 +257,8 @@ enum MachineLink {
                 q.cloudFolders = (info["folders"] as? [String]) ?? []
                 ProfileStore.shared.update(q)
                 if info["restart"] as? Bool == true, r.isActive || r.state == .inUseElsewhere { r.restart(q) }
+            case "restart":
+                if r.isActive || r.canStopElsewhere { r.restart(p) }
             default: break
             }
         })
