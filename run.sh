@@ -34,9 +34,13 @@ SCREEN=$(osascript -l JavaScript -e '
   for (let i = 0; i < all.count; i++) { const f = all.objectAtIndex(i).frame;
     if (m.x >= f.origin.x && m.x < f.origin.x + f.size.width && m.y >= f.origin.y && m.y < f.origin.y + f.size.height) s = all.objectAtIndex(i); }
   const v = s.visibleFrame;   // points, Cocoa coordinates (y up); System Events wants y down from the top of the main screen
-  [Math.round(v.size.width), Math.round(v.size.height), Math.round(v.origin.x), Math.round(mainH - (v.origin.y + v.size.height))].join(" ")' 2>/dev/null || true)
-SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; SX=${REST%% *}; SY=${REST#* }
-case "$SW" in ''|*[!0-9]*) SW=""; SH=""; SX=0; SY=0 ;; esac
+  [Math.round(v.size.width), Math.round(v.size.height), Math.round(v.origin.x), Math.round(mainH - (v.origin.y + v.size.height)),
+   ObjC.unwrap(s.deviceDescription.objectForKey("NSScreenNumber")) || 0].join(" ")' 2>/dev/null || true)
+SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; SX=${REST%% *}; REST=${REST#* }; SY=${REST%% *}; DISPLAY_ID=${REST#* }
+case "$SW" in ''|*[!0-9]*) SW=""; SH=""; SX=0; SY=0; DISPLAY_ID="" ;; esac
+case "$DISPLAY_ID" in ''|*[!0-9]*|0) DISPLAY_ID="" ;; esac
+# the window opens on that display (the runtime's QEMU places it there); the placer below still centres it
+[ -z "$DISPLAY_ID" ] || export MYLINUX_WINDOW_DISPLAY="$DISPLAY_ID"
 # The accelerated runtime's window has a toolbar in its title bar (−10% / +10% / full screen): 52 points, not 28
 FLAVOUR=$(sh tools/qemu-flavour.sh "$OUT") || die "no usable QEMU"
 if [ "$FLAVOUR" = runtime ]; then TITLE=52; else TITLE=28; fi

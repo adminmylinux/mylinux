@@ -65,9 +65,13 @@ SCREEN=$(osascript -l JavaScript -e '
     }
   } catch (e) {}
   const v = s.visibleFrame;
-  [Math.round(v.size.width), Math.round(v.size.height), Math.round(s.backingScaleFactor)].join(" ")' 2>/dev/null || true)
-SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; DETECTED=${REST#* }
-case "$SW$SH$DETECTED" in ''|*[!0-9]*) SW=""; SH=""; DETECTED=1 ;; esac
+  [Math.round(v.size.width), Math.round(v.size.height), Math.round(s.backingScaleFactor),
+   ObjC.unwrap(s.deviceDescription.objectForKey("NSScreenNumber")) || 0].join(" ")' 2>/dev/null || true)
+SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; DETECTED=${REST%% *}; DISPLAY_ID=${REST#* }
+case "$SW$SH$DETECTED" in ''|*[!0-9]*) SW=""; SH=""; DETECTED=1; DISPLAY_ID="" ;; esac
+case "$DISPLAY_ID" in ''|*[!0-9]*|0) DISPLAY_ID="" ;; esac
+# the window opens on that display (the runtime's QEMU places it there), whichever one macOS would have picked
+[ -z "$DISPLAY_ID" ] || export MYLINUX_WINDOW_DISPLAY="$DISPLAY_ID"
 SCALE="${SCALE:-$DETECTED}"
 case "$SCALE" in 1|2) ;; *) die "SCALE must be 1 or 2" ;; esac
 # the title bar carries a toolbar (the Session menu and the size buttons): 52 points, not a plain title bar's 28
