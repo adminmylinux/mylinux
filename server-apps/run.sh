@@ -20,6 +20,24 @@ mkdir -p "$HOME/.local/bin"
 CMD="$HOME/.local/bin/mylinux-apps"
 WANT=$(printf '#!/bin/sh\n# myLinux Apps (the launcher'"'"'s Apps… keeps the files up to date in the Mac share)\nexec sh "%s/run.sh" "$@"\n' "$HERE")
 if [ "$(cat "$CMD" 2>/dev/null)" != "$WANT" ]; then printf '%s\n' "$WANT" > "$CMD" && chmod 755 "$CMD"; fi
+# what the installers put in ~/.local/bin (Claude Code, Codex, uv), ~/.bun/bin and ~/.cargo/bin: on the PATH of every
+# new shell (~/.profile for Alpine's ash and login shells, ~/.bashrc for bash), in one marked block kept up to date
+PATHLINE='for d in "$HOME/.local/bin" "$HOME/.bun/bin" "$HOME/.cargo/bin"; do case ":$PATH:" in *":$d:"*) ;; *) PATH="$d:$PATH" ;; esac; done; export PATH'
+for rc in "$HOME/.profile" "$HOME/.bashrc"; do
+  touch "$rc"
+  if ! grep -qxF "$PATHLINE" "$rc"; then
+    sed -i '/^# >>> myLinux Apps >>>$/,/^# <<< myLinux Apps <<<$/d' "$rc"
+    {
+      echo '# >>> myLinux Apps >>>'
+      echo "$PATHLINE"
+      # Claude Code's own ripgrep is built for glibc; on Alpine it uses the system's (the catalog installs ripgrep)
+      [ "$ROOT" = doas ] && echo 'export USE_BUILTIN_RIPGREP=0'
+      echo '# <<< myLinux Apps <<<'
+    } >> "$rc"
+  fi
+done
 # nothing compiled into the Mac's folder
 export PYTHONDONTWRITEBYTECODE=1
-exec python3 "$HERE/mylinux_apps.py" "$HERE/catalog.json"
+python3 "$HERE/mylinux_apps.py" "$HERE/catalog.json"
+# the shell this was started from still has the PATH it began with: a new program is found in a new shell
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) [ -n "${MYLINUX_APPS_RELOGIN:-}" ] || echo "myLinux Apps: new programs are found in a new shell (exec \$SHELL -l)" ;; esac
