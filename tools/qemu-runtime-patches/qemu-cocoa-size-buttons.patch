@@ -1,9 +1,10 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -118,6 +118,22 @@
+@@ -117,6 +117,24 @@
+ static NSTextField *pauseLabel;
  
  static bool allow_events;
- 
++
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
 + * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
@@ -17,13 +18,14 @@
 +static bool mylinux_sized_before_fullscreen;
 +/* the content size the window last took from the guest's mode: a resize to anything else is the user's */
 +static NSSize mylinux_mode_size;
++/* the window's first second (the toolbar goes in, macOS places it): nothing it does to its size is the user's */
++static bool mylinux_settling;
 +static bool mylinux_size_buttons(void);
 +static bool mylinux_follows_mode(NSWindow *window);
-+
+ 
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
- static QemuEvent cbevent;
-@@ -696,12 +712,15 @@
+@@ -696,12 +714,15 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
  
@@ -40,10 +42,11 @@
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -1126,6 +1145,16 @@
+@@ -1125,6 +1146,16 @@
+             return true;
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
- 
++
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -53,11 +56,34 @@
 +                dispatch_async(dispatch_get_main_queue(), ^{ [[self window] toggleFullScreen:nil]; });
 +                return true;
 +            }
-+
+ 
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-             if (![self isKeyboardCaptured] &&
-@@ -1410,12 +1439,20 @@
+@@ -1405,17 +1436,44 @@
+ 
+ 
+ /*
++ * myLinux: while the window follows the guest's mode, macOS may move it (the title bar stays on a screen) but not
++ * shrink it to fit a screen, as it never shrank the fixed window: the mode is sized for the display the window is
++ * placed on, which need not be the one it opens on, and a window smaller than the mode draws a text console wrongly.
++ */
++@interface MylinuxWindow : NSWindow
++@end
++@implementation MylinuxWindow
++- (NSRect)constrainFrameRect:(NSRect)frameRect toScreen:(NSScreen *)screen
++{
++    NSRect c = [super constrainFrameRect:frameRect toScreen:screen];
++    if (!mylinux_follows_mode(self)) {
++        return c;
++    }
++    /* where macOS put it, at the size it was asked for, top edge kept */
++    return NSMakeRect(c.origin.x, NSMaxY(c) - frameRect.size.height, frameRect.size.width, frameRect.size.height);
++}
++@end
++
++/*
+  ------------------------------------------------------
+     QemuCocoaAppController
   ------------------------------------------------------
  */
  @interface QemuCocoaAppController : NSObject
@@ -79,23 +105,55 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1491,6 +1528,10 @@
+@@ -1475,7 +1533,7 @@
+         }
+ 
+         // create a window
+-        window = [[NSWindow alloc] initWithContentRect:frame
++        window = [[MylinuxWindow alloc] initWithContentRect:frame
+             styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
+             backing:NSBackingStoreBuffered defer:NO];
+         if(!window) {
+@@ -1491,6 +1549,18 @@
          [window makeKeyAndOrderFront:self];
          [window center];
          [window setDelegate: self];
 +        [self installSizeButtons];
 +        if (mylinux_size_buttons()) {
 +            [window setStyleMask:[window styleMask] | NSWindowStyleMaskResizable];
++            /* adding the toolbar changes the content's height a moment later: settle, then fit the mode again */
++            mylinux_settling = true;
++            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
++                mylinux_settling = false;
++                if (mylinux_follows_mode([cocoaView window])) {
++                    [cocoaView resizeWindow];
++                }
++            });
 +        }
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1561,20 +1602,47 @@
+@@ -1553,28 +1623,62 @@
+ 
+ - (void)windowDidChangeScreen:(NSNotification *)notification
  {
++    /* moved to another display (the launcher places it): the mode's size again, in that display's points */
++    if (!mylinux_self_sizing && mylinux_follows_mode([cocoaView window])) {
++        [cocoaView resizeWindow];
++    }
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
-+}
-+
+ }
+ 
+ - (void)windowDidChangeBackingProperties:(NSNotification *)notification
+ {
++    if (!mylinux_self_sizing && mylinux_follows_mode([cocoaView window])) {
++        [cocoaView resizeWindow];
++    }
+     [cocoaView updateScale];
+     [cocoaView updateUIInfo];
+ }
+ 
 +- (void)windowWillEnterFullScreen:(NSNotification *)notification
 +{
 +    mylinux_fullscreen_moving = true;
@@ -103,8 +161,8 @@
 +    prefullscreen_size = [[[cocoaView window] contentView] frame].size;
 +    /* the toolbar stays out of full screen; the floating box has its controls there */
 +    [[[cocoaView window] toolbar] setVisible:NO];
- }
- 
++}
++
 +- (void)windowWillExitFullScreen:(NSNotification *)notification
 +{
 +    mylinux_fullscreen_moving = true;
@@ -139,23 +197,31 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1650,15 @@
+@@ -1582,6 +1686,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
-+    /* a content size from outside the window's own code (Fill, tiling, a drag): the user's from now on. Only the
-+     * content counts: adding the toolbar grows the frame, and before the guest's first mode there is nothing to
-+     * follow yet. */
++    /* a resize from outside the window's own code (Fill, tiling, a drag): the user's from now on. The window keeps
++     * the guest's aspect ratio, so such a resize changes the width; the window's own chrome (the toolbar going in,
++     * a moment after it opens) changes only the height, and while following the mode that is put right again. */
 +    NSWindow *window = [notification object];
 +    NSSize content = [[window contentView] frame].size;
-+    if (!mylinux_self_sizing && !mylinux_fullscreen_moving && !([window styleMask] & NSWindowStyleMaskFullScreen) &&
-+        mylinux_mode_size.width > 0 && !NSEqualSizes(content, mylinux_mode_size)) {
-+        mylinux_user_sized = true;
++    if (!mylinux_self_sizing && !mylinux_settling && !mylinux_fullscreen_moving && !([window styleMask] & NSWindowStyleMaskFullScreen) &&
++        mylinux_mode_size.width > 0) {
++        if (fabs(content.width - mylinux_mode_size.width) > 1) {
++            mylinux_user_sized = true;
++        } else if (fabs(content.height - mylinux_mode_size.height) > 1 && mylinux_follows_mode(window)) {
++            dispatch_async(dispatch_get_main_queue(), ^{
++                if (mylinux_follows_mode([cocoaView window])) {
++                    [cocoaView resizeWindow];
++                }
++            });
++        }
 +    }
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1752,338 @@
+@@ -1675,12 +1796,338 @@
  }
  
  /* Stretches video to fit host monitor size */
