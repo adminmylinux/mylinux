@@ -170,7 +170,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     /// A terminal to the machine, started; it leaves the tab on its own when its shell ends and others remain.
     private func makeTerminal() -> any MachineTerminal {
-        let t = TerminalEngine.make(profile: profile)
+        let t = GhosttySshTerminal(profile: profile)
         t.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
         terminals.append(t)
         if profile.launcherMachine { t.onOpenLink = { [weak self] url in self?.openInBrowser(url) } }

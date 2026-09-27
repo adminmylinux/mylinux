@@ -368,15 +368,6 @@ final class GhosttyTerminalTests: XCTestCase {
         XCTAssertTrue(line.contains(#"'UserKnownHostsFile="/Users/a/Library/Application Support/m/known_hosts"'"#), "a space stays inside its argument")
         XCTAssertTrue(line.hasSuffix(#"'it'\''s@127.0.0.1'"#), "a single quote is escaped")
     }
-    func testTheEngineFollowsTheSetting() {
-        let key = TerminalEngine.settingKey, saved = UserDefaults.standard.string(forKey: key)
-        defer { if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) } }
-        guard ProcessInfo.processInfo.environment["MYLINUX_TERMINAL"] == nil else { return }
-        UserDefaults.standard.removeObject(forKey: key)
-        XCTAssertEqual(TerminalEngine.current, .ghostty, "Ghostty unless SwiftTerm is chosen")
-        UserDefaults.standard.set("swiftterm", forKey: key)
-        XCTAssertEqual(TerminalEngine.current, .swiftTerm)
-    }
 }
 
 final class MachineCommandTests: XCTestCase {

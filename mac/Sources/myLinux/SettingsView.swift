@@ -99,19 +99,11 @@ private struct KeyCap: View {
 
 // ---- Terminal -------------------------------------------------------------------------------------------------------
 private struct TerminalSettingsPage: View {
-    @AppStorage(TerminalEngine.settingKey, store: TerminalEngine.defaults) private var engine = TerminalEngine.ghostty.rawValue
     @AppStorage(SpaceHotkey.settingKey) private var cmdSpace = true
     @State private var trusted = AXIsProcessTrusted()
-    private var ghostty: Bool { engine == TerminalEngine.ghostty.rawValue }
 
     var body: some View {
-        PageHeader(title: "Terminal", subtitle: "For Debian, Alpine and SSH connections.")
-        Text("Terminal engine").font(.headline)
-        HStack(spacing: 12) {
-            engineCard(.ghostty, "Ghostty", "GPU accelerated")
-            engineCard(.swiftTerm, "SwiftTerm", "The earlier terminal")
-        }
-        Text("Applies to new terminals. Open ones keep their engine.").font(.caption).foregroundStyle(.secondary)
+        PageHeader(title: "Terminal", subtitle: "For Debian, Alpine and SSH connections: Ghostty, GPU accelerated.")
         preview
         Card(padding: 14) {
             VStack(alignment: .leading, spacing: 8) {
@@ -142,35 +134,15 @@ private struct TerminalSettingsPage: View {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in trusted = AXIsProcessTrusted() }
     }
 
-    private func engineCard(_ e: TerminalEngine, _ title: String, _ subtitle: String) -> some View {
-        let on = engine == e.rawValue
-        return Button { engine = e.rawValue } label: {
-            HStack(spacing: 10) {
-                Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? Color.accentColor : .secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).fontWeight(.semibold)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 10).fill(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.045)))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(on ? Color.accentColor : Color.primary.opacity(0.1), lineWidth: on ? 1.5 : 1))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// A drawn sample of each engine's look (not a live terminal).
+    /// A drawn sample of the terminal's look (not a live terminal), with its keys.
     private var preview: some View {
-        let mono = ghostty ? Font.custom("JetBrains Mono", size: 12.5).monospaced() : Font.custom("Menlo", size: 12)
-        let prompt = ghostty ? Color(red: 0.55, green: 0.85, blue: 0.62) : Color(red: 0.45, green: 0.78, blue: 0.9)
+        let mono = Font.custom("JetBrains Mono", size: 12.5).monospaced()
+        let prompt = Color(red: 0.55, green: 0.85, blue: 0.62)
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("›_  debian — ~").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Text(ghostty ? "Ghostty" : "SwiftTerm").font(.caption).foregroundStyle(.secondary)
+                Text("Ghostty").font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
             Divider()
@@ -182,12 +154,12 @@ private struct TerminalSettingsPage: View {
             .font(mono).foregroundStyle(Color(white: 0.9))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(ghostty ? Color(red: 0.11, green: 0.12, blue: 0.14) : Color(white: 0.08))
+            .background(Color(red: 0.11, green: 0.12, blue: 0.14))
             Divider()
             HStack(spacing: 8) {
                 KeyCap(text: "⌘C"); Text("Copy")
                 KeyCap(text: "⌘V"); Text("Paste")
-                if ghostty { KeyCap(text: "⌘ + / −"); Text("Text size") }
+                KeyCap(text: "⌘ + / −"); Text("Text size")
                 Spacer()
             }
             .font(.caption).foregroundStyle(.secondary)

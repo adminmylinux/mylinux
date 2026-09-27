@@ -535,23 +535,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        // `myLinux --render-terminal <png>`: draw a local terminal running a short command, to check the text placement
-        if let i = args.firstIndex(of: "--render-terminal"), i + 1 < args.count {
-            var p = RemoteProfile(kind: .ssh); p.name = "render"
-            let width = Double(ProcessInfo.processInfo.environment["RENDER_WIDTH"] ?? "600") ?? 600
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
-            let t = SshTerminal(profile: p); t.frame = w.contentView!.bounds; w.contentView!.addSubview(t)
-            t.startProcess(executable: "/bin/sh", args: ["-c", "printf 'Xabcdefghij first column check\\n0123456789 second line\\n'"], environment: nil, currentDirectory: nil)
-            w.orderFront(nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if let rep = t.bitmapImageRepForCachingDisplay(in: t.bounds) {
-                    t.cacheDisplay(in: t.bounds, to: rep)
-                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
-                }
-                exit(0)
-            }
-            return
-        }
         // `myLinux --remote <profile id>`: open a remote machine (tests drive the bare binary this way)
         if let i = args.firstIndex(of: "--remote"), i + 1 < args.count, let id = UUID(uuidString: args[i + 1]),
            let p = RemoteStore.shared.profiles.first(where: { $0.id == id }) {
