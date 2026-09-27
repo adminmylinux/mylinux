@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -118,6 +118,20 @@
+@@ -118,6 +118,22 @@
  
  static bool allow_events;
  
@@ -15,13 +15,15 @@
 +static bool mylinux_self_sizing;
 +static bool mylinux_fullscreen_moving;
 +static bool mylinux_sized_before_fullscreen;
++/* the content size the window last took from the guest's mode: a resize to anything else is the user's */
++static NSSize mylinux_mode_size;
 +static bool mylinux_size_buttons(void);
 +static bool mylinux_follows_mode(NSWindow *window);
 +
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
  static QemuEvent cbevent;
-@@ -696,12 +710,14 @@
+@@ -696,12 +712,15 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
  
@@ -33,15 +35,15 @@
 +        mylinux_self_sizing = true;
          [[self window] setContentSize:NSMakeSize(width, height)];
          [[self window] center];
++        mylinux_mode_size = [[[self window] contentView] frame].size;     /* as macOS let it be (a screen caps it) */
 +        mylinux_self_sizing = false;
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -1125,6 +1141,16 @@
-             return true;
+@@ -1126,6 +1145,16 @@
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
-+
+ 
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -51,10 +53,11 @@
 +                dispatch_async(dispatch_get_main_queue(), ^{ [[self window] toggleFullScreen:nil]; });
 +                return true;
 +            }
- 
++
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-@@ -1410,12 +1436,20 @@
+             if (![self isKeyboardCaptured] &&
+@@ -1410,12 +1439,20 @@
   ------------------------------------------------------
  */
  @interface QemuCocoaAppController : NSObject
@@ -76,7 +79,7 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1491,6 +1525,10 @@
+@@ -1491,6 +1528,10 @@
          [window makeKeyAndOrderFront:self];
          [window center];
          [window setDelegate: self];
@@ -87,7 +90,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1561,20 +1599,47 @@
+@@ -1561,20 +1602,47 @@
  {
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
@@ -136,19 +139,23 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1647,11 @@
+@@ -1582,6 +1650,15 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
-+    /* a size from outside the window's own code (Fill, tiling, a drag): the user's from now on */
++    /* a content size from outside the window's own code (Fill, tiling, a drag): the user's from now on. Only the
++     * content counts: adding the toolbar grows the frame, and before the guest's first mode there is nothing to
++     * follow yet. */
 +    NSWindow *window = [notification object];
-+    if (!mylinux_self_sizing && !mylinux_fullscreen_moving && !([window styleMask] & NSWindowStyleMaskFullScreen)) {
++    NSSize content = [[window contentView] frame].size;
++    if (!mylinux_self_sizing && !mylinux_fullscreen_moving && !([window styleMask] & NSWindowStyleMaskFullScreen) &&
++        mylinux_mode_size.width > 0 && !NSEqualSizes(content, mylinux_mode_size)) {
 +        mylinux_user_sized = true;
 +    }
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1745,338 @@
+@@ -1675,12 +1752,338 @@
  }
  
  /* Stretches video to fit host monitor size */
