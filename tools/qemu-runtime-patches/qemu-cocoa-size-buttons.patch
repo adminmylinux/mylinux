@@ -1,10 +1,17 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,6 +117,26 @@
+@@ -117,7 +117,34 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
-+
++/*
++ * myLinux: with every key going to the guest (full grab), Ctrl+Option+G gives the keyboard back to the Mac as well as
++ * the mouse, so ⌘Tab, ⌘Space and the Mac's other shortcuts work again while plain typing still reaches the guest; a
++ * click in the window, or Ctrl+Option+G again, sends every key to the guest again. (It used to release the mouse only:
++ * the keyboard stayed captured while the window was in front.)
++ */
++static bool mylinux_keys_released;
+ 
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
 + * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
@@ -24,10 +31,11 @@
 +static bool mylinux_follows_mode(NSWindow *window);
 +static void mylinux_desktop_reached(NSWindow *window, int w, int h);
 +static void mylinux_center(NSWindow *window);
- 
++
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
-@@ -696,12 +716,16 @@
+ static QemuEvent cbevent;
+@@ -696,12 +723,16 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
  
@@ -46,7 +54,19 @@
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -1125,6 +1149,16 @@
+@@ -980,6 +1011,11 @@
+     InputButton button;
+     unsigned int keycode;
+     NSUInteger modifiers = [event modifierFlags];
++
++    /* a click in the window after Ctrl+Option+G: every key goes to the guest again */
++    if (mylinux_keys_released && [event type] == NSEventTypeLeftMouseDown && [event window] == [self window]) {
++        mylinux_keys_released = false;
++    }
+ 
+     /*
+      * Check -[NSEvent modifierFlags] here.
+@@ -1125,6 +1161,16 @@
              return true;
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
@@ -63,10 +83,38 @@
  
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-@@ -1405,17 +1439,44 @@
+@@ -1147,9 +1193,12 @@
+                             [self selectConsoleLocked:key - '0' - 1]; /* ascii math */
+                             return true;
+ 
+-                        // release the mouse grab
++                        // release the mouse grab (and with full grab the keyboard, or take it again)
+                         case 'g':
+                             [self ungrabMouse];
++                            if (full_grab_enabled) {
++                                mylinux_keys_released = !mylinux_keys_released;
++                            }
+                             return true;
+                     }
+                 }
+@@ -1375,6 +1424,9 @@
+  */
+ - (BOOL) isKeyboardCaptured
+ {
++    if (mylinux_keys_released) {
++        return NO;
++    }
+     return isMouseGrabbed ||
+            (full_grab_enabled && [[self window] isKeyWindow]);
+ }
+@@ -1401,8 +1453,27 @@
+     });
+ }
+ @end
++
  
  
- /*
++/*
 + * myLinux: while the window follows the guest's mode, macOS may move it (the title bar stays on a screen) but not
 + * shrink it to fit a screen, as it never shrank the fixed window: the mode is sized for the display the window is
 + * placed on, which need not be the one it opens on, and a window smaller than the mode draws a text console wrongly.
@@ -84,10 +132,10 @@
 +    return NSMakeRect(c.origin.x, NSMaxY(c) - frameRect.size.height, frameRect.size.width, frameRect.size.height);
 +}
 +@end
-+
-+/*
+ 
+ /*
   ------------------------------------------------------
-     QemuCocoaAppController
+@@ -1410,12 +1481,20 @@
   ------------------------------------------------------
  */
  @interface QemuCocoaAppController : NSObject
@@ -109,7 +157,7 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1475,7 +1536,7 @@
+@@ -1475,7 +1554,7 @@
          }
  
          // create a window
@@ -118,7 +166,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1550,9 @@
+@@ -1489,8 +1568,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -129,7 +177,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1615,62 @@
+@@ -1553,28 +1633,62 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -193,7 +241,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1678,23 @@
+@@ -1582,6 +1696,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -217,7 +265,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1788,397 @@
+@@ -1675,12 +1806,397 @@
  }
  
  /* Stretches video to fit host monitor size */

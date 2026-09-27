@@ -528,13 +528,13 @@ struct MachineView: View {
     private var grabHelp: String {
         if isOmarchy {
             switch draft.grab {
-            case "full": return "Omarchy receives every key, ⌘ as Super, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time, and Ctrl+Option+G hands the keyboard back."
+            case "full": return "Omarchy receives every key, ⌘ as Super, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac (⌘Tab and Spotlight work, typing still goes to Omarchy); a click in the window, or Ctrl+Option+G again, gives Omarchy every key again."
             case "none": return "macOS keeps all its shortcuts; Omarchy only sees combinations macOS does not claim."
             default: return "The Option key acts as Super inside Omarchy (Option+Space opens the Omarchy menu, Option+Return a terminal). macOS keeps its own ⌘ shortcuts."
             }
         }
         switch draft.grab {
-        case "full": return "myLinux receives even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time, and Ctrl+Option+G hands the keyboard back."
+        case "full": return "myLinux receives even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac (⌘Tab and Spotlight work, typing still goes to myLinux); a click in the window, or Ctrl+Option+G again, sends every key to myLinux again."
         case "none": return "macOS keeps all its shortcuts; myLinux only sees combinations macOS does not claim."
         default: return "The Option key acts as ⌘/Super inside myLinux (Option+Space opens the menu). macOS keeps its own ⌘ shortcuts, including ⌘Space for Spotlight."
         }
