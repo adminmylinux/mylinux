@@ -1,10 +1,9 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,6 +117,24 @@
- static NSTextField *pauseLabel;
+@@ -118,6 +118,25 @@
  
  static bool allow_events;
-+
+ 
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
 + * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
@@ -22,10 +21,12 @@
 +static bool mylinux_settling;
 +static bool mylinux_size_buttons(void);
 +static bool mylinux_follows_mode(NSWindow *window);
- 
++static void mylinux_desktop_reached(NSWindow *window, int w, int h);
++
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
-@@ -696,12 +714,15 @@
+ static QemuEvent cbevent;
+@@ -696,12 +715,16 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
  
@@ -38,15 +39,15 @@
          [[self window] setContentSize:NSMakeSize(width, height)];
          [[self window] center];
 +        mylinux_mode_size = [[[self window] contentView] frame].size;     /* as macOS let it be (a screen caps it) */
++        mylinux_desktop_reached([self window], screen.width, screen.height);
 +        mylinux_self_sizing = false;
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -1125,6 +1146,16 @@
-             return true;
+@@ -1126,6 +1149,16 @@
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
-+
+ 
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -56,10 +57,11 @@
 +                dispatch_async(dispatch_get_main_queue(), ^{ [[self window] toggleFullScreen:nil]; });
 +                return true;
 +            }
- 
++
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-@@ -1405,17 +1436,44 @@
+             if (![self isKeyboardCaptured] &&
+@@ -1405,17 +1438,44 @@
  
  
  /*
@@ -105,7 +107,7 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1475,7 +1533,7 @@
+@@ -1475,7 +1535,7 @@
          }
  
          // create a window
@@ -114,26 +116,15 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1491,6 +1549,18 @@
+@@ -1491,6 +1551,7 @@
          [window makeKeyAndOrderFront:self];
          [window center];
          [window setDelegate: self];
 +        [self installSizeButtons];
-+        if (mylinux_size_buttons()) {
-+            [window setStyleMask:[window styleMask] | NSWindowStyleMaskResizable];
-+            /* adding the toolbar changes the content's height a moment later: settle, then fit the mode again */
-+            mylinux_settling = true;
-+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-+                mylinux_settling = false;
-+                if (mylinux_follows_mode([cocoaView window])) {
-+                    [cocoaView resizeWindow];
-+                }
-+            });
-+        }
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1623,62 @@
+@@ -1553,28 +1614,62 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -197,7 +188,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1686,23 @@
+@@ -1582,6 +1677,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -221,7 +212,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1796,338 @@
+@@ -1675,12 +1787,366 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -247,6 +238,34 @@
 +    return v && *v ? v : NULL;
 +}
 +static bool mylinux_size_buttons(void) { return mylinux_env("MYLINUX_SIZE_BUTTONS") != NULL; }
++/*
++ * The window starts fixed, as it always did: a guest's early console takes the window's size for its own, and a
++ * first-boot screen drawn in a window of another size comes out wrong. When the guest reaches its desktop's mode
++ * (MYLINUX_DESKTOP_MODE, "WxH" in guest pixels, from run.sh and run-omarchy.sh) the window becomes resizable, so
++ * Window > Fill, tiling and a drag work from then on; until the user sizes it, it keeps following the mode.
++ */
++static NSMenuItem *mylinux_zoom_item(NSMenu *menu);
++static void mylinux_desktop_reached(NSWindow *window, int w, int h)
++{
++    const char *want = mylinux_env("MYLINUX_DESKTOP_MODE");
++    int dw = 0, dh = 0;
++    if (!mylinux_size_buttons() || !want || sscanf(want, "%dx%d", &dw, &dh) != 2 || w != dw || h != dh ||
++        ([window styleMask] & NSWindowStyleMaskResizable)) {
++        return;
++    }
++    /* a window larger than its screen (a mode made for another display) stays fixed, as before: made resizable,
++     * macOS shrinks it to a default size at once and the guest would follow that down */
++    NSRect visible = [[window screen] visibleFrame];
++    if ([window frame].size.width > visible.size.width + 1 || [window frame].size.height > visible.size.height + 1) {
++        return;
++    }
++    [window setStyleMask:[window styleMask] | NSWindowStyleMaskResizable];
++    if (!zoom_to_fit_item) {
++        zoom_to_fit_item = mylinux_zoom_item([NSApp mainMenu]);
++    }
++    [zoom_to_fit_item setState:NSControlStateValueOn];
++}
++
 +static bool mylinux_follows_mode(NSWindow *window)
 +{
 +    return mylinux_size_buttons() && !mylinux_user_sized && !([window styleMask] & NSWindowStyleMaskFullScreen);

@@ -129,6 +129,8 @@ if [ "${DRYRUN:-0}" = 1 ]; then
 fi
 # the window's −10% / +10% / full screen buttons (the accelerated runtime's QEMU; myLinux's desktop is zoomed)
 export MYLINUX_SIZE_BUTTONS=1
+# the desktop's mode: the window starts fixed and becomes resizable (Fill, tiling, a drag) once the guest reaches it
+export MYLINUX_DESKTOP_MODE="${XRES}x${YRES}"
 # Launch through $OUT/myLinux.app so macOS shows "myLinux" as app name, Dock icon and window title.
 # With APP_ID (the launcher's machines) the machine has a bundle of its own, named after it: its own app in ⌘Tab.
 BUNDLE=$(tools/make-app-bundle.sh | sed -n 's/ ready$//p' | tail -1) || true
