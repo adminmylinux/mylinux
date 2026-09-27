@@ -150,21 +150,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        // `myLinux --render-install-script <png>`: draw the Install Script dialog to a file, with the checkout's
-        // debian_install.sh in it (a look without a machine or the network)
-        if let i = args.firstIndex(of: "--render-install-script"), i + 1 < args.count {
-            var p = RemoteProfile(kind: .ssh); p.name = "Debian terminal"
-            if let file = ProcessInfo.processInfo.environment["MYLINUX_INSTALL_SCRIPT"] { p.installScript = file; p.name = "Alpine terminal" }
-            let tab: InstallScriptSheet.Tab = ProcessInfo.processInfo.environment["MYLINUX_INSTALL_TAB"] == "cloud" ? .cloud : .install
-            let view = NSHostingView(rootView: InstallScriptSheet(profile: p, dismiss: {}, run: { _ in }, preset: InstallScript.bundled(p.installScriptFile) ?? "#!/bin/bash\n", tab: tab))
-            view.frame = NSRect(origin: .zero, size: view.fittingSize)
-            view.appearance = NSAppearance(named: .darkAqua)
-            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-                view.cacheDisplay(in: view.bounds, to: rep)
-                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
-            }
-            exit(0)
-        }
         // `myLinux --terminal-window <png>` (with MYLINUX_LOCAL_SHELL=1): open a machine terminal window on a local shell
         // and photograph it, to check the window's layout
         if let i = args.firstIndex(of: "--terminal-window"), i + 1 < args.count {

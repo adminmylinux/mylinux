@@ -183,46 +183,31 @@ final class KnownHostsTests: XCTestCase {
     }
 }
 
-final class InstallScriptTests: XCTestCase {
-    let sample = """
-    #!/bin/bash
-    CLAUDE=1      # option: Claude Code
-    CODEX=0 # option:Codex
-    BTOP=1        # option:
-    CLAUDE=0      # option: a second line with the same name is not another box
-    OTHER=1       # just a comment
-    set -e
-    """
-
-    func testOptionsComeFromMarkedLines() {
-        let o = InstallScript.options(in: sample)
-        XCTAssertEqual(o.map(\.name), ["CLAUDE", "CODEX", "BTOP"])
-        XCTAssertEqual(o.map(\.label), ["Claude Code", "Codex", "BTOP"], "an empty label falls back to the name")
-        XCTAssertEqual(o.map(\.on), [true, false, true])
+final class ServerAppsTests: XCTestCase {
+    func testTheAppComesFromMain() {
+        XCTAssertEqual(ServerApps.url("catalog.json").absoluteString, "https://raw.githubusercontent.com/adminmylinux/mylinux/main/server-apps/catalog.json")
+        XCTAssertTrue(ServerApps.command.contains("sh /mnt/mac/.mylinux/apps/run.sh && exec"), "leaving the app starts a fresh login shell")
     }
-    func testSettingRewritesOnlyThatLine() {
-        let off = InstallScript.setting("CLAUDE", to: false, in: sample)
-        XCTAssertTrue(off.contains("CLAUDE=0      # option: Claude Code\nCODEX=0"))
-        XCTAssertEqual(off.replacingOccurrences(of: "CLAUDE=0      # option: Claude Code", with: "CLAUDE=1      # option: Claude Code"), sample)
-        XCTAssertEqual(InstallScript.options(in: InstallScript.setting("CODEX", to: true, in: sample)).map(\.on), [true, true, true])
-        XCTAssertEqual(InstallScript.setting("NOPE", to: true, in: sample), sample)
+    func testTheRepositoryFilesArePlausible() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../server-apps").standardized
+        for f in ServerApps.files {
+            XCTAssertTrue(ServerApps.plausible(f, try String(contentsOf: dir.appendingPathComponent(f), encoding: .utf8)), f)
+        }
+        XCTAssertFalse(ServerApps.plausible("catalog.json", "<html>404</html>"))
     }
-    func testTheRepositoryScript() throws {
-        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../debian_install.sh").standardized
-        let s = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertTrue(InstallScript.plausible(s))
-        XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Bun", "Tailscale"])
-        XCTAssertTrue(InstallScript.options(in: s).allSatisfy(\.on), "everything is on by default")
-        XCTAssertFalse(InstallScript.plausible("<html>404</html>"))
-        XCTAssertEqual(InstallScript.command(file: "debian_install.sh", script: s), " bash ~/.local/share/mylinux/debian_install.sh; command -v bash >/dev/null && exec bash -l\n")
-    }
-    func testAlpinesScriptRunsWithShAndLeavesBash() throws {
-        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../alpine_install.sh").standardized
-        let s = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertTrue(s.hasPrefix("#!/bin/sh\n"), "Alpine has no bash until the script installs it")
-        XCTAssertEqual(InstallScript.options(in: s).map(\.label), ["Claude Code", "Codex", "btop", "Bun", "Tailscale"])
-        XCTAssertEqual(InstallScript.command(file: "alpine_install.sh", script: s), " sh ~/.local/share/mylinux/alpine_install.sh; command -v bash >/dev/null && exec bash -l\n")
-        XCTAssertEqual(InstallScript.url("alpine_install.sh").absoluteString, "https://raw.githubusercontent.com/adminmylinux/mylinux/main/alpine_install.sh")
+    func testCloudDrivesGoBothWays() throws {
+        let share = FileManager.default.temporaryDirectory.appendingPathComponent("apps-cloud-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: share) }
+        var p = ProfileStore.newProfile(named: "A", kind: .alpine, folder: share)
+        p.shareDir = share.path; p.cloudFolders = ["dropbox"]
+        ServerApps.writeCloudState(p)
+        let state = try JSONSerialization.jsonObject(with: Data(contentsOf: ServerApps.cloudStateFile(share.path))) as? [String: Any]
+        XCTAssertEqual(state?["selected"] as? [String], ["dropbox"])
+        XCTAssertEqual((state?["folders"] as? [[String: Any]])?.compactMap { $0["id"] as? String }, ["dropbox", "onedrive", "icloud", "googledrive"])
+        XCTAssertNil(ServerApps.takeCloudRequest(share.path), "no request")
+        try Data(#"{"folders": ["icloud", "nonsense", "dropbox"]}"#.utf8).write(to: ServerApps.cloudRequestFile(share.path))
+        XCTAssertEqual(ServerApps.takeCloudRequest(share.path), ["dropbox", "icloud"], "known folders, in their order")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ServerApps.cloudRequestFile(share.path).path), "taken once")
     }
 }
 

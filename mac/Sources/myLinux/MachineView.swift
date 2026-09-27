@@ -377,14 +377,15 @@ struct MachineView: View {
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
                         help: "Visible as /mnt/share inside myLinux, and where its settings live.")
             }
-            if !isServer {
+            do {
                 LabeledContent("Cloud folders") {
                     HStack(spacing: 8) {
                         Text(cloudSummary).foregroundStyle(.secondary)
                         Button("Choose…") { CloudFoldersWindow.show(draft.id) }
                     }
                 }
-                .help("The Mac's Dropbox, OneDrive, iCloud Drive or Google Drive inside the machine. ⇧⌘P in the machine's window opens this too.")
+                .help(isServer ? "The Mac's Dropbox, OneDrive, iCloud Drive or Google Drive inside the machine. Apps… (⇧⌘A) in its terminal has them too."
+                               : "The Mac's Dropbox, OneDrive, iCloud Drive or Google Drive inside the machine. ⇧⌘P in the machine's window opens this too.")
             }
         }
     }

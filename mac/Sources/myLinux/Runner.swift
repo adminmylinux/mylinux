@@ -558,6 +558,18 @@ final class RunManager: ObservableObject {
 
     var active: [Runner] { runners.values.filter(\.isActive) }
 
+    /// myLinux Apps added or took away a cloud drive (ServerApps.takeCloudRequest): saved, and a running machine
+    /// restarts to attach them; its terminal reconnects, and the folders are mounted as after any start.
+    private func cloudRequest(_ id: UUID, store: ProfileStore) {
+        guard var q = store.profiles.first(where: { $0.id == id }), let folders = ServerApps.takeCloudRequest(q.shareDir) else { return }
+        let r = runner(for: id)
+        guard folders != q.cloudFolders else { ServerApps.writeCloudState(q); return }
+        q.cloudFolders = folders
+        store.update(q)
+        ServerApps.writeCloudState(q)
+        if r.isActive || r.canStopElsewhere { r.restart(q) }
+    }
+
     func startWatching(_ store: ProfileStore) {
         timer?.invalidate()
         let tick = { [weak self, weak store] in
@@ -567,7 +579,11 @@ final class RunManager: ObservableObject {
                 // pgrep in the background: on the main thread, every machine every 4 s, it stalled the window
                 DispatchQueue.global(qos: .utility).async {
                     let inUse = Runner.diskInUse(p.appsDisk)
-                    DispatchQueue.main.async { r.refreshExternal(inUse: inUse) }
+                    let cloudAsked = p.isServer && !p.shareDir.isEmpty && FileManager.default.fileExists(atPath: ServerApps.cloudRequestFile(p.shareDir).path)
+                    DispatchQueue.main.async {
+                        r.refreshExternal(inUse: inUse)
+                        if cloudAsked { self.cloudRequest(p.id, store: store) }
+                    }
                 }
             }
         }

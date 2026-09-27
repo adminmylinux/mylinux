@@ -81,8 +81,6 @@ for lib in "$NEW"/Contents/Frameworks/*.dylib; do
 done
 # the scripts the app runs: run.sh and everything it calls
 cp run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh "$NEW/Contents/Resources/runtime/"
-# Install Script… (a server's terminal) loads <distro>_install.sh from GitHub; these copies stand in when it can't
-cp debian_install.sh alpine_install.sh "$NEW/Contents/Resources/"
 # myLinux Apps (Apps… in a server's terminal) comes from GitHub too; this copy stands in when it can't
 mkdir -p "$NEW/Contents/Resources/server-apps"
 cp server-apps/run.sh server-apps/mylinux_apps.py server-apps/catalog.json "$NEW/Contents/Resources/server-apps/"

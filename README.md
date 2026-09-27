@@ -100,16 +100,10 @@ launcher's event tap, with the Accessibility permission Omarchy's "every key" mo
 server's window is in front; Spotlight keeps it everywhere else; Settings › Terminal turns it off) and on ⌥Space: a search over the programs installed on the machine, read over ssh from its PATH plus `~/.local/bin`
 and `~/.bun/bin`, with names for the well-known ones (type "cla", get Claude Code), and the Commands menu's entries;
 Return types the command into the terminal (`Remote/CommandPalette.swift`). It also has a **CMD** menu in the middle
-of its title bar (⌘P opens it); **Install Script…** (⇧⌘P) opens
-[`debian_install.sh`](debian_install.sh), loaded from this repository on GitHub (the copy built into the launcher
-stands in when GitHub can't be reached), in an editable text field. Above it is a checkbox for each option the
-script declares (a `NAME=1   # option: Label` line: Claude Code, Codex, btop and Tailscale, all on). Ticking a box
-rewrites its line, so the text is always what runs. **Run in Terminal** copies the text into the machine
-(`~/.local/share/mylinux/debian_install.sh`, over the machine's SSH connection) and runs it in the terminal, in
-view. It installs git and tmux, the chosen tools, and the aliases `cc` (`claude update && claude
---dangerously-skip-permissions`) and `cx` (`codex --dangerously-bypass-approvals-and-sandbox`; Codex dropped `--full-auto`) in a marked block of `~/.bashrc`. With Tailscale on,
-it ends at Tailscale's sign-in link. The script can change on `main` without a new launcher. The dialog's **Cloud**
-tab shares the Mac's cloud folders into the machine beside `~/Mac`: Dropbox, OneDrive (`~/Library/CloudStorage`),
+of its title bar (⌘P opens it), with **Apps…** (⇧⌘A, myLinux Apps below). Installing things (Claude Code, Codex,
+btop, Tailscale, …) is myLinux Apps' job; the Install Script dialog of earlier launchers is gone (`debian_install.sh`
+and `alpine_install.sh` stay on `main` for those launchers, which load them from there). myLinux Apps' **Cloud drives**
+rows, and **Cloud folders › Choose…** on the machine's page, share the Mac's cloud folders into the machine beside `~/Mac`: Dropbox, OneDrive (`~/Library/CloudStorage`),
 iCloud Drive (`~/Library/Mobile Documents/com~apple~CloudDocs`) and Google Drive, each one found on the Mac a
 checkbox. A ticked folder is one more virtio-9p share (`EXTRA_SHARES`, one `tag=path` per line, for `run-server.sh`;
 cloud folders are the one part of `~/Library` it will share), attached when the machine starts, so saving a change
@@ -131,7 +125,11 @@ Debian's packages, then lines of shell (Claude Code's and Codex's own installers
 distribution does not package is listed dimmed there. The launcher copies the three files from `main` (or the copy
 inside the app) into the Mac share's `.mylinux/apps` and types `sh /mnt/mac/.mylinux/apps/run.sh`; the first run
 installs the distribution's Textual (`py3-textual`, `python3-textual`) and adds `mylinux-apps` to `~/.local/bin`, so
-a catalog change on `main` reaches every machine the next time Apps… opens. **Show
+a catalog change on `main` reaches every machine the next time Apps… opens. The **Cloud drives** rows on top come from `.mylinux/cloud.json`, which
+the launcher writes beside the app (this Mac's cloud folders and the machine's); Enter adds or takes one away after a
+confirmation: the app writes `.mylinux/cloud-request.json` and quits, and the launcher (its 4-second machine watch,
+`RunManager`) saves the machine's folders and restarts it, after which they are mounted as above. `run.sh`'s block in
+`~/.profile` and `~/.bashrc` also has the aliases `cc` and `cx`. **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
 forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says
@@ -152,7 +150,7 @@ hold Claude in one terminal, Codex in another below it, and the result in the br
 ### Alpine server machines
 
 **Alpine Server** is the smallest machine: Alpine Linux's official aarch64 cloud-init image, the same kind of
-terminal server as Debian with the same window, browser pane and Install Script… menu. `tools/get-alpine.sh`
+terminal server as Debian with the same window, browser pane and Apps… menu. `tools/get-alpine.sh`
 finds the newest stable release in Alpine's cloud folder and downloads its raw disk (about 100 MB, checked against
 the `.sha512` beside it; kept sparse in `out/alpine`, about 230 MB of a 1 GB disk) and the same UEFI firmware
 (`tools/get-edk2.sh`, shared with Debian). `./run-alpine.sh` is `run-server.sh` with `DISTRO=alpine`

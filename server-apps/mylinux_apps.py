@@ -4,6 +4,9 @@ Apps… in the launcher's CMD menu copies this folder from the public repository
 the machine's Mac share and runs run.sh, which starts this with the distribution's Textual (py3-textual on Alpine,
 python3-textual on Debian; written for Textual 2.1 and later). What can be installed, and how, is catalog.json
 beside it. Running a program or an install hands the terminal over to it (App.suspend) and comes back after.
+Cloud drives: the Mac's Dropbox, OneDrive, iCloud Drive and Google Drive, as the launcher wrote them beside this folder
+(../cloud.json); adding or taking one away writes ../cloud-request.json, which the launcher takes: it saves the choice
+and restarts the machine to attach the folder, which then is ~/Dropbox and so on.
 """
 from __future__ import annotations
 
@@ -61,9 +64,13 @@ class AppEntry:
     steps: list[str]
     env: dict[str, str] = field(default_factory=dict)
     found: str | None = None          # the program found on the PATH, when installed
+    cloud: dict | None = None         # a cloud drive: {"id", "title", "guest", "onMac"}
+    chosen: bool = False              # a cloud drive the machine has (attached at its start)
 
     @property
     def installable(self) -> bool:
+        if self.cloud is not None:
+            return bool(self.cloud.get("onMac")) or self.chosen
         return bool(self.packages or self.steps)
 
     @property
@@ -90,6 +97,32 @@ def load_catalog(path: Path, distro: str) -> list[AppEntry]:
     return apps
 
 
+def load_cloud(state: Path) -> tuple[list[AppEntry], str]:
+    """The cloud drives the launcher wrote (none from a launcher before them), and the machine's name."""
+    try:
+        data = json.loads(state.read_text())
+    except (OSError, ValueError):
+        return [], ""
+    chosen = set(data.get("selected", []))
+    drives = []
+    for f in data.get("folders", []):
+        drives.append(AppEntry(id="cloud:" + f["id"], name=f["title"], category="Cloud drives", description="",
+                               bins=[], run=f"cd ~/{f['guest']} && ls", packages=[], steps=[],
+                               cloud=f, chosen=f["id"] in chosen))
+    return drives, data.get("machine", "")
+
+
+def describe_cloud(a: AppEntry) -> str:
+    f = a.cloud or {}
+    if a.chosen and a.installed:
+        return f"Your Mac's {f['title']}, in ~/{f['guest']}"
+    if a.chosen:
+        return "Chosen: attached at the machine's next start"
+    if f.get("onMac"):
+        return f"Your Mac's {f['title']} folder, as ~/{f['guest']} (restarts the machine)"
+    return "Not on this Mac"
+
+
 def install_script(app: AppEntry, distro: str) -> str:
     lines = []
     if app.packages:
@@ -112,7 +145,12 @@ def remove_script(app: AppEntry, distro: str) -> str | None:
 def refresh(apps: list[AppEntry]) -> None:
     path = search_path()
     for a in apps:
-        a.found = next((b for b in a.bins if shutil.which(b, path=path)), None)
+        if a.cloud is not None:
+            mp = f"/mnt/{a.cloud['id']}"
+            a.found = f"~/{a.cloud['guest']}" if os.path.ismount(mp) else None
+            a.description = describe_cloud(a)
+        else:
+            a.found = next((b for b in a.bins if shutil.which(b, path=path)), None)
 
 
 class Confirm(ModalScreen[bool]):
@@ -174,7 +212,10 @@ class MyLinuxApps(App):
     def __init__(self, catalog: Path) -> None:
         super().__init__()
         self.distro = distribution()
-        self.apps = load_catalog(catalog, self.distro)
+        self.cloud_state = catalog.parent.parent / "cloud.json"
+        self.cloud_request = catalog.parent.parent / "cloud-request.json"
+        drives, self.machine = load_cloud(self.cloud_state)
+        self.apps = drives + load_catalog(catalog, self.distro)
         refresh(self.apps)
         self.shown: list[AppEntry] = []
         self.sub_title = f"{'Alpine' if self.distro == 'alpine' else 'Debian'} · {os.uname().nodename}"
@@ -200,11 +241,14 @@ class MyLinuxApps(App):
         q = self.query_one(Input).value.strip().lower()
         table = self.query_one(DataTable)
         table.clear()
-        # installed first, then what can be installed here, then the rest; each by category and name
-        order = lambda a: (0 if a.installed else 1 if a.installable else 2, a.category, a.name.lower())
+        # the cloud drives on top; then installed, then what can be installed here, then the rest; by category and name
+        order = lambda a: (-1 if a.cloud is not None else 0 if a.installed else 1 if a.installable else 2, a.category, a.name.lower())
         self.shown = sorted((a for a in self.apps if self.matches(a, q)), key=order)
         for a in self.shown:
-            mark = "[green]●[/]" if a.installed else ("○" if a.installable else "[dim]–[/]")
+            if a.cloud is not None and a.chosen and not a.installed:
+                mark = "[yellow]◐[/]"
+            else:
+                mark = "[green]●[/]" if a.installed else ("○" if a.installable else "[dim]–[/]")
             name = a.name if a.installable or a.installed else f"[dim]{a.name}[/]"
             table.add_row(mark, name, a.category, a.description, key=a.id)
         if keep and any(a.id == keep for a in self.shown):
@@ -219,10 +263,12 @@ class MyLinuxApps(App):
 
     def show_detail(self) -> None:
         a = self.current()
-        installed = sum(1 for x in self.apps if x.installed)
-        head = f"{installed} of {len(self.apps)} installed"
+        programs = [x for x in self.apps if x.cloud is None]
+        head = f"{sum(1 for x in programs if x.installed)} of {len(programs)} installed"
         if a is None:
             text = f"{head} · nothing matches"
+        elif a.cloud is not None:
+            text = f"{head} · " + ("Enter takes it away" if a.chosen else "Enter adds it" if a.installable else "sign in to it on the Mac first")
         elif a.installed:
             text = f"{head} · Enter runs: {a.command()}" + (" · Ctrl-R removes" if remove_script(a, self.distro) else "")
         elif a.installable:
@@ -268,16 +314,47 @@ class MyLinuxApps(App):
         a = self.current()
         if a is None:
             return
-        if a.installed:
+        if a.cloud is not None:
+            self.toggle_cloud(a)
+        elif a.installed:
             self.run_app(a)
         elif a.installable:
             self.action_install()
         else:
             self.notify(f"{a.name} is not packaged for this distribution.", severity="warning")
 
+    def toggle_cloud(self, a: AppEntry) -> None:
+        """Adds or takes away a cloud drive: the launcher restarts the machine to attach or detach it."""
+        if not a.installable:
+            self.notify(f"{a.name} is not on this Mac: install it there and sign in, then open Apps… again.", severity="warning")
+            return
+        f = a.cloud or {}
+        machine = self.machine or "this machine"
+        chosen = [x.cloud["id"] for x in self.apps if x.cloud is not None and x.chosen]
+        if a.chosen:
+            chosen.remove(f["id"])
+            title, body, ok = f"Take {a.name} away?", f"~/{f['guest']} goes away; the files stay in your Mac's {a.name}.", "Take Away"
+        else:
+            chosen.append(f["id"])
+            title, body, ok = f"Add {a.name}?", f"Your Mac's {a.name} folder shows up as ~/{f['guest']}; the Mac's {a.name} app keeps it in sync.", "Add and Restart"
+        body += f"\n\n{machine} restarts to attach it (about half a minute): this terminal closes and opens again."
+
+        def answered(yes: bool | None) -> None:
+            if not yes:
+                return
+            tmp = self.cloud_request.with_suffix(".tmp")
+            try:
+                tmp.write_text(json.dumps({"folders": chosen}))
+                tmp.replace(self.cloud_request)
+            except OSError as e:
+                self.notify(f"Could not ask the launcher: {e}", severity="error")
+                return
+            self.exit(message=f"myLinux Apps: {machine} restarts for {a.name}; the terminal opens again when it is back.")
+        self.push_screen(Confirm(title, body, ok), answered)
+
     def action_install(self) -> None:
         a = self.current()
-        if a is None or not a.installable:
+        if a is None or not a.installable or a.cloud is not None:
             return
         script = install_script(a, self.distro)
         verb = "Reinstall" if a.installed else "Install"
@@ -293,6 +370,9 @@ class MyLinuxApps(App):
 
     def action_remove(self) -> None:
         a = self.current()
+        if a is not None and a.cloud is not None and a.chosen:
+            self.toggle_cloud(a)
+            return
         if a is None or not a.installed:
             return
         script = remove_script(a, self.distro)

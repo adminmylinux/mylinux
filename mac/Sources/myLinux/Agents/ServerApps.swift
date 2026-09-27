@@ -12,7 +12,38 @@ enum ServerApps {
     /// shell, which reads the PATH run.sh keeps in ~/.profile and ~/.bashrc: what was just installed is found.
     static let command = #" MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh && exec "${SHELL:-/bin/sh}" -l"#
 
-    static func url(_ file: String) -> URL { InstallScript.url("server-apps/\(file)") }
+    static func url(_ file: String) -> URL { URL(string: "https://raw.githubusercontent.com/adminmylinux/mylinux/main/server-apps/\(file)")! }
+
+    // ---- cloud drives: the app's "Cloud drives" rows, and its requests ------------------------------------------------
+    /// What the app shows under Cloud drives, beside the app in the share: this Mac's cloud folders and the machine's.
+    static func cloudStateFile(_ share: String) -> URL { URL(fileURLWithPath: share).appendingPathComponent(".mylinux/cloud.json") }
+    /// Written by the app when a cloud drive is added or taken away: {"folders": [...]}. The launcher's watcher
+    /// (RunManager) takes it, saves the machine's folders and restarts it to attach them.
+    static func cloudRequestFile(_ share: String) -> URL { URL(fileURLWithPath: share).appendingPathComponent(".mylinux/cloud-request.json") }
+
+    static func cloudState(_ machine: Profile) -> [String: Any] {
+        ["machine": machine.name,
+         "selected": machine.cloudFolders,
+         "folders": CloudFolder.allCases.map { f in
+             ["id": f.rawValue, "title": f.title, "guest": f.guestName, "onMac": f.macPath() != nil] as [String: Any]
+         }]
+    }
+
+    static func writeCloudState(_ machine: Profile) {
+        guard !machine.shareDir.isEmpty, let data = try? JSONSerialization.data(withJSONObject: cloudState(machine), options: [.prettyPrinted, .sortedKeys]) else { return }
+        let url = cloudStateFile(machine.shareDir)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
+    }
+
+    /// The app's request, taken (the file is removed), or nil. Only known folder names count.
+    static func takeCloudRequest(_ share: String) -> [String]? {
+        let url = cloudRequestFile(share)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        try? FileManager.default.removeItem(at: url)
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let folders = obj["folders"] as? [String] else { return nil }
+        return CloudFolder.allCases.map(\.rawValue).filter { folders.contains($0) }
+    }
 
     /// A file that is what it should be, not an error page.
     static func plausible(_ file: String, _ text: String) -> Bool {
@@ -52,7 +83,12 @@ enum ServerApps {
         return texts
     }
 
-    /// Writes the app into the share folder: nil when done, or what went wrong.
+    /// Writes the app into the share folder, with the machine's cloud drives beside it: nil when done, or what went wrong.
+    static func copy(to share: String, machine: Profile?) async -> String? {
+        if let machine { writeCloudState(machine) }
+        return await copy(to: share)
+    }
+
     static func copy(to share: String) async -> String? {
         guard !share.isEmpty else { return "Apps needs the machine's share folder (its page › Files & sharing)." }
         guard let texts = await fromGitHub() ?? bundled() else {

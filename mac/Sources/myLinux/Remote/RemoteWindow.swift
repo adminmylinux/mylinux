@@ -90,7 +90,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                       e.modifierFlags.intersection([.command, .shift, .option, .control]) == [.command] else { return e }
                 self.newTerminal(); return nil
             }
-            // ⌘P opens the CMD menu, ⇧⌘P Install Script…, ⇧⌘A Apps…, ⌘W closes the pane with the keyboard (the browser, or one
+            // ⌘P opens the CMD menu, ⇧⌘A Apps…, ⌘W closes the pane with the keyboard (the browser, or one
             // terminal of several); with a single terminal ⌘W goes on to close the window as usual
             keyMonitorP = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
                 guard let self, e.window === self.window, let key = e.charactersIgnoringModifiers?.lowercased() else { return e }
@@ -98,7 +98,6 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                 if key == "p", mods == [.command] { self.cmdMenu?.performClick(nil); return nil }
                 // ⌥Space: find and run (Omarchy's Super+Space; ⌘Space stays Spotlight's)
                 if e.keyCode == 49, mods == [.option] { self.showPalette(); return nil }
-                if key == "p", mods == [.command, .shift] { self.installScript(); return nil }
                 if key == "a", mods == [.command, .shift], self.profile.launcherMachine { self.openApps(); return nil }
                 if key == "w", mods == [.command], self.closeFocusedPane() { return nil }
                 return e
@@ -331,8 +330,6 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             pop.toolTip = "Commands for this machine (⌘P)"
             let find = NSMenuItem(title: "Find and Run…", action: #selector(showPalette), keyEquivalent: " "); find.keyEquivalentModifierMask = [.option]; find.target = self
             pop.menu?.addItem(find)
-            let install = NSMenuItem(title: "Install Script…", action: #selector(installScript), keyEquivalent: "p"); install.keyEquivalentModifierMask = [.command, .shift]; install.target = self
-            pop.menu?.addItem(install)
             let apps = NSMenuItem(title: "Apps…", action: #selector(openApps), keyEquivalent: "a"); apps.keyEquivalentModifierMask = [.command, .shift]; apps.target = self
             apps.toolTip = "myLinux Apps: find, run and install programs in the terminal"
             pop.menu?.addItem(apps)
@@ -522,25 +519,15 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     func testShowBrowser(_ url: URL) { openInBrowser(url) }
     func testScreenshotToMachine() { screenshotBrowser() }
 
-    // ---- the myLinux menu: Install Script… ----
+    // ---- the myLinux menu: Apps… ----
     private var sheetWindow: NSWindow?
-    @objc func installScript() {
-        guard let window, sheetWindow == nil else { return }
-        let sheet = NSWindow(contentViewController: NSHostingController(rootView: InstallScriptSheet(
-            profile: profile,
-            dismiss: { [weak self] in self?.endSheet() },
-            run: { [weak self] command in guard let self, let t = self.ssh else { return }; t.type(command); self.window?.makeFirstResponder(t.keyView) },
-            restarting: { [weak self] in self?.endSheet(); DispatchQueue.main.async { self?.showRestartProgress() } })))
-        sheet.styleMask = [.titled]
-        sheetWindow = sheet
-        window.beginSheet(sheet) { _ in }
-    }
     /// myLinux Apps (ServerApps): the app into the Mac share, then its line into the terminal.
     @objc func openApps() {
         guard let t = ssh else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if let problem = await ServerApps.copy(to: self.profile.shareMacPath) {
+            let machine = ProfileStore.shared.profiles.first { $0.id == (self.profile.machineID ?? self.profile.id) }
+            if let problem = await ServerApps.copy(to: self.profile.shareMacPath, machine: machine) {
                 let alert = NSAlert(); alert.messageText = "myLinux Apps could not start"; alert.informativeText = problem
                 if let window = self.window { alert.beginSheetModal(for: window, completionHandler: nil) } else { alert.runModal() }
                 return

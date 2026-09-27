@@ -25,13 +25,16 @@ if [ "$(cat "$CMD" 2>/dev/null)" != "$WANT" ]; then printf '%s\n' "$WANT" > "$CM
 PATHLINE='for d in "$HOME/.local/bin" "$HOME/.bun/bin" "$HOME/.cargo/bin"; do case ":$PATH:" in *":$d:"*) ;; *) PATH="$d:$PATH" ;; esac; done; export PATH'
 for rc in "$HOME/.profile" "$HOME/.bashrc"; do
   touch "$rc"
-  if ! grep -qxF "$PATHLINE" "$rc"; then
+  if ! grep -qxF "$PATHLINE" "$rc" || ! grep -q "^alias cx=" "$rc"; then
     sed -i '/^# >>> myLinux Apps >>>$/,/^# <<< myLinux Apps <<<$/d' "$rc"
     {
       echo '# >>> myLinux Apps >>>'
       echo "$PATHLINE"
       # Claude Code's own ripgrep is built for glibc; on Alpine it uses the system's (the catalog installs ripgrep)
       [ "$ROOT" = doas ] && echo 'export USE_BUILTIN_RIPGREP=0'
+      # the agents' short names (the terminal's CMD menu uses them)
+      echo "alias cc='claude update && claude --dangerously-skip-permissions'"
+      echo "alias cx='codex --dangerously-bypass-approvals-and-sandbox'"
       echo '# <<< myLinux Apps <<<'
     } >> "$rc"
   fi
