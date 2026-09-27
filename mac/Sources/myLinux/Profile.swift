@@ -38,7 +38,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var cpus = 0                // CPUS: 0 lets the script choose from the Mac's core count
     var sound = true            // AUDIO
     var sshPort = 0             // SSH=1 and FORWARD=<port>:22 when not 0: ssh -p <port> <user>@127.0.0.1 from the Mac
-    var cloudFolders: [String] = []   // servers: CloudFolder raw values, shared inside beside ~/Mac (EXTRA_SHARES)
+    var cloudFolders: [String] = []   // CloudFolder raw values, shared inside as ~/Dropbox and so on (EXTRA_SHARES)
 
     init(name: String, appsDisk: String, shareDir: String) {
         self.name = name; self.appsDisk = appsDisk; self.shareDir = shareDir
@@ -179,6 +179,8 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
+            let extra = CloudFolder.extraShares(cloudFolders)
+            if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             env.merge(appBundleEnvironment) { $1 }
             return env
         }
@@ -195,6 +197,8 @@ struct Profile: Codable, Identifiable, Hashable {
             "SERIAL": "unix:\(serialSocket),server,nowait",
         ]
         if !resolution.isEmpty { env["RES"] = resolution.lowercased() }
+        let extra = CloudFolder.extraShares(cloudFolders)
+        if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
         env.merge(appBundleEnvironment) { $1 }
         return env
     }

@@ -459,6 +459,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if env["MYLINUX_TEST_EARLY_TERMINAL"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { say("Terminal pressed"); runner.openTerminal(p) } }
             // MYLINUX_TEST_STALE_WINDOW=1: a terminal window already open at Start (it fails, as in a left-over window)
             if env["MYLINUX_TEST_STALE_WINDOW"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { say("stale window opened"); RemoteWindowController.show(p.terminalProfile) } }
+            // MYLINUX_TEST_CONSOLE="<seconds>|<command>" (a desktop): type a command into its console that long after Start
+            if let spec = env["MYLINUX_TEST_CONSOLE"], let bar = spec.firstIndex(of: "|"), let secs = Double(spec[..<bar]) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + secs) { say("typed into the console"); runner.send(String(spec[spec.index(after: bar)...]) + "\n") }
+            }
             var last = ""
             var windowAt: Date?
             Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in

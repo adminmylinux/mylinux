@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,6 +117,33 @@
+@@ -117,6 +117,36 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
@@ -11,6 +11,9 @@
 + * the keyboard stayed captured while the window was in front.)
 + */
 +static bool mylinux_keys_released;
++/* the launcher that started this machine, asked through a distributed notification (Restart, Cloud Folders…) */
++static bool mylinux_restart_available(void);
++static void mylinux_ask_launcher(NSString *action);
 +
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
@@ -34,7 +37,7 @@
  
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
-@@ -696,12 +723,16 @@
+@@ -696,12 +726,16 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
  
@@ -53,22 +56,23 @@
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -980,6 +1011,11 @@
-     InputButton button;
+@@ -981,6 +1015,11 @@
      unsigned int keycode;
      NSUInteger modifiers = [event modifierFlags];
-+
+ 
 +    /* a click in the window after Ctrl+Option+G: every key goes to the guest again */
 +    if (mylinux_keys_released && [event type] == NSEventTypeLeftMouseDown && [event window] == [self window]) {
 +        mylinux_keys_released = false;
 +    }
- 
++
      /*
       * Check -[NSEvent modifierFlags] here.
-@@ -1126,6 +1162,16 @@
+      *
+@@ -1125,6 +1164,29 @@
+             return true;
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
- 
++
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -79,10 +83,22 @@
 +                return true;
 +            }
 +
++            // myLinux: Shift+Command+P is the launcher's Cloud Folders dialog for this machine, also with every key
++            // going to the guest (the guest gets the modifiers only)
++            if (mylinux_restart_available() && [event keyCode] == kVK_ANSI_P &&
++                ([event modifierFlags] & (NSEventModifierFlagCommand | NSEventModifierFlagShift |
++                                          NSEventModifierFlagControl | NSEventModifierFlagOption)) ==
++                    (NSEventModifierFlagCommand | NSEventModifierFlagShift)) {
++                if (![event isARepeat]) {
++                    // after this event: the key handling holds the BQL, and the ask may show an alert
++                    dispatch_async(dispatch_get_main_queue(), ^{ mylinux_ask_launcher(@"cloud"); });
++                }
++                return true;
++            }
+ 
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-             if (![self isKeyboardCaptured] &&
-@@ -1147,9 +1193,12 @@
+@@ -1147,9 +1209,12 @@
                              [self selectConsoleLocked:key - '0' - 1]; /* ascii math */
                              return true;
  
@@ -96,7 +112,7 @@
                              return true;
                      }
                  }
-@@ -1375,6 +1424,9 @@
+@@ -1375,6 +1440,9 @@
   */
  - (BOOL) isKeyboardCaptured
  {
@@ -106,7 +122,7 @@
      return isMouseGrabbed ||
             (full_grab_enabled && [[self window] isKeyWindow]);
  }
-@@ -1403,6 +1455,25 @@
+@@ -1403,6 +1471,25 @@
  @end
  
  
@@ -132,7 +148,7 @@
  
  /*
   ------------------------------------------------------
-@@ -1410,12 +1481,20 @@
+@@ -1410,12 +1497,20 @@
   ------------------------------------------------------
  */
  @interface QemuCocoaAppController : NSObject
@@ -154,15 +170,16 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1423,6 +1502,7 @@
+@@ -1423,6 +1518,8 @@
  - (void)removePause;
  - (void)restartQEMU:(id)sender;
  - (void)powerDownQEMU:(id)sender;
 +- (void)mylinuxRestart:(id)sender;
++- (void)mylinuxCloudFolders:(id)sender;
  - (void)ejectDeviceMedia:(id)sender;
  - (void)changeDeviceMedia:(id)sender;
  - (BOOL)verifyQuit;
-@@ -1475,7 +1555,7 @@
+@@ -1475,7 +1572,7 @@
          }
  
          // create a window
@@ -171,7 +188,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1569,9 @@
+@@ -1489,8 +1586,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -182,7 +199,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1634,62 @@
+@@ -1553,28 +1651,62 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -246,7 +263,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1697,23 @@
+@@ -1582,6 +1714,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -270,7 +287,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1807,397 @@
+@@ -1675,12 +1824,397 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -668,12 +685,10 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1754,6 +2271,40 @@
-     with_bql(^{
-         qmp_system_powerdown(NULL);
+@@ -1756,6 +2290,58 @@
      });
-+}
-+
+ }
+ 
 +/* myLinux: Machine › Restart. The launcher that started this machine (MYLINUX_LAUNCHER_ID, MYLINUX_LINK_SCOPE, APP_ID
 + * from its Runner) shuts it down and starts it again: a new QEMU, so a runtime installed since is used (Reset only
 + * reboots the guest in this one). Only shown when the launcher started the machine.
@@ -683,13 +698,16 @@
 +    return getenv("MYLINUX_LAUNCHER_ID") && getenv("MYLINUX_LINK_SCOPE") && getenv("APP_ID");
 +}
 +
-+- (void)mylinuxRestart:(id)sender
++/* MachineLink's request to the launcher: {id, action}; with the launcher not running, say so and offer to open it */
++static void mylinux_ask_launcher(NSString *action)
 +{
 +    NSString *launcher = [NSString stringWithUTF8String:getenv("MYLINUX_LAUNCHER_ID")];
 +    if ([[NSRunningApplication runningApplicationsWithBundleIdentifier:launcher] count] == 0) {
++        bool restart = [action isEqualToString:@"restart"];
 +        NSAlert *alert = [[NSAlert alloc] init];
-+        [alert setMessageText:@"Restart needs myLinux Launcher"];
-+        [alert setInformativeText:@"Open myLinux Launcher and press Restart on this machine, or use Power Down and then Start."];
++        [alert setMessageText:restart ? @"Restart needs myLinux Launcher" : @"Cloud Folders needs myLinux Launcher"];
++        [alert setInformativeText:restart ? @"Open myLinux Launcher and press Restart on this machine, or use Power Down and then Start."
++                                          : @"Open myLinux Launcher and choose Cloud Folders on this machine's page."];
 +        [alert addButtonWithTitle:@"Open myLinux Launcher"];
 +        [alert addButtonWithTitle:@"Cancel"];
 +        if ([alert runModal] == NSAlertFirstButtonReturn) {
@@ -701,15 +719,32 @@
 +        [alert release];
 +        return;
 +    }
++    // macOS 14's cooperative activation: the launcher may come to the front (its dialog takes the keyboard)
++    if (@available(macOS 14.0, *)) {
++        [NSApp yieldActivationToApplicationWithBundleIdentifier:launcher];
++    }
 +    [[NSDistributedNotificationCenter defaultCenter]
 +        postNotificationName:@"dev.mylinux.machine.request"
 +                      object:[NSString stringWithUTF8String:getenv("MYLINUX_LINK_SCOPE")]
-+                    userInfo:@{ @"id": [NSString stringWithUTF8String:getenv("APP_ID")], @"action": @"restart" }
++                    userInfo:@{ @"id": [NSString stringWithUTF8String:getenv("APP_ID")], @"action": action }
 +          deliverImmediately:YES];
- }
- 
++}
++
++- (void)mylinuxRestart:(id)sender
++{
++    mylinux_ask_launcher(@"restart");
++}
++
++/* myLinux: Machine › Cloud Folders… (⇧⌘P): the launcher's dialog for the Mac's Dropbox and the others inside */
++- (void)mylinuxCloudFolders:(id)sender
++{
++    mylinux_ask_launcher(@"cloud");
++}
++
  /* Ejects the media.
-@@ -1935,6 +2486,9 @@
+  * Uses sender's tag to figure out the device to eject.
+  */
+@@ -1935,7 +2521,16 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
@@ -717,5 +752,12 @@
 +        [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Restart" action: @selector(mylinuxRestart:) keyEquivalent: @""] autorelease]];
 +    }
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Power Down" action: @selector(powerDownQEMU:) keyEquivalent: @""] autorelease]];
++    if (mylinux_restart_available()) {
++        [menu addItem:[NSMenuItem separatorItem]];
++        NSMenuItem *cloud = [[[NSMenuItem alloc] initWithTitle: @"Cloud Folders…" action: @selector(mylinuxCloudFolders:) keyEquivalent: @"P"] autorelease];
++        [cloud setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
++        [menu addItem:cloud];
++    }
      menuItem = [[[NSMenuItem alloc] initWithTitle: @"Machine" action:nil keyEquivalent:@""] autorelease];
      [menuItem setSubmenu:menu];
+     [[NSApp mainMenu] addItem:menuItem];

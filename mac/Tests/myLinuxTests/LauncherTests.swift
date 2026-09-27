@@ -318,6 +318,33 @@ final class CloudFolderTests: XCTestCase {
         let old = try JSONDecoder().decode(Profile.self, from: Data(#"{"kind":"alpine","name":"A","appsDisk":"/a","shareDir":""}"#.utf8))
         XCTAssertEqual(old.cloudFolders, [], "saved before cloud folders existed")
     }
+    func testOmarchysPastedCommandsAskSudoForThePassword() {
+        let s = CloudFolder.pasteScript(["dropbox"])
+        XCTAssertTrue(s.hasPrefix("# myLinux:"), "a comment says what the paste is")
+        XCTAssertTrue(s.contains(#"R=; [ "$(id -u)" = 0 ] || R="sudo""#))
+        XCTAssertFalse(s.contains("sudo -n"), "a terminal can answer sudo's password question")
+        XCTAssertTrue(s.contains(#"want="dropbox:Dropbox""#) && s.contains("/etc/fstab"), "mounted at every start from then on")
+    }
+    func testMyLinuxMountsItsCloudFoldersThroughTheConsole() {
+        let s = CloudFolder.consoleScript(["dropbox", "icloud"])
+        XCTAssertFalse(s.contains("\n"), "one line typed into the console")
+        XCTAssertTrue(s.hasSuffix("&"), "in the background: the console is free again at once")
+        XCTAssertTrue(s.contains(#"want="dropbox:Dropbox icloud:iCloud""#))
+        XCTAssertTrue(s.contains("while ! mountpoint -q /root"), "waits for the apps disk's home")
+        XCTAssertTrue(s.contains("mount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 $tag $mp"))
+        XCTAssertTrue(s.contains("mount --bind $mp /mnt/apps$mp"), "the apps see it too")
+        XCTAssertTrue(s.contains("ln -sfn $mp /root/$name"))
+        XCTAssertFalse(s.contains("fstab"), "the root filesystem is in RAM")
+    }
+    func testDesktopsPassTheirCloudFoldersToo() {
+        for kind in [Profile.Kind.omarchy, .mylinux] {
+            var p = ProfileStore.newProfile(named: "D", kind: kind, folder: URL(fileURLWithPath: "/m/d"))
+            XCTAssertNil(p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/s")["EXTRA_SHARES"], "\(kind): none by default")
+            p.cloudFolders = ["dropbox"]
+            let env = p.environment(outDir: URL(fileURLWithPath: "/o"), serialSocket: "/s")
+            if let dropbox = CloudFolder.dropbox.macPath() { XCTAssertEqual(env["EXTRA_SHARES"], "dropbox=\(dropbox)", "\(kind)") }
+        }
+    }
 }
 
 final class GhosttyTerminalTests: XCTestCase {

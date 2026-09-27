@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -201,6 +201,12 @@ has "share name travels as URL-safe base64" "$out" "omarchy.shared_folder_name=T
 has "extra QEMU arguments pass through" "$out" "none"
 file_absent "a dry run creates no disk" "$T/om/omarchy.ext4"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); case "$out" in *shared_folder_name*) ko "no share: nothing about one on the command line" ;; *) ok "no share: nothing about one on the command line" ;; esac
+mkdir -p "$T/cloud/Dropbox"
+out=$(cd "$W" && DRYRUN=1 SCALE=1 RES=1600x1000 EXTRA_SHARES="dropbox=$T/cloud/Dropbox" sh run-omarchy.sh 2>&1)
+has "Omarchy: a cloud folder is shared with its mount tag" "$out" "virtio-9p-pci,fsdev=extra1,mount_tag=dropbox,romfile="
+has "Omarchy: its files belong to the Omarchy user" "$out" "path=$T/cloud/Dropbox,security_model=none,multidevs=remap,guest_owner_uid=1000"
+out=$(cd "$W" && DRYRUN=1 EXTRA_SHARES="dropbox=$T/cloud/Dropbox" sh run.sh 2>&1)
+has "myLinux: a cloud folder is shared with its mount tag" "$out" "mount_tag=dropbox"
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 QMP="$T/q.sock" sh run-omarchy.sh 2>&1); has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
 case "$out" in *audiodev*) ok "sound device by default" ;; *) ko "sound device by default" ;; esac
 has "clipboard port for Omarchy's agent by default" "$out" "name=dev.tryomarchy.clipboard"

@@ -126,6 +126,8 @@ set -- \
   -serial "${SERIAL:-mon:stdio}" \
   -virtfs "local,path=$SHARE_DIR,mount_tag=share,security_model=none,id=share" \
   "$@"
+# more Mac folders: the cloud folders (tools/extra-shares.sh; mounted inside by the commands the launcher gives)
+ME=run.sh; OWNER=""; . "$REPO/tools/extra-shares.sh"
 if [ "${DRYRUN:-0}" = 1 ]; then
   echo "RES=$RES APPS_IMG=$APPS_IMG SHARE_DIR=$SHARE_DIR NAME=$NAME QEMU=$FLAVOUR"
   for a in "$@"; do printf '%s\n' "$a"; done

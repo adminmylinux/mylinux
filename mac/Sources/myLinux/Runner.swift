@@ -143,8 +143,13 @@ final class Runner: ObservableObject {
         UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
         connectSerial()
         sshReady = false
+        // myLinux: its cloud folders are mounted through the root console once its shell is up (appendConsole)
+        cloudConsolePending = p.kind == .mylinux ? p.cloudFolders : nil
         if p.isServer { openTerminal(p) }
     }
+    /// myLinux's cloud folders, to mount at the console's first prompt after a start (CloudFolder.consoleScript;
+    /// also with none ticked, so links to folders taken away go).
+    private var cloudConsolePending: [String]?
 
     /// The last lines run.sh wrote, for the message on an unexpected exit.
     private func logTail(lines: Int) -> [String] {
@@ -231,6 +236,10 @@ final class Runner: ObservableObject {
         guard !text.isEmpty else { return }
         console += text
         if console.count > consoleLimit { console = String(console.suffix(consoleLimit * 3 / 4)) }
+        if let picked = cloudConsolePending, process != nil, console.range(of: #"(^|\n)[^\n]*# ?$"#, options: .regularExpression) != nil {
+            cloudConsolePending = nil
+            send(CloudFolder.consoleScript(picked) + "\n")
+        }
     }
 
     private func closeSerial() {

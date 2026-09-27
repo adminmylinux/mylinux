@@ -47,14 +47,20 @@ enum CloudFolder: String, CaseIterable, Codable, Identifiable {
             .joined(separator: "\n")
     }
 
+    /// "dropbox:Dropbox onedrive:OneDrive" for the ticked folders, or all of them.
+    private static func pairs(_ picked: [String]? = nil) -> String {
+        CloudFolder.allCases.filter { picked?.contains($0.rawValue) ?? true }.map { "\($0.rawValue):\($0.guestName)" }.joined(separator: " ")
+    }
+
     /// What the launcher runs in the machine after each start (over its SSH connection, as its user): mount each
     /// ticked folder at /mnt/<tag> through /etc/fstab (so a reboot inside mounts it too) and link it as ~/<name>;
     /// take out the ones no longer ticked. Root through doas (Alpine) or sudo (Debian); a real ~/<name> is left alone.
-    static func mountScript(_ picked: [String]) -> String {
-        let want = CloudFolder.allCases.filter { picked.contains($0.rawValue) }.map { "\($0.rawValue):\($0.guestName)" }.joined(separator: " ")
-        let all = CloudFolder.allCases.map { "\($0.rawValue):\($0.guestName)" }.joined(separator: " ")
+    /// `root`: the command for root instead (Omarchy's pasted commands: a sudo that may ask for the password).
+    static func mountScript(_ picked: [String], root: String? = nil) -> String {
+        let want = pairs(picked), all = pairs()
+        let r = root.map { "R=; [ \"$(id -u)\" = 0 ] || R=\"\($0)\"" } ?? #"R=; [ "$(id -u)" = 0 ] || { command -v doas >/dev/null && R="doas" || R="sudo -n"; }"#
         return """
-        R=; [ "$(id -u)" = 0 ] || { command -v doas >/dev/null && R="doas" || R="sudo -n"; }
+        \(r)
         want="\(want)"
         for pair in \(all); do
           tag=${pair%%:*}; name=${pair#*:}; mp=/mnt/$tag
@@ -73,5 +79,20 @@ enum CloudFolder: String, CaseIterable, Codable, Identifiable {
           esac
         done
         """
+    }
+
+    /// Omarchy: the commands to paste once into a terminal inside (the launcher has no way in as root). The fstab
+    /// lines they write mount the folders at every start from then on.
+    static func pasteScript(_ picked: [String]) -> String {
+        "# myLinux: the Mac's cloud folders in your home folder (sudo asks for your password)\n" + mountScript(picked, root: "sudo")
+    }
+
+    /// myLinux: what the launcher types into the machine's root console at every start (its root filesystem lives in
+    /// RAM, so nothing like fstab lasts): once the apps disk's home is bound over /root, mount each ticked folder at
+    /// /mnt/<tag>, bind it into the apps chroot, link it as ~/<name>; take out links to folders no longer ticked.
+    /// One line, in the background, so the console is free again at once.
+    static func consoleScript(_ picked: [String]) -> String {
+        let want = pairs(picked), all = pairs()
+        return #" ( i=0; while ! mountpoint -q /root && [ $i -lt 90 ]; do sleep 1; i=$((i+1)); done; want=""# + want + #""; for pair in "# + all + #"; do tag=${pair%%:*}; name=${pair#*:}; mp=/mnt/$tag; case " $want " in *" $pair "*) mkdir -p $mp; mountpoint -q $mp || mount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 $tag $mp || continue; if mountpoint -q /mnt/apps; then mkdir -p /mnt/apps$mp; mountpoint -q /mnt/apps$mp || mount --bind $mp /mnt/apps$mp; fi; if [ ! -e /root/$name ] || [ -L /root/$name ]; then ln -sfn $mp /root/$name; fi ;; *) [ "$(readlink /root/$name 2>/dev/null)" != "$mp" ] || rm -f /root/$name ;; esac; done ) >/dev/null 2>&1 &"#
     }
 }

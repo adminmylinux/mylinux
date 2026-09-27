@@ -186,6 +186,8 @@ if [ -n "$SHARE_DIR" ]; then
   set -- "$@" -fsdev "local,id=share,path=$SHARE_DIR,security_model=none,multidevs=remap,guest_owner_uid=1000,guest_owner_gid=1000" \
     -device "virtio-9p-pci,fsdev=share,mount_tag=mac,romfile="
 fi
+# more Mac folders: the cloud folders (tools/extra-shares.sh; mounted inside by the commands the launcher gives)
+ME=run-omarchy.sh; ROM=",romfile="; OWNER=",guest_owner_uid=1000,guest_owner_gid=1000"; . "$REPO/tools/extra-shares.sh"
 [ -z "${QMP:-}" ] || set -- "$@" -qmp "unix:$QMP,server=on,wait=off"
 if [ "${DRYRUN:-0}" = 1 ]; then
   echo "RES=$RES SCALE=$SCALE DISK=$DISK SHARE_DIR=$SHARE_DIR NAME=$NAME CPUS=$CPUS MEM=$MEM"

@@ -115,7 +115,14 @@ checkbox. A ticked folder is one more virtio-9p share (`EXTRA_SHARES`, one `tag=
 cloud folders are the one part of `~/Library` it will share), attached when the machine starts, so saving a change
 restarts a running machine. After each start, once SSH answers, the launcher mounts the ticked folders at
 `/mnt/<tag>` through `/etc/fstab` and links them as `~/Dropbox`, `~/OneDrive`, `~/iCloud`, `~/GoogleDrive`, and takes
-out the ones no longer ticked. The Mac's own cloud apps do the syncing; online-only files download when first read. **Show
+out the ones no longer ticked. The Mac's own cloud apps do the syncing; online-only files download when first read.
+Omarchy and myLinux have the same folders (`tools/extra-shares.sh` is the share loop for `run-server.sh`,
+`run-omarchy.sh` and `run.sh`): **⇧⌘P** or **Machine › Cloud Folders…** in the machine's window (the runtime's QEMU
+asks the launcher through MachineLink, also with every key going to the machine), or **Cloud folders › Choose…** on
+its page, opens the dialog. myLinux gets them mounted through its root console at every start (its root filesystem is
+in RAM, so no fstab), bound into the apps chroot and linked as `~/Dropbox`; for Omarchy the dialog shows the commands
+to paste once into a terminal inside (sudo asks for the password), which write the `/etc/fstab` lines. Dropbox has no
+Linux client for ARM, so the Mac's own Dropbox app is the way in. **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
 forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says

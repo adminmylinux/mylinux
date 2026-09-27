@@ -88,6 +88,10 @@ struct MachineView: View {
             .formStyle(.grouped)
         }
         .onChange(of: draft) { _, new in store.update(new) }
+        // the Cloud Folders dialog saves to the store directly: this page's copy follows, so it never writes them back
+        .onChange(of: store.profiles.first { $0.id == draft.id }?.cloudFolders) { _, saved in
+            if let saved, saved != draft.cloudFolders { draft.cloudFolders = saved }
+        }
         .onAppear { runtime.refresh(settings); images.refresh(settings); if isOmarchy { omarchy.refresh(settings) }; if isServer { server.refresh(settings) } }
         .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
     }
@@ -373,7 +377,21 @@ struct MachineView: View {
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
                         help: "Visible as /mnt/share inside myLinux, and where its settings live.")
             }
+            if !isServer {
+                LabeledContent("Cloud folders") {
+                    HStack(spacing: 8) {
+                        Text(cloudSummary).foregroundStyle(.secondary)
+                        Button("Choose…") { CloudFoldersWindow.show(draft.id) }
+                    }
+                }
+                .help("The Mac's Dropbox, OneDrive, iCloud Drive or Google Drive inside the machine. ⇧⌘P in the machine's window opens this too.")
+            }
         }
+    }
+
+    private var cloudSummary: String {
+        let names = CloudFolder.allCases.filter { draft.cloudFolders.contains($0.rawValue) }.map(\.title)
+        return names.isEmpty ? "None" : names.joined(separator: ", ")
     }
 
     @ViewBuilder private var diagnostics: some View {

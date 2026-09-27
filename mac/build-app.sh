@@ -86,7 +86,7 @@ cp debian_install.sh alpine_install.sh "$NEW/Contents/Resources/"
 # GhosttyKit's resources (Ghostty's resource folder and terminfo), found there by its patched lookup
 cp -R "$(dirname "$BIN")/GhosttyKit_GhosttyTerminal.bundle" "$NEW/Contents/Resources/"
 mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session "$NEW/Contents/Resources/runtime/omarchy/"
-for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-debian.sh get-alpine.sh get-edk2.sh download-cache.sh save-downloads.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh qemu-flavour.sh qemu-runtime.version; do
+for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-debian.sh get-alpine.sh get-edk2.sh download-cache.sh save-downloads.sh extra-shares.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done
 # icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds
