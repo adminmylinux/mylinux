@@ -57,23 +57,22 @@
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -980,6 +1014,11 @@
-     InputButton button;
+@@ -981,6 +1015,11 @@
      unsigned int keycode;
      NSUInteger modifiers = [event modifierFlags];
-+
+ 
 +    /* a click in the window after Ctrl+Option+G: every key goes to the guest again */
 +    if (mylinux_keys_released && [event type] == NSEventTypeLeftMouseDown && [event window] == [self window]) {
 +        mylinux_keys_released = false;
 +    }
- 
++
      /*
       * Check -[NSEvent modifierFlags] here.
-@@ -1125,6 +1164,30 @@
-             return true;
+      *
+@@ -1126,6 +1165,30 @@
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
-+
+ 
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -97,9 +96,10 @@
 +                }
 +                return true;
 +            }
- 
++
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
+             if (![self isKeyboardCaptured] &&
 @@ -1147,9 +1210,12 @@
                              [self selectConsoleLocked:key - '0' - 1]; /* ascii math */
                              return true;
@@ -288,15 +288,15 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1826,397 @@
+@@ -1675,12 +1826,406 @@
  }
  
  /* Stretches video to fit host monitor size */
 +/*
 + * myLinux: the window's own controls, in a toolbar. At the right: minus (10% smaller), plus (10% larger) and full
 + * screen; the first two turn Zoom To Fit on (the window becomes resizable and the picture scales to it: myLinux's
-+ * desktop is zoomed, and a guest that follows the window's size, Omarchy, gets more or less room that way). Centred: a Session
-+ * menu, when MYLINUX_SESSION_CMD names a helper that hands "save", "restore" or "interval N" to the guest (run
++ * desktop is zoomed, and a guest that follows the window's size, Omarchy, gets more or less room that way). Centred: a ⌘
++ * menu (Apps…, Cloud Folders…, then the session), when MYLINUX_SESSION_CMD names a helper that hands "save", "restore" or "interval N" to the guest (run
 + * without a shell, with the share folder from MYLINUX_SESSION_SHARE as its first argument; MYLINUX_SESSION_STATUS
 + * is the status file the guest keeps for the menu). The size buttons are
 + * only there with MYLINUX_SIZE_BUTTONS set (run.sh, run-omarchy.sh); a window without either keeps its plain title bar.
@@ -420,9 +420,9 @@
 +    SEL action = NULL;
 +    if ([identifier isEqualToString:@"mylinux.session"]) {
 +        NSMenuToolbarItem *item = [[NSMenuToolbarItem alloc] initWithItemIdentifier:identifier];
-+        [item setImage:[NSImage imageWithSystemSymbolName:@"clock.arrow.circlepath" accessibilityDescription:@"Session"]];
-+        [item setLabel:@"Session"];
-+        [item setToolTip:@"Save and restore the Omarchy session, and how often it is saved"];
++        [item setImage:[NSImage imageWithSystemSymbolName:@"command" accessibilityDescription:@"Commands"]];
++        [item setLabel:@"Commands"];
++        [item setToolTip:@"Apps (⇧⌘A), Cloud Folders (⇧⌘P), and saving and restoring the Omarchy session"];
 +        [item setShowsIndicator:YES];
 +        [item setMenu:[self sessionMenuForPanel:NO]];
 +        return item;
@@ -477,13 +477,22 @@
 +        return;
 +    }
 +    [menu removeAllItems];
-+    if (menu == session_panel_menu) {
-+        /* a pull-down button shows its first item as its face */
-+        NSMenuItem *face = [[[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""] autorelease];
-+        [face setImage:[NSImage imageWithSystemSymbolName:@"clock.arrow.circlepath" accessibilityDescription:@"Session"]];
-+        [menu addItem:face];
-+    }
++    /* a pull-down button, the title bar's (NSMenuToolbarItem) as well as the full-screen box's, shows its first item as
++       its face and not in the menu: without this one, the menu's first entry went missing */
++    NSMenuItem *face = [[[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""] autorelease];
++    [face setImage:[NSImage imageWithSystemSymbolName:@"command" accessibilityDescription:@"Commands"]];
++    [menu addItem:face];
 +    NSMenuItem *item;
++    /* what the launcher does for this machine (the keys themselves are caught before the guest, see handleEvent) */
++    if (mylinux_restart_available()) {
++        item = [menu addItemWithTitle:@"Apps…" action:@selector(mylinuxApps:) keyEquivalent:@"A"];
++        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
++        [item setTarget:self];
++        item = [menu addItemWithTitle:@"Cloud Folders…" action:@selector(mylinuxCloudFolders:) keyEquivalent:@"P"];
++        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
++        [item setTarget:self];
++        [menu addItem:[NSMenuItem separatorItem]];
++    }
 +    item = [menu addItemWithTitle:@"Save Session Now" action:@selector(sessionSave:) keyEquivalent:@""];
 +    [item setTarget:self];
 +    item = [menu addItemWithTitle:@"Restore Session" action:@selector(sessionRestore:) keyEquivalent:@""];
@@ -568,7 +577,7 @@
 +            [session setBezelStyle:NSBezelStyleToolbar];
 +            [session setMenu:[self sessionMenuForPanel:YES]];
 +            [self menuNeedsUpdate:[self sessionMenuForPanel:YES]];   /* the face (item 0) exists before the first click */
-+            [session setToolTip:@"Session: save, restore, how often it is saved"];
++            [session setToolTip:@"Apps, Cloud Folders, and the session: save, restore, how often it is saved"];
 +            [[session cell] setArrowPosition:NSPopUpArrowAtBottom];
 +            [[session cell] setImagePosition:NSImageOnly];
 +            [views addObject:session];
@@ -686,7 +695,7 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1754,8 +2290,68 @@
+@@ -1754,8 +2299,68 @@
      with_bql(^{
          qmp_system_powerdown(NULL);
      });
@@ -733,8 +742,8 @@
 +                      object:[NSString stringWithUTF8String:getenv("MYLINUX_LINK_SCOPE")]
 +                    userInfo:@{ @"id": [NSString stringWithUTF8String:getenv("APP_ID")], @"action": action }
 +          deliverImmediately:YES];
- }
- 
++}
++
 +- (void)mylinuxRestart:(id)sender
 +{
 +    mylinux_ask_launcher(@"restart");
@@ -744,8 +753,8 @@
 +- (void)mylinuxApps:(id)sender
 +{
 +    mylinux_ask_launcher(@"apps");
-+}
-+
+ }
+ 
 +/* myLinux: Machine › Cloud Folders… (⇧⌘P): the launcher's dialog for the Mac's Dropbox and the others inside */
 +- (void)mylinuxCloudFolders:(id)sender
 +{
@@ -755,7 +764,7 @@
  /* Ejects the media.
   * Uses sender's tag to figure out the device to eject.
   */
-@@ -1935,7 +2531,19 @@
+@@ -1935,7 +2540,19 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
