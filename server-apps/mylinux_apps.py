@@ -215,8 +215,9 @@ def install_script(app: AppEntry, distro: str) -> str:
         if distro == "alpine":
             lines += ["doas apk update -q", f"doas apk add {pk}"]
         elif distro == "arch":
-            # from the package lists as they are; when those are too old for the mirrors, synced and upgraded first
-            lines += [f"sudo pacman -S --needed --noconfirm {pk} || sudo pacman -Syu --needed --noconfirm {pk}"]
+            # from the package lists as they are; when those are too old for the mirrors (a 404), synced first. Not a
+            # full upgrade: Try Omarchy holds back its kernel and Hyprland (IgnorePkg), so one would stop there
+            lines += [f"sudo pacman -S --needed --noconfirm {pk} || sudo pacman -Sy --needed --noconfirm {pk}"]
         else:
             lines += ["sudo apt-get update -q", f"sudo DEBIAN_FRONTEND=noninteractive apt-get install -y {pk}"]
     return "\n".join(lines + app.steps)

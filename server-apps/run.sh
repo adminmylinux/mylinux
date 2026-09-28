@@ -12,8 +12,9 @@ if command -v apk >/dev/null 2>&1; then
   textual() { doas apk update -q >/dev/null && doas apk add -q python3 py3-textual; }
 elif command -v pacman >/dev/null 2>&1; then
   ROOT=sudo
-  # from the package lists as they are; when those are too old for the mirrors, synced and upgraded first
-  textual() { sudo pacman -S --needed --noconfirm python python-textual || sudo pacman -Syu --needed --noconfirm python python-textual; }
+  # from the package lists as they are (as Omarchy's own omarchy-pkg-add does); when those are too old for the mirrors
+  # (a 404), synced first. Not a full upgrade: Try Omarchy holds back its kernel and Hyprland (IgnorePkg), so one stops.
+  textual() { sudo pacman -S --needed --noconfirm python-textual || sudo pacman -Sy --needed --noconfirm python-textual; }
 else
   ROOT=sudo
   textual() { sudo apt-get update -q >/dev/null && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 python3-textual; }
