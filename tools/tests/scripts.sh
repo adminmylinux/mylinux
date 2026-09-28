@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/omarchy-update-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
