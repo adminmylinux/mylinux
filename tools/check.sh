@@ -31,6 +31,12 @@ for a in json.load(open("server-apps/catalog.json"))["apps"]:
     if not any(a.get(k) for k in ("apk", "apt", "pacman", "alpine", "debian", "arch", "script")): miss.append("a way to install it")
     if a.get("icon") and not all(c in "0123456789abcdef" for c in a["icon"].lower()): miss.append("a hex icon")
     if miss: print("CATALOG:", a.get("id"), "has no", ", ".join(miss)); bad += 1
+cat = json.load(open("server-apps/catalog.json"))
+for al in cat.get("aliases", []):
+    miss = [k for k in ("name", "command", "description") if not al.get(k)]
+    if al.get("app") and al["app"] not in ids: miss.append(f"an app {al['app']} in the catalog")
+    if not al.get("name", "").replace("-", "").isalnum(): miss.append("a plain name")
+    if miss: print("CATALOG: alias", al.get("name"), "has no", ", ".join(miss)); bad += 1
 print("ok" if not bad else f"{bad} file(s) failed"); sys.exit(1 if bad else 0)
 PY
 

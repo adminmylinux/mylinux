@@ -1,5 +1,13 @@
 {
-  "about": "myLinux Apps: what server-apps/mylinux_apps.py offers on Debian and Alpine. Per app: bin (any of these on the PATH means installed), run (the command that starts it), apk / apt / pacman (packages from the distribution: Alpine, Debian, Omarchy), alpine / debian / arch / script (shell lines after the packages: that distribution's, or all), env (for running it), icon (a Nerd Font symbol, hex; else the category's). An app without apk/alpine/script cannot be installed on Alpine, and likewise for Debian. Edits on main reach every machine the next time Apps… is opened.",
+  "about": "myLinux Apps: what server-apps/mylinux_apps.py offers on Debian, Alpine and Omarchy. aliases: short names for commands (name, command, the app it needs, default: on from the start), turned on and off in the app, kept in ~/.config/mylinux/aliases.sh. Per app: bin (any of these on the PATH means installed), run (the command that starts it), apk / apt / pacman (packages from the distribution: Alpine, Debian, Omarchy), alpine / debian / arch / script (shell lines after the packages: that distribution's, or all), env (for running it), icon (a Nerd Font symbol, hex; else the category's). An app without apk/alpine/script cannot be installed on Alpine, and likewise for Debian. Edits on main reach every machine the next time Apps… is opened.",
+  "aliases": [
+    {"name": "cc", "command": "claude update && claude --dangerously-skip-permissions", "app": "claude", "default": true,
+     "description": "Claude Code, updated first, without permission prompts"},
+    {"name": "cx", "command": "codex --dangerously-bypass-approvals-and-sandbox", "app": "codex", "default": true,
+     "description": "Codex without approvals or sandbox"},
+    {"name": "gm", "command": "gemini --yolo", "app": "gemini",
+     "description": "Gemini CLI, accepting every action (yolo)"}
+  ],
   "apps": [
     {"id": "claude", "pacman": ["curl"], "name": "Claude Code", "category": "Agents", "description": "Anthropic's coding agent",
      "bin": ["claude"], "run": "claude", "apk": ["libgcc", "libstdc++", "ripgrep", "curl", "bash"], "apt": ["curl"],

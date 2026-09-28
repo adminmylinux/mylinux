@@ -37,12 +37,12 @@ PLAIN = os.environ.get("MYLINUX_APPS_PLAIN") == "1"
 GLYPHS = {
     "search": "f002", "run": "f04b", "install": "f019", "remove": "f1f8", "update": "f021", "add": "f0c2",
     "installed": "f058", "available": "f10c", "unavailable": "f05e", "pending": "f017",
-    "All": "f00a", "Installed": "f058", "Cloud drives": "f0c2", "Agents": "f06a9", "System": "f0e4", "Terminal": "f120",
+    "All": "f00a", "Installed": "f058", "Aliases": "f0c1", "Cloud drives": "f0c2", "Agents": "f06a9", "System": "f0e4", "Terminal": "f120",
     "Files": "f07c", "Editors": "f040", "Code": "f121", "Tools": "f0ad", "Other": "f013",
 }
 PLAIN_GLYPHS = {"installed": "●", "available": "○", "unavailable": "–", "pending": "◐", "run": "▶", "install": "↓",
                 "remove": "✕", "update": "↻", "add": "+", "search": "›"}
-CATEGORIES = ["All", "Installed", "Cloud drives", "Agents", "System", "Terminal", "Files", "Editors", "Code", "Tools"]
+CATEGORIES = ["All", "Installed", "Aliases", "Cloud drives", "Agents", "System", "Terminal", "Files", "Editors", "Code", "Tools"]
 ACCENT, MUTED, GOOD, WAIT = "#2563eb", "#94a3b8", "#22c55e", "#eab308"
 
 
@@ -96,11 +96,20 @@ class AppEntry:
     found: str | None = None          # the program found on the PATH, when installed
     icon: str = ""                    # its own Nerd Font symbol (hex), else its category's
     cloud: dict | None = None         # a cloud drive: {"id", "title", "guest", "onMac"}
+    alias: dict | None = None         # an alias: {"name", "command", "app", "description"}
+    enabled: bool = False             # an alias that is on (in ~/.config/mylinux/aliases.sh)
     chosen: bool = False              # a cloud drive the machine has (attached at its start)
     attached: bool = False            # its share is there (mounting it is all that is left)
 
     @property
+    def special(self) -> bool:
+        """An alias or a cloud drive: listed on top, not a program."""
+        return self.cloud is not None or self.alias is not None
+
+    @property
     def installable(self) -> bool:
+        if self.alias is not None:
+            return True
         if self.cloud is not None:
             return bool(self.cloud.get("onMac")) or self.chosen
         return bool(self.packages or self.steps)
@@ -208,6 +217,45 @@ def describe_cloud(a: AppEntry) -> str:
     return f"Sign in to {f['title']} on the Mac first"
 
 
+# ---- aliases: short names for commands, on in every new shell (run.sh's block in ~/.profile and ~/.bashrc sources the file)
+ALIASES_FILE = HOME / ".config/mylinux/aliases.sh"
+
+
+def quote_alias(command: str) -> str:
+    return "'" + command.replace("'", "'\\''") + "'"
+
+
+def aliases_on(catalog_aliases: list[dict]) -> set[str]:
+    """The names turned on: from the file, or the catalog's defaults before there is one (written then)."""
+    if not ALIASES_FILE.exists():
+        on = {a["name"] for a in catalog_aliases if a.get("default")}
+        write_aliases(catalog_aliases, on)
+        return on
+    on = set()
+    for line in ALIASES_FILE.read_text().splitlines():
+        if line.startswith("alias ") and "=" in line:
+            on.add(line[6:].split("=", 1)[0])
+    return on
+
+
+def write_aliases(catalog_aliases: list[dict], on: set[str]) -> None:
+    ALIASES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# myLinux Apps: the aliases turned on in it (Aliases, at the top); it rewrites this file"]
+    lines += [f"alias {a['name']}={quote_alias(a['command'])}" for a in catalog_aliases if a["name"] in on]
+    tmp = ALIASES_FILE.with_suffix(".tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    tmp.replace(ALIASES_FILE)
+
+
+def load_aliases(path: Path) -> tuple[list[AppEntry], list[dict]]:
+    catalog_aliases = json.loads(path.read_text()).get("aliases", [])
+    on = aliases_on(catalog_aliases) if catalog_aliases else set()
+    entries = [AppEntry(id="alias:" + a["name"], name=a["name"], category="Aliases", description=a.get("description", ""),
+                        bins=[], run=a["command"], packages=[], steps=[], alias=a, enabled=a["name"] in on)
+               for a in catalog_aliases]
+    return entries, catalog_aliases
+
+
 def install_script(app: AppEntry, distro: str) -> str:
     lines = []
     if app.packages:
@@ -235,6 +283,9 @@ def refresh(apps: list[AppEntry]) -> None:
     path = search_path()
     tags = attached_tags() if any(a.cloud is not None for a in apps) else set()
     for a in apps:
+        if a.alias is not None:
+            a.found = a.name if a.enabled else None
+            continue
         if a.cloud is not None:
             mp = f"/mnt/{a.cloud['id']}"
             a.attached = a.cloud["id"] in tags
@@ -340,7 +391,8 @@ class MyLinuxApps(App):
         self.cloud_state = catalog.parent.parent / "cloud.json"
         self.cloud_request = catalog.parent.parent / "cloud-request.json"
         drives, self.machine = load_cloud(self.cloud_state)
-        self.apps = drives + load_catalog(catalog, self.distro)
+        aliases, self.catalog_aliases = load_aliases(catalog)
+        self.apps = aliases + drives + load_catalog(catalog, self.distro)
         refresh(self.apps)
         self.shown: list[AppEntry] = []
         self.categories = [c for c in CATEGORIES if c in ("All", "Installed") or any(a.category == c for a in self.apps)]
@@ -389,7 +441,7 @@ class MyLinuxApps(App):
         if category == "All":
             return True
         if category == "Installed":
-            return a.installed and a.cloud is None
+            return a.installed and not a.special
         return a.category == category
 
     def fill_sidebar(self) -> None:
@@ -423,8 +475,17 @@ class MyLinuxApps(App):
     def matches(self, a: AppEntry, q: str) -> bool:
         return not q or any(q in s.lower() for s in (a.name, a.id, a.category, a.description, " ".join(a.bins)))
 
+    def app_of(self, a: AppEntry) -> AppEntry | None:
+        """The program an alias runs."""
+        return next((x for x in self.apps if a.alias and x.id == a.alias.get("app")), None)
+
     def state(self, a: AppEntry) -> tuple[str, str, str]:
         """Its state: symbol name, colour, words."""
+        if a.alias is not None:
+            app = self.app_of(a)
+            if a.enabled and app is not None and not app.installed:
+                return "pending", WAIT, f"On; {app.name} is not installed yet"
+            return ("installed", GOOD, "On in new shells") if a.enabled else ("available", "", "Off")
         if a.cloud is not None:
             if a.chosen and a.installed:
                 return "installed", GOOD, f"In ~/{a.cloud['guest']}"
@@ -446,7 +507,9 @@ class MyLinuxApps(App):
         keep = keep or (current.id if current else None)
         table.clear()
         # the cloud drives on top; then installed, then what can be installed here, then the rest; by category and name
-        order = lambda a: (-1 if a.cloud is not None else 0 if a.installed else 1 if a.installable else 2, a.category, a.name.lower())
+        # the aliases, then the cloud drives, on top; then installed programs, then installable ones, then the rest
+        order = lambda a: (-2 if a.alias is not None else -1 if a.cloud is not None else 0 if a.installed else 1 if a.installable else 2,
+                           a.category, a.name.lower())
         # a search looks in every category
         self.shown = sorted((a for a in self.apps if (q or self.in_category(a, self.category)) and self.matches(a, q)), key=order)
         for a in self.shown:
@@ -469,7 +532,7 @@ class MyLinuxApps(App):
 
     def show_detail(self) -> None:
         a = self.current()
-        programs = [x for x in self.apps if x.cloud is None]
+        programs = [x for x in self.apps if not x.special]
         head = f"{sum(1 for x in programs if x.installed)} of {len(programs)} installed"
         run, install, remove = (self.query_one(f"#{i}", Button) for i in ("run", "install", "remove"))
         for b in (run, install, remove):
@@ -485,7 +548,24 @@ class MyLinuxApps(App):
                  f"[{MUTED}]{glyph(a.category)}  {escape(a.category)}[/]", "",
                  f"[{colour or '#e5e7eb'}]{glyph(sym)}  {escape(words)}[/]"]
         lines += ["", escape(a.description), ""] if a.cloud is None else [""]
-        if a.cloud is not None:
+        if a.alias is not None:
+            app = self.app_of(a)
+            lines += [f"[{MUTED}]Runs[/]", f"  {escape(a.alias['command'])}", "",
+                      f"[{MUTED}]Typed as [b]{escape(a.name)}[/b] in a new shell (after leaving Apps, or in a new terminal)."
+                      f" Kept in ~/.config/mylinux/aliases.sh.[/]"]
+            if a.enabled and (app is None or app.installed):
+                run.label = f"{glyph('run')}  Run"; run.display = True; run.add_class("primary")
+            if a.enabled:
+                remove.label = f"{glyph('remove')}  Turn Off"; remove.display = True
+            else:
+                install.label = f"{glyph('add')}  Turn On"; install.display = True; install.add_class("primary")
+            if app is not None and not app.installed:
+                install.label = f"{glyph('install')}  Install {app.name}"; install.display = True
+                if not a.enabled:
+                    install.remove_class("primary")
+            hint = ("Enter runs " + a.name if a.enabled and (app is None or app.installed)
+                    else f"Enter turns {a.name} on" if not a.enabled else f"install {app.name} first")
+        elif a.cloud is not None:
             f = a.cloud
             lines += [f"[{MUTED}]Your Mac's {escape(f['title'])} folder as ~/{escape(f['guest'])}; the Mac keeps it in sync."
                       f" Adding or taking it away restarts the machine.[/]"]
@@ -520,12 +600,20 @@ class MyLinuxApps(App):
         where = f" · {self.category}" if not self.query_one(Input).value.strip() else " · all categories"
         self.query_one("#status", Static).update(f"{head}{where} · {escape(hint)}")
 
+    def move_to(self, a: AppEntry) -> None:
+        """Puts the cursor on another row (the search is cleared when it hides that row)."""
+        if a not in self.shown:
+            self.query_one(Input).value = ""
+            self.set_category("All")
+            self.fill()
+        self.query_one("#apps", DataTable).move_cursor(row=self.shown.index(a))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         a = self.current()
         if a is None:
             return
         if event.button.id == "run":
-            self.run_app(a)
+            self.hand_over(a.alias["command"], None, wait=False) if a.alias is not None else self.run_app(a)
         elif event.button.id == "install":
             self.toggle_cloud(a) if a.cloud is not None else self.action_install()
         elif event.button.id == "remove":
@@ -568,7 +656,15 @@ class MyLinuxApps(App):
         a = self.current()
         if a is None:
             return
-        if a.cloud is not None:
+        if a.alias is not None:
+            app = self.app_of(a)
+            if not a.enabled:
+                self.set_alias(a, True)
+            elif app is not None and not app.installed:
+                self.notify(f"{a.name} runs {app.name}, which is not installed yet: Install {app.name} does that.", severity="warning")
+            else:
+                self.hand_over(a.alias["command"], None, wait=False)
+        elif a.cloud is not None:
             self.toggle_cloud(a)
         elif a.installed:
             self.run_app(a)
@@ -591,6 +687,12 @@ class MyLinuxApps(App):
                 refresh(self.apps); self.fill_sidebar(); self.fill(keep=a.id)
         self.push_screen(Confirm(f"Mount {a.name}?", f"~/{a.cloud['guest']} becomes your Mac's {a.name} folder, now and at every "
                                  f"start (a line in /etc/fstab). {ROOT[self.distro]} may ask for your password.", "Mount"), answered)
+
+    def set_alias(self, a: AppEntry, on: bool) -> None:
+        a.enabled = on
+        write_aliases(self.catalog_aliases, {x.name for x in self.apps if x.alias is not None and x.enabled})
+        refresh(self.apps); self.fill_sidebar(); self.fill(keep=a.id)
+        self.notify(f"{a.name} is {'on' if on else 'off'} in new shells (this terminal's, once you leave Apps).")
 
     def toggle_cloud(self, a: AppEntry) -> None:
         """Enter on a cloud drive: an attached one is mounted, a chosen one taken away, another added."""
@@ -639,7 +741,15 @@ class MyLinuxApps(App):
 
     def action_install(self) -> None:
         a = self.current()
-        if a is None or not a.installable or a.cloud is not None:
+        if a is not None and a.alias is not None:
+            app = self.app_of(a)
+            if app is not None and not app.installed:
+                self.move_to(app)          # the program's own row: its install, with its commands shown
+                self.action_install()
+            elif not a.enabled:
+                self.set_alias(a, True)
+            return
+        if a is None or not a.installable or a.special:
             return
         script = install_script(a, self.distro)
         verb = "Reinstall" if a.installed else "Install"
@@ -656,6 +766,10 @@ class MyLinuxApps(App):
 
     def action_remove(self) -> None:
         a = self.current()
+        if a is not None and a.alias is not None:
+            if a.enabled:
+                self.set_alias(a, False)
+            return
         if a is not None and a.cloud is not None and a.chosen:
             self.take_away(a)
             return

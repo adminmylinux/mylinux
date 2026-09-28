@@ -132,7 +132,9 @@ confirmation: the app writes `.mylinux/cloud-request.json` and quits, and the la
 `~/.profile` and `~/.bashrc` also has the aliases `cc` and `cx`. The screen is a category sidebar (← → change it while typing
 in the search), the list, and a details panel with what Enter runs or installs and Run / Install / Update / Remove
 buttons, in Nerd Font symbols, which Ghostty has built in (`MYLINUX_APPS_PLAIN=1` for plain ones elsewhere);
-`mylinux-apps claude` opens with that search. Narrow terminals lose the details, then the sidebar. **Omarchy** has
+`mylinux-apps claude` opens with that search. **Aliases** come first: `cc` (Claude Code, updated, without permission
+prompts), `cx` (Codex) and `gm` (Gemini CLI, yolo), from the catalog's `aliases`; Enter runs one, and turning one on
+or off rewrites `~/.config/mylinux/aliases.sh`, which run.sh's block sources (cc and cx are on from the start). Narrow terminals lose the details, then the sidebar. **Omarchy** has
 it too: ⇧⌘A or **Machine › Apps…** in its window (the runtime's QEMU asks the launcher, as for ⇧⌘P) copies the app into
 the share and leaves `apps` in `mylinux-tools/control/` for Omarchy's session agent, which opens a terminal through
 Omarchy's `xdg-terminal-exec` running it, then a fresh bash with the aliases. There the catalog uses pacman
