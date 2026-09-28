@@ -57,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
         SavedDownloads.saveInstalled()                   // the Linuxes already here are kept through Clear All Data
+        LauncherUpdater.shared.startChecking()           // a newer launcher: the toolbar's Update button
         RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
         Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
         MachineLink.serve()                              // the servers' own apps: their state, their requests

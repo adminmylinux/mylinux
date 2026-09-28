@@ -32,6 +32,19 @@ final class LauncherUpdater: ObservableObject {
 
     @Published private(set) var state: State = .idle
     @Published private(set) var checkedAt: Date?
+    /// Why the last update did not install (the toolbar says so; Settings › Updates has the words).
+    @Published private(set) var failedUpdate: String?
+    private var timer: Timer?
+
+    /// In the background: a look shortly after launch and every six hours, for the toolbar's Update button. Not in a
+    /// machine's own app, and not for a build from a checkout (it cannot update itself).
+    func startChecking() {
+        guard timer == nil, !MachineApp.active, !Self.isDevelopmentBuild else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.check() }
+        timer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.check() }
+        }
+    }
 
     /// The feed; MYLINUX_UPDATE_FEED (a scratch MYLINUX_SUPPORT_DIR only) points a test at its own.
     static var feed: URL {
@@ -78,6 +91,7 @@ final class LauncherUpdater: ObservableObject {
     func update(to release: Release) {
         guard case .available = state else { return }
         if let why = Self.cannotReplace() { state = .failed(why); return }
+        failedUpdate = nil
         state = .downloading(done: 0, total: Int64(release.size ?? 0))
         Task {
             do {
@@ -87,7 +101,9 @@ final class LauncherUpdater: ObservableObject {
                 try await Task.detached(priority: .userInitiated) { try Self.install(dmg: dmg, over: target) }.value
                 Self.relaunch(target)
             } catch {
-                state = .failed("The update did not install: \(Self.describe(error)) This launcher stays as it was.")
+                let why = "The update did not install: \(Self.describe(error)) This launcher stays as it was."
+                failedUpdate = why
+                state = .failed(why)
             }
         }
     }

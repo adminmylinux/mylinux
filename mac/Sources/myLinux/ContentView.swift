@@ -231,11 +231,53 @@ struct Banner: View {
 
 /// Top right of the window: which launcher this is, then the way to its settings.
 struct VersionAndSettings: View {
+    @ObservedObject private var updater = LauncherUpdater.shared
+
     var body: some View {
+        update
         Text(AppInfo.shortVersion).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
             .padding(.leading, 8)
             .help(AppInfo.versionText).accessibilityLabel(AppInfo.versionText)
         SettingsLink { Image(systemName: "gearshape") }.help("Settings")
+    }
+
+    /// A newer launcher (LauncherUpdater, checked in the background): one click updates, the button shows how far it is.
+    @ViewBuilder private var update: some View {
+        switch updater.state {
+        case .available(let r) where LauncherUpdater.cannotReplace() == nil:
+            Button { updater.update(to: r) } label: {
+                Label("Update to \(r.version)", systemImage: "arrow.down.circle.fill").font(.callout.weight(.semibold))
+                    .labelStyle(.titleAndIcon)                  // a toolbar shows only the icon otherwise
+            }
+            .buttonStyle(.borderedProminent).controlSize(.small)
+            .help("myLinux Launcher \(r.version) is out: " + (r.notes.map(Self.plain) ?? "") + "\n\nMachines keep running while it updates.")
+        case .downloading(let done, let total):
+            HStack(spacing: 6) {
+                if total > 0 { ProgressView(value: Double(done), total: Double(total)).frame(width: 60) } else { ProgressView().controlSize(.small) }
+                Text("Updating…").font(.callout).foregroundStyle(.secondary)
+            }
+        case .installing:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Restarting…").font(.callout).foregroundStyle(.secondary) }
+        default:
+            if updater.failedUpdate != nil {
+                Button { Self.openSettings(page: "updates") } label: {
+                    Label("Update failed", systemImage: "exclamationmark.triangle.fill").font(.callout).labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered).controlSize(.small).tint(.orange)
+                .help(updater.failedUpdate ?? "")
+            }
+        }
+    }
+
+    /// The notes without their Markdown marks, for the tooltip.
+    static func plain(_ markdown: String) -> String {
+        (try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))).map { String($0.characters) } ?? markdown
+    }
+
+    static func openSettings(page: String) {
+        UserDefaults.standard.set(page, forKey: "settings.page")
+        NSApp.activate()
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 
