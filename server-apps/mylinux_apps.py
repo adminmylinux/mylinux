@@ -37,12 +37,12 @@ PLAIN = os.environ.get("MYLINUX_APPS_PLAIN") == "1"
 GLYPHS = {
     "search": "f002", "run": "f04b", "install": "f019", "remove": "f1f8", "update": "f021", "add": "f0c2",
     "installed": "f058", "available": "f10c", "unavailable": "f05e", "pending": "f017",
-    "All": "f00a", "Installed": "f058", "Aliases": "f0c1", "Cloud drives": "f0c2", "Agents": "f06a9", "System": "f0e4", "Terminal": "f120",
+    "All": "f00a", "Installed": "f058", "Aliases": "f0c1", "Cloud drives": "f0c2", "Keyboard": "f11c", "Agents": "f06a9", "System": "f0e4", "Terminal": "f120",
     "Files": "f07c", "Editors": "f040", "Code": "f121", "Tools": "f0ad", "Other": "f013",
 }
 PLAIN_GLYPHS = {"installed": "●", "available": "○", "unavailable": "–", "pending": "◐", "run": "▶", "install": "↓",
                 "remove": "✕", "update": "↻", "add": "+", "search": "›"}
-CATEGORIES = ["All", "Installed", "Aliases", "Cloud drives", "Agents", "System", "Terminal", "Files", "Editors", "Code", "Tools"]
+CATEGORIES = ["All", "Installed", "Aliases", "Cloud drives", "Keyboard", "Agents", "System", "Terminal", "Files", "Editors", "Code", "Tools"]
 ACCENT, MUTED, GOOD, WAIT = "#2563eb", "#94a3b8", "#22c55e", "#eab308"
 
 
@@ -98,17 +98,18 @@ class AppEntry:
     cloud: dict | None = None         # a cloud drive: {"id", "title", "guest", "onMac"}
     alias: dict | None = None         # an alias: {"name", "command", "app", "description"}
     enabled: bool = False             # an alias that is on (in ~/.config/mylinux/aliases.sh)
+    keyboard: str | None = None       # a keyboard layout (its xkb name), in Omarchy
     chosen: bool = False              # a cloud drive the machine has (attached at its start)
     attached: bool = False            # its share is there (mounting it is all that is left)
 
     @property
     def special(self) -> bool:
         """An alias or a cloud drive: listed on top, not a program."""
-        return self.cloud is not None or self.alias is not None
+        return self.cloud is not None or self.alias is not None or self.keyboard is not None
 
     @property
     def installable(self) -> bool:
-        if self.alias is not None:
+        if self.alias is not None or self.keyboard is not None:
             return True
         if self.cloud is not None:
             return bool(self.cloud.get("onMac")) or self.chosen
@@ -256,6 +257,81 @@ def load_aliases(path: Path) -> tuple[list[AppEntry], list[dict]]:
     return entries, catalog_aliases
 
 
+# ---- keyboard layouts (Omarchy): English (US) first, which Omarchy's shortcuts need, and the ones turned on after it;
+# Left Alt + Right Alt switches (grp:alts_toggle, Omarchy's own suggestion). Kept in one marked block at the end of
+# ~/.config/hypr/input.lua, where your own overrides go, after a copy of the file as it was.
+KEYBOARDS = [("no", "Norwegian"), ("se", "Swedish"), ("dk", "Danish"), ("fi", "Finnish"), ("is", "Icelandic"),
+             ("de", "German"), ("gb", "English (UK)"), ("fr", "French"), ("es", "Spanish"), ("it", "Italian"),
+             ("nl", "Dutch"), ("pl", "Polish"), ("pt", "Portuguese")]
+HYPR_INPUT = HOME / ".config/hypr/input.lua"
+KB_START, KB_END = "-- >>> myLinux Apps: keyboard layouts >>>", "-- <<< myLinux Apps: keyboard layouts <<<"
+KB_OPTIONS = "compose:caps,shift:both_capslock_cancel,grp:alts_toggle"
+
+
+def hyprland() -> bool:
+    return bool(shutil.which("hyprctl")) and bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")) and HYPR_INPUT.parent.is_dir()
+
+
+def keyboard_block(codes: list[str]) -> str:
+    layouts = ["us"] + [c for c in codes if c != "us"]
+    return "\n".join([KB_START, "-- (myLinux Apps writes this block: Keyboard, at the top of it)",
+                      f'hl.config({{ input = {{ kb_layout = "{",".join(layouts)}", kb_variant = "{"," * (len(layouts) - 1)}", '
+                      f'kb_options = "{KB_OPTIONS}" }} }})', KB_END])
+
+
+def layouts_on() -> list[str]:
+    """The layouts after English (US), from the block (none without one)."""
+    import re
+    try:
+        text = HYPR_INPUT.read_text()
+    except OSError:
+        return []
+    if KB_START not in text:
+        return []
+    block = text.split(KB_START, 1)[1].split(KB_END, 1)[0]
+    m = re.search(r'kb_layout\s*=\s*"([^"]*)"', block)
+    return [c for c in (m.group(1).split(",") if m else []) if c and c != "us"]
+
+
+def write_layouts(codes: list[str]) -> None:
+    text = HYPR_INPUT.read_text() if HYPR_INPUT.exists() else ""
+    backup = HYPR_INPUT.with_name("input.lua.before-mylinux")
+    if not backup.exists():
+        backup.write_text(text)
+    if KB_START in text:
+        head, rest = text.split(KB_START, 1)
+        text = head.rstrip("\n") + ("\n" + rest.split(KB_END, 1)[1].lstrip("\n") if KB_END in rest else "")
+    text = text.rstrip("\n") + "\n"
+    if codes:
+        text += "\n" + keyboard_block(codes) + "\n"
+    tmp = HYPR_INPUT.with_suffix(".tmp")
+    tmp.write_text(text)
+    tmp.replace(HYPR_INPUT)
+    subprocess.run(["hyprctl", "reload"], capture_output=True, timeout=10)
+
+
+def active_keymap() -> str:
+    try:
+        r = subprocess.run(["hyprctl", "devices", "-j"], capture_output=True, text=True, timeout=5)
+        keyboards = json.loads(r.stdout).get("keyboards", [])
+        main = next((k for k in keyboards if k.get("main")), keyboards[0] if keyboards else {})
+        return main.get("active_keymap", "")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ""
+
+
+def load_keyboards() -> list[AppEntry]:
+    if not hyprland():
+        return []
+    on = layouts_on()
+    rows = [AppEntry(id="kb:us", name="English (US)", category="Keyboard", description="Always first (Omarchy's shortcuts need it)",
+                     bins=[], run="", packages=[], steps=[], keyboard="us", enabled=True)]
+    for code, name in KEYBOARDS:
+        rows.append(AppEntry(id="kb:" + code, name=name, category="Keyboard", description=f"The {name} keyboard layout",
+                             bins=[], run="", packages=[], steps=[], keyboard=code, enabled=code in on))
+    return rows
+
+
 def install_script(app: AppEntry, distro: str) -> str:
     lines = []
     if app.packages:
@@ -283,7 +359,7 @@ def refresh(apps: list[AppEntry]) -> None:
     path = search_path()
     tags = attached_tags() if any(a.cloud is not None for a in apps) else set()
     for a in apps:
-        if a.alias is not None:
+        if a.alias is not None or a.keyboard is not None:
             a.found = a.name if a.enabled else None
             continue
         if a.cloud is not None:
@@ -392,7 +468,8 @@ class MyLinuxApps(App):
         self.cloud_request = catalog.parent.parent / "cloud-request.json"
         drives, self.machine = load_cloud(self.cloud_state)
         aliases, self.catalog_aliases = load_aliases(catalog)
-        self.apps = aliases + drives + load_catalog(catalog, self.distro)
+        self.apps = aliases + drives + load_keyboards() + load_catalog(catalog, self.distro)
+        self.keymap = active_keymap() if any(a.keyboard for a in self.apps) else ""
         refresh(self.apps)
         self.shown: list[AppEntry] = []
         self.categories = [c for c in CATEGORIES if c in ("All", "Installed") or any(a.category == c for a in self.apps)]
@@ -481,6 +558,13 @@ class MyLinuxApps(App):
 
     def state(self, a: AppEntry) -> tuple[str, str, str]:
         """Its state: symbol name, colour, words."""
+        if a.keyboard is not None:
+            in_use = self.keymap == a.name          # Hyprland names the active one as these rows do
+            if a.enabled and in_use:
+                return "installed", GOOD, "On, in use now"
+            if a.enabled:
+                return "installed", GOOD, "On (Left Alt + Right Alt switches)"
+            return "available", "", "Off"
         if a.alias is not None:
             app = self.app_of(a)
             if a.enabled and app is not None and not app.installed:
@@ -508,8 +592,9 @@ class MyLinuxApps(App):
         table.clear()
         # the cloud drives on top; then installed, then what can be installed here, then the rest; by category and name
         # the aliases, then the cloud drives, on top; then installed programs, then installable ones, then the rest
-        order = lambda a: (-2 if a.alias is not None else -1 if a.cloud is not None else 0 if a.installed else 1 if a.installable else 2,
-                           a.category, a.name.lower())
+        order = lambda a: (-3 if a.alias is not None else -2 if a.cloud is not None else -1 if a.keyboard is not None
+                           else 0 if a.installed else 1 if a.installable else 2, a.category,
+                           "" if a.keyboard == "us" else a.name.lower() if a.keyboard is None else ("0" if a.enabled else "1") + a.name.lower())
         # a search looks in every category
         self.shown = sorted((a for a in self.apps if (q or self.in_category(a, self.category)) and self.matches(a, q)), key=order)
         for a in self.shown:
@@ -548,7 +633,19 @@ class MyLinuxApps(App):
                  f"[{MUTED}]{glyph(a.category)}  {escape(a.category)}[/]", "",
                  f"[{colour or '#e5e7eb'}]{glyph(sym)}  {escape(words)}[/]"]
         lines += ["", escape(a.description), ""] if a.cloud is None else [""]
-        if a.alias is not None:
+        if a.keyboard is not None:
+            on = [x.name for x in self.apps if x.keyboard is not None and x.enabled]
+            lines += [f"[{MUTED}]Layouts on: {escape(', '.join(on))}[/]", "",
+                      f"[{MUTED}]Left Alt + Right Alt (both Option keys) switches between them; each login starts in "
+                      f"English (US). Kept at the end of ~/.config/hypr/input.lua (the file as it was: input.lua.before-mylinux).[/]"]
+            if a.enabled:
+                run.label = f"{glyph('run')}  Use Now"; run.display = True; run.add_class("primary")
+                if a.keyboard != "us":
+                    remove.label = f"{glyph('remove')}  Turn Off"; remove.display = True
+            else:
+                install.label = f"{glyph('add')}  Turn On"; install.display = True; install.add_class("primary")
+            hint = f"Enter switches to {a.name}" if a.enabled else f"Enter adds {a.name}"
+        elif a.alias is not None:
             app = self.app_of(a)
             lines += [f"[{MUTED}]Runs[/]", f"  {escape(a.alias['command'])}", "",
                       f"[{MUTED}]Typed as [b]{escape(a.name)}[/b] in a new shell (after leaving Apps, or in a new terminal)."
@@ -613,7 +710,10 @@ class MyLinuxApps(App):
         if a is None:
             return
         if event.button.id == "run":
-            self.hand_over(a.alias["command"], None, wait=False) if a.alias is not None else self.run_app(a)
+            if a.keyboard is not None:
+                self.use_layout(a)
+            else:
+                self.hand_over(a.alias["command"], None, wait=False) if a.alias is not None else self.run_app(a)
         elif event.button.id == "install":
             self.toggle_cloud(a) if a.cloud is not None else self.action_install()
         elif event.button.id == "remove":
@@ -656,7 +756,9 @@ class MyLinuxApps(App):
         a = self.current()
         if a is None:
             return
-        if a.alias is not None:
+        if a.keyboard is not None:
+            self.use_layout(a) if a.enabled else self.set_layout(a, True)
+        elif a.alias is not None:
             app = self.app_of(a)
             if not a.enabled:
                 self.set_alias(a, True)
@@ -687,6 +789,30 @@ class MyLinuxApps(App):
                 refresh(self.apps); self.fill_sidebar(); self.fill(keep=a.id)
         self.push_screen(Confirm(f"Mount {a.name}?", f"~/{a.cloud['guest']} becomes your Mac's {a.name} folder, now and at every "
                                  f"start (a line in /etc/fstab). {ROOT[self.distro]} may ask for your password.", "Mount"), answered)
+
+    def set_layout(self, a: AppEntry, on: bool) -> None:
+        if a.keyboard == "us":
+            return
+        a.enabled = on
+        codes = [x.keyboard for x in self.apps if x.keyboard not in (None, "us") and x.enabled]
+        try:
+            write_layouts(codes)
+        except (OSError, subprocess.SubprocessError) as e:
+            self.notify(f"Could not change {HYPR_INPUT}: {e}", severity="error")
+            return
+        time.sleep(0.3)
+        self.keymap = active_keymap()
+        refresh(self.apps); self.fill_sidebar(); self.fill(keep=a.id)
+        self.notify(f"{a.name} is {'on: Left Alt + Right Alt switches to it' if on else 'off'}.")
+
+    def use_layout(self, a: AppEntry) -> None:
+        on = [x.keyboard for x in self.apps if x.keyboard is not None and x.enabled]
+        order = ["us"] + [c for c in on if c != "us"]
+        if a.keyboard in order:
+            subprocess.run(["hyprctl", "switchxkblayout", "all", str(order.index(a.keyboard))], capture_output=True, timeout=5)
+        self.keymap = active_keymap()
+        self.fill(keep=a.id)
+        self.notify(f"Typing in {self.keymap or a.name} now.")
 
     def set_alias(self, a: AppEntry, on: bool) -> None:
         a.enabled = on
@@ -741,6 +867,10 @@ class MyLinuxApps(App):
 
     def action_install(self) -> None:
         a = self.current()
+        if a is not None and a.keyboard is not None:
+            if not a.enabled:
+                self.set_layout(a, True)
+            return
         if a is not None and a.alias is not None:
             app = self.app_of(a)
             if app is not None and not app.installed:
@@ -766,6 +896,10 @@ class MyLinuxApps(App):
 
     def action_remove(self) -> None:
         a = self.current()
+        if a is not None and a.keyboard is not None:
+            if a.enabled:
+                self.set_layout(a, False)
+            return
         if a is not None and a.alias is not None:
             if a.enabled:
                 self.set_alias(a, False)

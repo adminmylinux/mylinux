@@ -134,7 +134,11 @@ in the search), the list, and a details panel with what Enter runs or installs a
 buttons, in Nerd Font symbols, which Ghostty has built in (`MYLINUX_APPS_PLAIN=1` for plain ones elsewhere);
 `mylinux-apps claude` opens with that search. **Aliases** come first: `cc` (Claude Code, updated, without permission
 prompts), `cx` (Codex) and `gm` (Gemini CLI, yolo), from the catalog's `aliases`; Enter runs one, and turning one on
-or off rewrites `~/.config/mylinux/aliases.sh`, which run.sh's block sources (cc and cx are on from the start). Narrow terminals lose the details, then the sidebar. **Omarchy** has
+or off rewrites `~/.config/mylinux/aliases.sh`, which run.sh's block sources (cc and cx are on from the start). In Omarchy a **Keyboard** group adds layouts after English (US)
+(which Omarchy's shortcuts need first): Norwegian, Swedish, Danish, Finnish, Icelandic, German, UK English and more;
+turning one on or off rewrites a marked `hl.config` block at the end of `~/.config/hypr/input.lua` (the file as it was
+kept as `input.lua.before-mylinux`) and reloads Hyprland; Left Alt + Right Alt switches (`grp:alts_toggle`), and Enter
+on a layout that is on switches to it at once. Narrow terminals lose the details, then the sidebar. **Omarchy** has
 it too: ⇧⌘A or **Machine › Apps…** in its window (the runtime's QEMU asks the launcher, as for ⇧⌘P) copies the app into
 the share and leaves `apps` in `mylinux-tools/control/` for Omarchy's session agent, which opens a terminal through
 Omarchy's `xdg-terminal-exec` running it, then a fresh bash with the aliases. There the catalog uses pacman
