@@ -95,6 +95,8 @@ class AppEntry:
     env: dict[str, str] = field(default_factory=dict)
     found: str | None = None          # the program found on the PATH, when installed
     icon: str = ""                    # its own Nerd Font symbol (hex), else its category's
+    gui: bool = False                 # a window app: opened beside the terminal, not in it
+    removes: list[str] = field(default_factory=list)   # how to remove what its script installed
     cloud: dict | None = None         # a cloud drive: {"id", "title", "guest", "onMac"}
     alias: dict | None = None         # an alias: {"name", "command", "app", "description"}
     enabled: bool = False             # an alias that is on (in ~/.config/mylinux/aliases.sh)
@@ -135,7 +137,8 @@ def load_catalog(path: Path, distro: str) -> list[AppEntry]:
         apps.append(AppEntry(id=a["id"], name=a["name"], category=a.get("category", "Other"),
                              description=a.get("description", ""), bins=list(a.get("bin", [])),
                              run=a.get("run", a["id"]), packages=packages, steps=steps,
-                             env=dict(a.get("env", {})) | dict(a.get(f"{distro}_env", {})), icon=a.get("icon", "")))
+                             env=dict(a.get("env", {})) | dict(a.get(f"{distro}_env", {})), icon=a.get("icon", ""),
+                             gui=bool(a.get("gui")), removes=list(a.get(f"{distro}_remove", []))))
     return apps
 
 
@@ -348,7 +351,10 @@ def install_script(app: AppEntry, distro: str) -> str:
 
 
 def remove_script(app: AppEntry, distro: str) -> str | None:
-    """Only a program that is just its packages is removed here; an installer's own files are left alone."""
+    """A program that is just its packages, or one whose catalog says how (<distro>_remove); an installer's own files
+    are left alone otherwise."""
+    if app.removes:
+        return "\n".join(app.removes)
     if app.steps or not app.packages:
         return None
     pk = " ".join(shlex.quote(p) for p in app.packages)
@@ -677,7 +683,7 @@ class MyLinuxApps(App):
                     else "Enter adds it" if a.installable else "sign in to it on the Mac first")
         else:
             if a.installed:
-                lines += [f"[{MUTED}]Runs[/]", f"  {escape(a.command())}", ""]
+                lines += [f"[{MUTED}]{'Opens' if a.gui else 'Runs'}[/]", f"  {escape(a.command())}" + (" (in its own window)" if a.gui else ""), ""]
             if a.installable:
                 lines += [f"[{MUTED}]{'Updates' if a.installed else 'Installs'} with[/]"]
                 lines += [f"  [{MUTED}]{escape(l)}[/]" for l in install_script(a, self.distro).splitlines()]
@@ -923,6 +929,15 @@ class MyLinuxApps(App):
         self.push_screen(Confirm(f"Remove {a.name}?", script, "Remove"), answered)
 
     def run_app(self, a: AppEntry) -> None:
+        if a.gui:
+            # a window of its own, in its own session: the terminal stays with Apps, and closing it leaves the app open
+            try:
+                subprocess.Popen(shlex.split(a.command()), start_new_session=True, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(os.environ, PATH=search_path(), **a.env))
+                self.notify(f"Opening {a.name}…")
+            except OSError as e:
+                self.notify(f"Could not open {a.name}: {e}", severity="error")
+            return
         self.hand_over(a.command(), None, wait=False, env=a.env)
 
     def hand_over(self, script: str, banner: str | None, wait: bool, env: dict[str, str] | None = None) -> int:

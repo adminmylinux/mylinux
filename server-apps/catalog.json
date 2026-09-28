@@ -1,5 +1,5 @@
 {
-  "about": "myLinux Apps: what server-apps/mylinux_apps.py offers on Debian, Alpine and Omarchy. aliases: short names for commands (name, command, the app it needs, default: on from the start), turned on and off in the app, kept in ~/.config/mylinux/aliases.sh. Per app: bin (any of these on the PATH means installed), run (the command that starts it), apk / apt / pacman (packages from the distribution: Alpine, Debian, Omarchy), alpine / debian / arch / script (shell lines after the packages: that distribution's, or all), env (for running it), icon (a Nerd Font symbol, hex; else the category's). An app without apk/alpine/script cannot be installed on Alpine, and likewise for Debian. Edits on main reach every machine the next time Apps… is opened.",
+  "about": "myLinux Apps: what server-apps/mylinux_apps.py offers on Debian, Alpine and Omarchy. aliases: short names for commands (name, command, the app it needs, default: on from the start), turned on and off in the app, kept in ~/.config/mylinux/aliases.sh. Per app: bin (any of these on the PATH means installed), run (the command that starts it), apk / apt / pacman (packages from the distribution: Alpine, Debian, Omarchy), alpine / debian / arch / script (shell lines after the packages: that distribution's, or all), env (for running it), gui (a window: opened beside the terminal), <distro>_remove (how to remove what a script installed), icon (a Nerd Font symbol, hex; else the category's). An app without apk/alpine/script cannot be installed on Alpine, and likewise for Debian. Edits on main reach every machine the next time Apps… is opened.",
   "aliases": [
     {"name": "cc", "command": "claude update && claude --dangerously-skip-permissions", "app": "claude", "default": true,
      "description": "Claude Code, updated first, without permission prompts"},
@@ -18,6 +18,10 @@
     {"id": "gemini", "icon": "f1a0", "pacman": ["nodejs", "npm"], "arch": ["sudo npm install -g @google/gemini-cli"], "name": "Gemini CLI", "category": "Agents", "description": "Google's coding agent",
      "bin": ["gemini"], "run": "gemini", "apk": ["nodejs", "npm"], "apt": ["nodejs", "npm"],
      "alpine": ["doas npm install -g @google/gemini-cli"], "debian": ["sudo npm install -g @google/gemini-cli"]},
+    {"id": "claude-desktop", "name": "Claude Desktop", "category": "Agents", "description": "Anthropic's app: Chat, Cowork and Claude Code, in a window (Omarchy)",
+     "bin": ["claude-desktop"], "run": "claude-desktop", "gui": true,
+     "arch": ["mkdir -p /tmp/mylinux-aur && cd /tmp/mylinux-aur", "curl -fsSL https://aur.archlinux.org/cgit/aur.git/snapshot/claude-desktop.tar.gz | tar xz", "cd claude-desktop && makepkg -sif --needed --noconfirm --cleanbuild"],
+     "arch_remove": ["sudo pacman -Rns --noconfirm claude-desktop"]},
     {"id": "opencode", "pacman": ["curl"], "name": "opencode", "category": "Agents", "description": "An open coding agent",
      "bin": ["opencode"], "run": "opencode", "apk": ["curl", "bash", "libgcc", "libstdc++", "ripgrep"], "apt": ["curl"],
      "script": ["curl -fsSL https://opencode.ai/install | bash"]},
