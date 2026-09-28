@@ -140,7 +140,7 @@ turning one on or off rewrites a marked `hl.config` block at the end of `~/.conf
 kept as `input.lua.before-mylinux`) and reloads Hyprland; Left Alt + Right Alt switches (`grp:alts_toggle`), and Enter
 on a layout that is on switches to it at once. **Claude Desktop** (Anthropic's app, official for Linux since 2026-07) is in Agents for
 Omarchy: built from the AUR's `claude-desktop`, which repackages Anthropic's arm64 `.deb` with its pinned checksum, by
-`makepkg -sif --cleanbuild` (yay stops on aarch64: the AUR's summary lists the x86-only Cowork VM firmware as
+`makepkg --nodeps` as the user after one `sudo -v`, then a single `sudo pacman -U` that also pulls its dependencies (yay stops on aarch64: the AUR's summary lists the x86-only Cowork VM firmware as
 required); Run opens its window beside the terminal (`gui`), Remove is `pacman -Rns` (`arch_remove`). Narrow terminals lose the details, then the sidebar. **Omarchy** has
 it too: ⇧⌘A or **Machine › Apps…** in its window (the runtime's QEMU asks the launcher, as for ⇧⌘P) copies the app into
 the share and leaves `apps` in `mylinux-tools/control/` for Omarchy's session agent, which opens a terminal through
