@@ -45,6 +45,31 @@ enum ServerApps {
         return CloudFolder.allCases.map(\.rawValue).filter { folders.contains($0) }
     }
 
+    // ---- Omarchy: ⇧⌘A or Machine › Apps… in its window -----------------------------------------------------------------
+    /// The app into the share, and "apps" for Omarchy's session agent (omarchy/session: it opens a terminal running
+    /// it). Nil when the agent took the command, or what to tell the user. The agent is updated at the machine's
+    /// start (tools/omarchy-update-session.sh), so one from an earlier launcher learns "apps" after a restart.
+    static func openInOmarchy(_ machine: Profile) async -> String? {
+        if let problem = await copy(to: machine.shareDir, machine: machine) { return problem }
+        let control = URL(fileURLWithPath: machine.shareDir).appendingPathComponent("mylinux-tools/control", isDirectory: true)
+        let cmd = control.appendingPathComponent("apps.cmd")
+        do {
+            try FileManager.default.createDirectory(at: control, withIntermediateDirectories: true)
+            try "apps\n".write(to: cmd, atomically: true, encoding: .utf8)
+        } catch {
+            return "Could not leave the command for Omarchy: \(error.localizedDescription)"
+        }
+        // the agent looks every second, and takes (deletes) what it runs
+        for _ in 0..<12 {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if !FileManager.default.fileExists(atPath: cmd.path) { return nil }
+        }
+        try? FileManager.default.removeItem(at: cmd)
+        return "Omarchy's session helper did not answer. It runs once you are signed in to Omarchy's desktop; an Omarchy made "
+            + "with a launcher before 0.7.20 learns Apps… when it starts again (Machine › Restart). Meanwhile, in an Omarchy "
+            + "terminal: sh /mnt/mac/.mylinux/apps/run.sh"
+    }
+
     /// A file that is what it should be, not an error page.
     static func plausible(_ file: String, _ text: String) -> Bool {
         switch file {

@@ -64,7 +64,9 @@ struct CloudTab: View {
     @ViewBuilder private var omarchyCommands: some View {
         let script = CloudFolder.pasteScript(CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) })
         VStack(alignment: .leading, spacing: 8) {
-            Text("Once, in a terminal in \(machine)").font(.headline)
+            Text("Once, inside \(machine)").font(.headline)
+            Text("After the restart, Apps… (⇧⌘A in its window) › Cloud drives mounts it with your password. Or by hand:")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text("After saving (and the restart), copy these commands, paste them into a terminal in \(machine) (Super+Return opens one, ⌘Return when Command is Super; Ctrl+Shift+V pastes) and press Return. sudo asks for your \(machine) password. From then on the folders are there at every start; paste again after changing them here.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ScrollView {

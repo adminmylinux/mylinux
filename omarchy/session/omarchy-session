@@ -6,7 +6,7 @@
     omarchy-session status     show the saved layout
     omarchy-session interval <minutes>|off   how often the timer saves (off stops it; the login restore stays)
     omarchy-session agent      run by a user unit: takes commands the Mac window drops into the share folder
-                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N) and keeps status.json
+                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N, apps) and keeps status.json
                                there for the window's Session menu
     omarchy-session enable | disable      the units (install.sh enables them)
 
@@ -15,7 +15,7 @@ it was started: a terminal in its working directory, a web app with its --app=UR
 own tabs. Windows without a mappable command (Omarchy's own popups, special workspaces) are skipped. Restore is
 idempotent: a workspace that already shows a window of that class is not given another.
 """
-import json, os, shlex, subprocess, sys, time
+import json, os, shlex, shutil, subprocess, sys, time
 from pathlib import Path
 
 STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "omarchy-session/session.json"
@@ -144,6 +144,23 @@ def status():
     for w in s["windows"]: print(f"  workspace {w['workspace']}: {w['class']}  {launch_command(w)}")
 
 CONTROL = Path("/mnt/mac/mylinux-tools/control")
+APPS = Path("/mnt/mac/.mylinux/apps/run.sh")
+
+def apps_command(terminal_exec):
+    """myLinux Apps in a terminal (the launcher's Apps…, ⇧⌘A in the Mac window, copies it into the share first): the
+    app, then a fresh login shell, which has the PATH and the aliases it keeps. Omarchy's own terminal launcher when
+    there is one (xdg-terminal-exec), else $TERMINAL."""
+    inner = f"MYLINUX_APPS_RELOGIN=1 sh {APPS}; exec bash -l"
+    if terminal_exec:
+        return f"{terminal_exec} --title='myLinux Apps' -e sh -c {shlex.quote(inner)}"
+    return f"{os.environ.get('TERMINAL') or 'alacritty'} -e sh -c {shlex.quote(inner)}"
+
+def apps():
+    if not APPS.exists():
+        print(f"{APPS} is not there (Apps… in the Mac window puts it there)"); return
+    cmd = apps_command(shutil.which("xdg-terminal-exec"))
+    ok = dispatch(f"hl.dsp.exec_cmd({lua_string(cmd)})", ["exec", cmd])
+    print(("opened: " if ok else "could not open: ") + cmd)
 TIMER_DROPIN = Path.home() / ".config/systemd/user/omarchy-session-save.timer.d/interval.conf"
 
 def parse_interval(dropin_text):
@@ -193,6 +210,7 @@ def agent():
                 if words[0] == "save": save()
                 elif words[0] == "restore": restore()
                 elif words[0] == "interval" and len(words) > 1: interval(words[1])
+                elif words[0] == "apps": apps()
                 write_status()
         except OSError:
             pass
@@ -230,6 +248,9 @@ def selftest():
     assert keep_previous({"windows": []}, {"windows": []}) is None, "empty over empty is fine"
     assert keep_previous({"windows": []}, None) is None, "the first save may be empty"
     assert keep_previous(prev, {"windows": []}) is None
+    assert apps_command("/usr/local/bin/xdg-terminal-exec") == "/usr/local/bin/xdg-terminal-exec --title='myLinux Apps' -e sh -c 'MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh; exec bash -l'"
+    os.environ["TERMINAL"] = "foot"
+    assert apps_command(None) == "foot -e sh -c 'MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh; exec bash -l'"
     print("omarchy-session selftest ok")
 
 if __name__ == "__main__":

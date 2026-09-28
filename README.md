@@ -132,7 +132,14 @@ confirmation: the app writes `.mylinux/cloud-request.json` and quits, and the la
 `~/.profile` and `~/.bashrc` also has the aliases `cc` and `cx`. The screen is a category sidebar (← → change it while typing
 in the search), the list, and a details panel with what Enter runs or installs and Run / Install / Update / Remove
 buttons, in Nerd Font symbols, which Ghostty has built in (`MYLINUX_APPS_PLAIN=1` for plain ones elsewhere);
-`mylinux-apps claude` opens with that search. Narrow terminals lose the details, then the sidebar. **Show
+`mylinux-apps claude` opens with that search. Narrow terminals lose the details, then the sidebar. **Omarchy** has
+it too: ⇧⌘A or **Machine › Apps…** in its window (the runtime's QEMU asks the launcher, as for ⇧⌘P) copies the app into
+the share and leaves `apps` in `mylinux-tools/control/` for Omarchy's session agent, which opens a terminal through
+Omarchy's `xdg-terminal-exec` running it, then a fresh bash with the aliases. There the catalog uses pacman
+(`sudo pacman -S --needed`, synced and upgraded first when the lists are too old), Textual is `python-textual`, and
+its Cloud drives rows mount an attached drive themselves (the fstab lines, with sudo's password), since the launcher
+has no way in as root. The agent in an Omarchy disk made earlier is brought up to date at the machine's next start
+(`tools/omarchy-update-session.sh`, with debugfs, only on a disk that was shut down cleanly). **Show
 Browser** splits the window with a WebKit browser whose traffic goes through a SOCKS tunnel into the machine
 (`ssh -D`), so it sees the network as the machine does; the machine's `localhost:3000` is reached through a port
 forward opened on demand (`ssh -L`, since WebKit sends local addresses straight to the Mac), and the bar still says

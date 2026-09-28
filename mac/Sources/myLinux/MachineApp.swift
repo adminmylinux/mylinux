@@ -232,7 +232,7 @@ enum MachineLink {
     /// launcher → app: ⌘Space was pressed in this app's window (SpaceHotkey): Find and Run
     static let palette = Notification.Name("dev.mylinux.machine.palette")
     /// app → launcher: "hello" (report now), "open" (start it, or open its terminal), "cloudFolders" (save, restart);
-    /// "restart" and "cloud" also come from a desktop's QEMU (Machine › Restart and Cloud Folders…, ⇧⌘P; with
+    /// "restart", "cloud" and "apps" also come from a desktop's QEMU (Machine › Restart, Cloud Folders… and Apps…; with
     /// MYLINUX_LINK_SCOPE from Runner.start)
     static let request = Notification.Name("dev.mylinux.machine.request")
 
@@ -261,6 +261,15 @@ enum MachineLink {
             case "restart":
                 if r.isActive || r.canStopElsewhere { r.restart(p) }
             case "cloud": CloudFoldersWindow.show(p.id)       // ⇧⌘P or Machine › Cloud Folders… in a desktop's window
+            case "apps":                                          // ⇧⌘A or Machine › Apps… in a desktop's window
+                Task { @MainActor in
+                    let problem: String? = p.kind == .omarchy ? await ServerApps.openInOmarchy(p)
+                        : "myLinux has its own: Super+Space (⌥Space) finds, runs and installs apps."
+                    guard let problem else { return }
+                    NSApp.activate()
+                    let alert = NSAlert(); alert.messageText = "Apps in \(p.name)"; alert.informativeText = problem
+                    alert.runModal()
+                }
             default: break
             }
         })

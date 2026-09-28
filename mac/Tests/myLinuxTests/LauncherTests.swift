@@ -195,6 +195,31 @@ final class ServerAppsTests: XCTestCase {
         }
         XCTAssertFalse(ServerApps.plausible("catalog.json", "<html>404</html>"))
     }
+    func testOmarchysAgentIsAskedToOpenTheApp() async throws {
+        let share = FileManager.default.temporaryDirectory.appendingPathComponent("apps-omarchy-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: share) }
+        var p = ProfileStore.newProfile(named: "O", kind: .omarchy, folder: share)
+        p.shareDir = share.path
+        let cmd = share.appendingPathComponent("mylinux-tools/control/apps.cmd")
+        // a stand-in agent: takes the command as the real one does
+        let agent = Task.detached {
+            for _ in 0..<40 {
+                if FileManager.default.fileExists(atPath: cmd.path) { try? FileManager.default.removeItem(at: cmd); return true }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            return false
+        }
+        let problem = await ServerApps.openInOmarchy(p)
+        XCTAssertNil(problem, "the agent took it")
+        let took = await agent.value
+        XCTAssertTrue(took)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: share.appendingPathComponent(".mylinux/apps/run.sh").path), "the app is in the share")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ServerApps.cloudStateFile(share.path).path), "with the cloud drives beside it")
+        // no agent: said why, and the command does not linger for a later one to run unasked
+        let unanswered = await ServerApps.openInOmarchy(p)
+        XCTAssertTrue(unanswered?.contains("session helper did not answer") == true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cmd.path))
+    }
     func testCloudDrivesGoBothWays() throws {
         let share = FileManager.default.temporaryDirectory.appendingPathComponent("apps-cloud-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: share) }

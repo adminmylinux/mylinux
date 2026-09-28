@@ -2,18 +2,25 @@
 # myLinux Apps on a Debian or Alpine machine: find, run and install programs (mylinux_apps.py, catalog.json).
 # Apps… in the launcher's CMD menu copies this folder into the machine's Mac share (/mnt/mac/.mylinux/apps) and
 # types `sh /mnt/mac/.mylinux/apps/run.sh` into the terminal. The first time, it installs Python's Textual from the
-# distribution (Alpine: py3-textual, Debian: python3-textual) and adds the command mylinux-apps to ~/.local/bin.
+# distribution (Alpine: py3-textual, Debian: python3-textual, Omarchy: python-textual) and adds the command
+# mylinux-apps to ~/.local/bin. In Omarchy, Apps… (⇧⌘A) in its window has the session agent open a terminal running it.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
+# Alpine (apk, doas), Omarchy (Arch: pacman, sudo, which asks for the password), Debian (apt, sudo)
 if command -v apk >/dev/null 2>&1; then
-  ROOT=doas; INSTALL="doas apk add -q python3 py3-textual"
+  ROOT=doas
+  textual() { doas apk update -q >/dev/null && doas apk add -q python3 py3-textual; }
+elif command -v pacman >/dev/null 2>&1; then
+  ROOT=sudo
+  # from the package lists as they are; when those are too old for the mirrors, synced and upgraded first
+  textual() { sudo pacman -S --needed --noconfirm python python-textual || sudo pacman -Syu --needed --noconfirm python python-textual; }
 else
-  ROOT=sudo; INSTALL="sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 python3-textual"
+  ROOT=sudo
+  textual() { sudo apt-get update -q >/dev/null && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 python3-textual; }
 fi
 if ! python3 -c 'import textual' >/dev/null 2>&1; then
   echo "myLinux Apps: installing Python's Textual (once) ..."
-  if [ "$ROOT" = sudo ]; then sudo apt-get update -q >/dev/null; else doas apk update -q >/dev/null; fi
-  $INSTALL
+  textual
 fi
 # mylinux-apps starts it again from any shell (the share is there whenever the machine runs)
 mkdir -p "$HOME/.local/bin"

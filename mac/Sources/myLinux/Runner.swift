@@ -579,7 +579,8 @@ final class RunManager: ObservableObject {
                 // pgrep in the background: on the main thread, every machine every 4 s, it stalled the window
                 DispatchQueue.global(qos: .utility).async {
                     let inUse = Runner.diskInUse(p.appsDisk)
-                    let cloudAsked = p.isServer && !p.shareDir.isEmpty && FileManager.default.fileExists(atPath: ServerApps.cloudRequestFile(p.shareDir).path)
+                    let cloudAsked = (p.isServer || p.kind == .omarchy) && !p.shareDir.isEmpty
+                        && FileManager.default.fileExists(atPath: ServerApps.cloudRequestFile(p.shareDir).path)
                     DispatchQueue.main.async {
                         r.refreshExternal(inUse: inUse)
                         if cloudAsked { self.cloudRequest(p.id, store: store) }

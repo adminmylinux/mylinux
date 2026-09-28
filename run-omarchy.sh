@@ -153,6 +153,9 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinu
   tools/omarchy-bake-session.sh "$DISK.new" omarchy/session || echo "run-omarchy.sh: the session tool is not in the disk; inside Omarchy, sh ~/<share>/mylinux-tools/install-session.sh installs it" >&2
   cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/OMARCHY-REVISION" "$MACHINE/boot/OMARCHY-REVISION" 2>/dev/null || true
   mv "$DISK.new" "$DISK"
+elif [ "${DRYRUN:-0}" != 1 ]; then
+  # a machine made earlier: its session tool brought up to date (Apps… needs the agent's "apps"), if it was shut down cleanly
+  tools/omarchy-update-session.sh "$DISK" omarchy/session || true
 fi
 SERIAL="${SERIAL:-file:$MACHINE/console.log}"
 case "$SERIAL" in

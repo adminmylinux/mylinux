@@ -67,7 +67,14 @@ def distribution() -> str:
     ids = [info.get("ID", "")] + info.get("ID_LIKE", "").split()
     if "alpine" in ids:
         return "alpine"
+    if "arch" in ids or "archarm" in ids or "omarchy" in ids:
+        return "arch"
     return "debian"
+
+
+DISTRO_NAMES = {"alpine": "Alpine", "debian": "Debian", "arch": "Omarchy"}
+PACKAGE_KEYS = {"alpine": "apk", "debian": "apt", "arch": "pacman"}
+ROOT = {"alpine": "doas", "debian": "sudo", "arch": "sudo"}
 
 
 def search_path() -> str:
@@ -90,6 +97,7 @@ class AppEntry:
     icon: str = ""                    # its own Nerd Font symbol (hex), else its category's
     cloud: dict | None = None         # a cloud drive: {"id", "title", "guest", "onMac"}
     chosen: bool = False              # a cloud drive the machine has (attached at its start)
+    attached: bool = False            # its share is there (mounting it is all that is left)
 
     @property
     def installable(self) -> bool:
@@ -108,7 +116,7 @@ class AppEntry:
 
 def load_catalog(path: Path, distro: str) -> list[AppEntry]:
     data = json.loads(path.read_text())
-    pkg_key, root = ("apk", "doas") if distro == "alpine" else ("apt", "sudo")
+    pkg_key = PACKAGE_KEYS[distro]
     apps = []
     for a in data["apps"]:
         packages = list(a.get(pkg_key, []))
@@ -137,10 +145,62 @@ def load_cloud(state: Path) -> tuple[list[AppEntry], str]:
     return drives, data.get("machine", "")
 
 
+def attached_tags() -> set[str]:
+    """The 9p shares the machine has (a cloud drive is attached when the machine starts)."""
+    tags = set()
+    for f in Path("/sys/bus/virtio/drivers/9pnet_virtio").glob("*/mount_tag"):
+        try:
+            tags.add(f.read_text().strip("\0\n "))
+        except OSError:
+            pass
+    return tags
+
+
+MOUNT_TEMPLATE = """R=; [ "$(id -u)" = 0 ] || R="@ROOT@"
+want="@WANT@"; changed=
+for pair in @ALL@; do
+  tag=${pair%%:*}; name=${pair#*:}; mp=/mnt/$tag
+  case " $want " in
+    *" $pair "*)
+      $R mkdir -p "$mp"
+      grep -q "^$tag $mp " /etc/fstab || { echo "$tag $mp 9p trans=virtio,version=9p2000.L,msize=512000,nofail,_netdev 0 0" | $R tee -a /etc/fstab >/dev/null; changed=1; }
+      mountpoint -q "$mp" || $R mount "$mp" 2>/dev/null || echo "could not mount $tag (restart the machine to attach it)"
+      if [ ! -e "$HOME/$name" ] || [ -L "$HOME/$name" ]; then ln -sfn "$mp" "$HOME/$name"; fi
+      ! mountpoint -q "$mp" || echo "~/$name is ready" ;;
+    *)
+      if grep -q "^$tag $mp " /etc/fstab; then
+        ! mountpoint -q "$mp" || $R umount "$mp"
+        $R sed -i "\\#^$tag $mp #d" /etc/fstab; changed=1
+      fi
+      # only the link this made, and only a link: unlink cannot take a folder
+      if [ -L "$HOME/$name" ] && [ "$(readlink "$HOME/$name")" = "$mp" ]; then unlink "$HOME/$name"; fi ;;
+  esac
+done
+[ -z "$changed" ] || ! command -v systemctl >/dev/null || $R systemctl daemon-reload 2>/dev/null || true"""
+
+
+def cloud_mount_script(want: list[str], drives: list[dict], root: str) -> str:
+    """Mount the wanted cloud drives at /mnt/<tag> through /etc/fstab (so they come back at every start) and link them
+    as ~/<name>; take out the others. The launcher's CloudFolder.mountScript, for a machine it cannot reach as root
+    (Omarchy): run here, where sudo can ask for the password."""
+    pairs = lambda ds: " ".join(f"{d['id']}:{d['guest']}" for d in ds)
+    return (MOUNT_TEMPLATE.replace("@ROOT@", root).replace("@WANT@", pairs([d for d in drives if d["id"] in want]))
+            .replace("@ALL@", pairs(drives)))
+
+
+def in_fstab(tag: str) -> bool:
+    try:
+        return any(line.split()[:1] == [tag] for line in Path("/etc/fstab").read_text().splitlines())
+    except OSError:
+        return False
+
+
 def describe_cloud(a: AppEntry) -> str:
     f = a.cloud or {}
     if a.chosen and a.installed:
         return f"Your Mac's {f['title']}, in ~/{f['guest']}"
+    if a.chosen and a.attached:
+        return f"Your Mac's {f['title']}: Enter mounts it as ~/{f['guest']}"
     if a.chosen:
         return f"Your Mac's {f['title']}, at the next start"
     if f.get("onMac"):
@@ -154,6 +214,9 @@ def install_script(app: AppEntry, distro: str) -> str:
         pk = " ".join(shlex.quote(p) for p in app.packages)
         if distro == "alpine":
             lines += ["doas apk update -q", f"doas apk add {pk}"]
+        elif distro == "arch":
+            # from the package lists as they are; when those are too old for the mirrors, synced and upgraded first
+            lines += [f"sudo pacman -S --needed --noconfirm {pk} || sudo pacman -Syu --needed --noconfirm {pk}"]
         else:
             lines += ["sudo apt-get update -q", f"sudo DEBIAN_FRONTEND=noninteractive apt-get install -y {pk}"]
     return "\n".join(lines + app.steps)
@@ -164,14 +227,16 @@ def remove_script(app: AppEntry, distro: str) -> str | None:
     if app.steps or not app.packages:
         return None
     pk = " ".join(shlex.quote(p) for p in app.packages)
-    return f"doas apk del {pk}" if distro == "alpine" else f"sudo apt-get remove -y {pk}"
+    return {"alpine": f"doas apk del {pk}", "arch": f"sudo pacman -Rs --noconfirm {pk}"}.get(distro, f"sudo apt-get remove -y {pk}")
 
 
 def refresh(apps: list[AppEntry]) -> None:
     path = search_path()
+    tags = attached_tags() if any(a.cloud is not None for a in apps) else set()
     for a in apps:
         if a.cloud is not None:
             mp = f"/mnt/{a.cloud['id']}"
+            a.attached = a.cloud["id"] in tags
             a.found = f"~/{a.cloud['guest']}" if os.path.ismount(mp) else None
             a.description = describe_cloud(a)
         else:
@@ -279,7 +344,7 @@ class MyLinuxApps(App):
         self.shown: list[AppEntry] = []
         self.categories = [c for c in CATEGORIES if c in ("All", "Installed") or any(a.category == c for a in self.apps)]
         self.category = "All"
-        self.sub_title = f"{'Alpine' if self.distro == 'alpine' else 'Debian'} · {os.uname().nodename}"
+        self.sub_title = f"{DISTRO_NAMES[self.distro]} · {os.uname().nodename}"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -362,6 +427,8 @@ class MyLinuxApps(App):
         if a.cloud is not None:
             if a.chosen and a.installed:
                 return "installed", GOOD, f"In ~/{a.cloud['guest']}"
+            if a.chosen and a.attached:
+                return "pending", WAIT, "Attached, not mounted yet"
             if a.chosen:
                 return "pending", WAIT, "Attached at the next start"
             return ("available", "", "On your Mac") if a.installable else ("unavailable", MUTED, "Not on this Mac")
@@ -369,7 +436,7 @@ class MyLinuxApps(App):
             return "installed", GOOD, "Installed"
         if a.installable:
             return "available", "", "Not installed"
-        return "unavailable", MUTED, f"Not packaged for {'Alpine' if self.distro == 'alpine' else 'Debian'}"
+        return "unavailable", MUTED, f"Not packaged for {DISTRO_NAMES[self.distro]}"
 
     def fill(self, keep: str | None = None) -> None:
         q = self.query_one(Input).value.strip().lower()
@@ -421,11 +488,15 @@ class MyLinuxApps(App):
             f = a.cloud
             lines += [f"[{MUTED}]Your Mac's {escape(f['title'])} folder as ~/{escape(f['guest'])}; the Mac keeps it in sync."
                       f" Adding or taking it away restarts the machine.[/]"]
-            if a.chosen:
+            if a.chosen and a.attached and not a.installed:
+                install.label = f"{glyph('add')}  Mount"; install.display = True; install.add_class("primary")
+                remove.label = f"{glyph('remove')}  Take Away"; remove.display = True
+            elif a.chosen:
                 remove.label = f"{glyph('remove')}  Take Away"; remove.display = True
             elif a.installable:
                 install.label = f"{glyph('add')}  Add"; install.display = True; install.add_class("primary")
-            hint = "Enter takes it away" if a.chosen else "Enter adds it" if a.installable else "sign in to it on the Mac first"
+            hint = ("Enter mounts it" if a.chosen and a.attached and not a.installed else "Enter takes it away" if a.chosen
+                    else "Enter adds it" if a.installable else "sign in to it on the Mac first")
         else:
             if a.installed:
                 lines += [f"[{MUTED}]Runs[/]", f"  {escape(a.command())}", ""]
@@ -505,25 +576,56 @@ class MyLinuxApps(App):
         else:
             self.notify(f"{a.name} is not packaged for this distribution.", severity="warning")
 
+    def drives(self) -> list[dict]:
+        return [x.cloud for x in self.apps if x.cloud is not None]
+
+    def mount_cloud(self, a: AppEntry) -> None:
+        """An attached cloud drive the launcher could not mount (Omarchy: no way in as root): mounted here, with fstab."""
+        chosen = [x.cloud["id"] for x in self.apps if x.cloud is not None and x.chosen]
+        script = cloud_mount_script(chosen, self.drives(), ROOT[self.distro])
+
+        def answered(yes: bool | None) -> None:
+            if yes:
+                self.hand_over(script, f"Mounting {a.name}", wait=True)
+                refresh(self.apps); self.fill_sidebar(); self.fill(keep=a.id)
+        self.push_screen(Confirm(f"Mount {a.name}?", f"~/{a.cloud['guest']} becomes your Mac's {a.name} folder, now and at every "
+                                 f"start (a line in /etc/fstab). {ROOT[self.distro]} may ask for your password.", "Mount"), answered)
+
     def toggle_cloud(self, a: AppEntry) -> None:
+        """Enter on a cloud drive: an attached one is mounted, a chosen one taken away, another added."""
+        if a.chosen and a.attached and not a.installed:
+            self.mount_cloud(a)
+        elif a.chosen:
+            self.take_away(a)
+        else:
+            self.change_cloud(a, add=True)
+
+    def take_away(self, a: AppEntry) -> None:
+        self.change_cloud(a, add=False)
+
+    def change_cloud(self, a: AppEntry, add: bool) -> None:
         """Adds or takes away a cloud drive: the launcher restarts the machine to attach or detach it."""
-        if not a.installable:
+        if add and not a.installable:
             self.notify(f"{a.name} is not on this Mac: install it there and sign in, then open Apps… again.", severity="warning")
             return
         f = a.cloud or {}
         machine = self.machine or "this machine"
-        chosen = [x.cloud["id"] for x in self.apps if x.cloud is not None and x.chosen]
-        if a.chosen:
-            chosen.remove(f["id"])
-            title, body, ok = f"Take {a.name} away?", f"~/{f['guest']} goes away; the files stay in your Mac's {a.name}.", "Take Away"
-        else:
+        chosen = [x.cloud["id"] for x in self.apps if x.cloud is not None and x.chosen and x.cloud["id"] != f["id"]]
+        if add:
             chosen.append(f["id"])
             title, body, ok = f"Add {a.name}?", f"Your Mac's {a.name} folder shows up as ~/{f['guest']}; the Mac's {a.name} app keeps it in sync.", "Add and Restart"
-        body += f"\n\n{machine} restarts to attach it (about half a minute): this terminal closes and opens again."
+        else:
+            title, body, ok = f"Take {a.name} away?", f"~/{f['guest']} goes away; the files stay in your Mac's {a.name}.", "Take Away"
+        # a desktop's terminal does not come back by itself after the restart: Apps… again mounts what was added
+        after = ("then Apps… (⇧⌘A) again mounts it" if add else "") if self.distro == "arch" else "this terminal closes and opens again"
+        body += f"\n\n{machine} restarts to {'attach' if add else 'detach'} it (about half a minute)" + (f": {after}." if after else ".")
 
         def answered(yes: bool | None) -> None:
             if not yes:
                 return
+            # taken away: its mount and fstab line go first (where the launcher does not do that itself)
+            if not add and in_fstab(f["id"]):
+                self.hand_over(cloud_mount_script(chosen, self.drives(), ROOT[self.distro]), f"Taking {a.name} away", wait=False)
             tmp = self.cloud_request.with_suffix(".tmp")
             try:
                 tmp.write_text(json.dumps({"folders": chosen}))
@@ -531,7 +633,7 @@ class MyLinuxApps(App):
             except OSError as e:
                 self.notify(f"Could not ask the launcher: {e}", severity="error")
                 return
-            self.exit(message=f"myLinux Apps: {machine} restarts for {a.name}; the terminal opens again when it is back.")
+            self.exit(message=f"myLinux Apps: {machine} restarts for {a.name}" + (f"; {after}." if after else "."))
         self.push_screen(Confirm(title, body, ok), answered)
 
     def action_install(self) -> None:
@@ -554,7 +656,7 @@ class MyLinuxApps(App):
     def action_remove(self) -> None:
         a = self.current()
         if a is not None and a.cloud is not None and a.chosen:
-            self.toggle_cloud(a)
+            self.take_away(a)
             return
         if a is None or not a.installed:
             return
