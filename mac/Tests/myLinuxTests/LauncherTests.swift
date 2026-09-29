@@ -918,6 +918,47 @@ final class TailscaleTests: XCTestCase {
         }
     }
 
+    /// tailscale nc's own failure (a refused port) is kept, and said in words; a connection that works clears it.
+    func testARefusedPortIsSaidInWords() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ts-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let saved = Tailscale.script
+        Tailscale.script = dir.appendingPathComponent("nc.sh")
+        defer { Tailscale.script = saved }
+        try "#!/bin/sh\n[ \"$2\" = 5902 ] && exit 0\necho 'Dial(\"'$1'\", '$2'): unexpected HTTP response: 502 Bad Gateway, dial failure: connect tcp '$1':'$2': connection was refused' >&2\nexit 1\n"
+            .write(to: Tailscale.script, atomically: true, encoding: .utf8)
+        func touch(_ port: Int) throws {
+            let f = try XCTUnwrap(Tailscale.Forwarder.to("100.100.1.2", port))
+            let fd = socket(AF_INET, SOCK_STREAM, 0)
+            var addr = sockaddr_in(); addr.sin_family = sa_family_t(AF_INET); addr.sin_addr.s_addr = inet_addr("127.0.0.1"); addr.sin_port = UInt16(f.localPort).bigEndian
+            _ = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+            var b = [UInt8](repeating: 0, count: 16); _ = Darwin.read(fd, &b, 16); close(fd)
+            for _ in 0..<20 where Tailscale.routeProblem("100.100.1.2", port) == nil && port != 5902 { Thread.sleep(forTimeInterval: 0.05) }
+        }
+        try touch(5900)
+        XCTAssertEqual(Tailscale.routeProblem("100.100.1.2", 5900), "nothing answers on port 5900 of 100.100.1.2 (is its server running, on that port?)")
+        try touch(5902)
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertNil(Tailscale.routeProblem("100.100.1.2", 5902))
+        XCTAssertNil(Tailscale.routeProblem("100.100.9.9", 5900), "never tried")
+    }
+
+    /// With MYLINUX_TEST_TAILSCALE_CLOSED=<a tailnet host without a VNC server>: the window's words for it.
+    func testATailnetMachineWithoutVNC() throws {
+        guard let host = ProcessInfo.processInfo.environment["MYLINUX_TEST_TAILSCALE_CLOSED"] else { throw XCTSkip("MYLINUX_TEST_TAILSCALE_CLOSED not set") }
+        guard case .status = Tailscale.detect() else { return XCTFail("no Tailscale found") }
+        VncLog.directory = FileManager.default.temporaryDirectory
+        var p = RemoteProfile(kind: .vnc); p.host = host; p.name = "closed"
+        let conn = VncConnection(profile: p)
+        let failed = expectation(description: "failed"); var message = ""
+        conn.onState = { if case .failed(let m) = $0 { message = m; failed.fulfill() } }
+        conn.start()
+        wait(for: [failed], timeout: 30)
+        print("message: \(message)")
+        XCTAssertTrue(message.contains("nothing answers on port 5900 of closed"), message)
+    }
+
     /// With MYLINUX_TEST_TAILSCALE=<a tailnet host running VNC>: this Mac's real Tailscale, and a VNC server's
     /// greeting and an ssh server's banner through it (nothing is logged in to).
     func testThisMacsTailnet() throws {

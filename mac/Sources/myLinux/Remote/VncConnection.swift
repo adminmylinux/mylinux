@@ -32,6 +32,8 @@ final class VncConnection {
     private var needTrust = false
     /// libvncclient's last error line on this connection's thread (VncLog)
     fileprivate var lastLog = ""
+    /// through this Mac's userspace Tailscale (Tailscale.Forwarder): its own failure says more than libvncclient's
+    private var routed = false
 
     init(profile: RemoteProfile) { self.profile = profile }
     deinit { staging?.deallocate() }
@@ -130,6 +132,7 @@ final class VncConnection {
         // connect first, so the certificate can be verified against its own name later (libvncclient checks serverHost);
         // a tailnet machine through this Mac's userspace Tailscale: to its local forwarder (Tailscale.swift)
         let to = Tailscale.endpoint(profile.host, profile.port)
+        routed = to.routed
         if ConnectToRFBServer(c, to.host, Int32(to.port)) == 0 {
             rfbClientCleanup(c); state = .failed("cannot connect to \(profile.host):\(profile.port)" + (to.routed ? " through Tailscale" : "")); return
         }
@@ -166,6 +169,11 @@ final class VncConnection {
 
     /// The failure, with libvncclient's last error line when it gave one (the whole log: logs/vnc.log).
     private func why(_ what: String, or guess: String? = nil) -> String {
+        if routed {
+            // tailscale nc ends a moment after the local socket closes
+            for _ in 0..<(Thread.isMainThread ? 0 : 10) where Tailscale.routeProblem(profile.host, profile.port) == nil { Thread.sleep(forTimeInterval: 0.1) }
+            if let problem = Tailscale.routeProblem(profile.host, profile.port, name: profile.title) { return "\(what): \(problem)" }
+        }
         if !lastLog.isEmpty { return "\(what): \(lastLog)" }
         return guess.map { "\(what) (\($0))" } ?? what
     }

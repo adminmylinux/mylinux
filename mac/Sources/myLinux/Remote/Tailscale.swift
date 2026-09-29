@@ -214,6 +214,17 @@ enum Tailscale {
         return ("127.0.0.1", f.localPort, true)
     }
 
+    /// Why the last connection through the forwarder to `host:port` failed, in words, or nil.
+    static func routeProblem(_ host: String, _ port: Int, name: String? = nil) -> String? {
+        guard let raw = Forwarder.existing(host, port)?.lastError else { return nil }
+        let who = name ?? host
+        let low = raw.lowercased()
+        if low.contains("refused") { return "nothing answers on port \(port) of \(who) (is its server running, on that port?)" }
+        if low.contains("timeout") || low.contains("timed out") { return "\(who) did not answer on port \(port) (offline, or a firewall)" }
+        let detail = raw.components(separatedBy: "dial failure: ").last ?? raw
+        return "Tailscale could not reach \(who) (\(host):\(port)): \(detail)"
+    }
+
     /// 127.0.0.1:<free port>, each connection handed to `tailscale nc host port` (its stdin and stdout are the socket).
     final class Forwarder {
         private static var all: [String: Forwarder] = [:]
@@ -223,6 +234,15 @@ enum Tailscale {
         private let host: String, port: Int
         private var children: Set<Process> = []
         private let childLock = NSLock()
+
+        static func existing(_ host: String, _ port: Int) -> Forwarder? {
+            lock.lock(); defer { lock.unlock() }
+            return all["\(host):\(port)"]
+        }
+
+        /// What `tailscale nc` said last when it failed (a refused port, a machine that is not there); nil once one works.
+        var lastError: String? { childLock.lock(); defer { childLock.unlock() }; return _lastError }
+        private var _lastError: String?
 
         static func to(_ host: String, _ port: Int) -> Forwarder? {
             lock.lock(); defer { lock.unlock() }
@@ -257,8 +277,16 @@ enum Tailscale {
                 p.executableURL = URL(fileURLWithPath: "/bin/sh")
                 p.arguments = [Tailscale.script.path, host, String(port)]
                 let h = FileHandle(fileDescriptor: c, closeOnDealloc: false)
-                p.standardInput = h; p.standardOutput = h; p.standardError = FileHandle.nullDevice
-                p.terminationHandler = { [weak self] done in self?.childLock.lock(); self?.children.remove(done); self?.childLock.unlock() }
+                let err = Pipe()
+                p.standardInput = h; p.standardOutput = h; p.standardError = err
+                p.terminationHandler = { [weak self] done in
+                    let text = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    guard let self else { return }
+                    self.childLock.lock()
+                    self.children.remove(done)
+                    self._lastError = done.terminationStatus != 0 && !text.isEmpty ? text : nil
+                    self.childLock.unlock()
+                }
                 childLock.lock(); children.insert(p); childLock.unlock()
                 do { try p.run() } catch { childLock.lock(); children.remove(p); childLock.unlock() }
                 close(c)            // the child has its own copy
