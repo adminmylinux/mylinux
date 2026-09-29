@@ -21,6 +21,7 @@ enum SshTerminal {
     static func arguments(for profile: RemoteProfile) -> [String] {
         var args = ["-p", String(profile.port), "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30"]
         for o in profile.sshOptions { args += ["-o", o] }
+        args += Tailscale.sshOptions(for: profile.host)       // a tailnet machine through a userspace Tailscale
         if !profile.keyFile.isEmpty { args += ["-i", (profile.keyFile as NSString).expandingTildeInPath] }
         args.append(profile.username.isEmpty ? profile.host : "\(profile.username)@\(profile.host)")
         return args

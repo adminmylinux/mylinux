@@ -858,3 +858,87 @@ final class VncLogTests: XCTestCase {
         XCTAssertTrue(log.contains("[refusing test server]") && log.contains(reason), log)
     }
 }
+
+final class TailscaleTests: XCTestCase {
+    func testStatusIsRead() throws {
+        let json = """
+        {"BackendState":"Running","TUN":false,"AuthURL":"","CurrentTailnet":{"Name":"me@example.com"},"Self":{"HostName":"mac"},
+         "Peer":{"k1":{"ID":"n1","HostName":"omarchy-msi","DNSName":"omarchy-msi.tail1.ts.net.","TailscaleIPs":["100.109.140.29","fd7a::1"],"OS":"linux","Online":true,"LastSeen":"0001-01-01T00:00:00Z"},
+                 "k2":{"ID":"n2","HostName":"alpine","DNSName":"alpine.tail1.ts.net.","TailscaleIPs":["100.125.0.127"],"OS":"linux","Online":false,"LastSeen":"2026-09-28T10:00:00Z"}}}
+        """
+        let s = try XCTUnwrap(Tailscale.parse(Data(json.utf8)))
+        XCTAssertEqual(s.state, "Running"); XCTAssertTrue(s.userspace); XCTAssertEqual(s.tailnet, "me@example.com")
+        XCTAssertEqual(s.peers.map(\.name), ["omarchy-msi", "alpine"], "online first")
+        XCTAssertEqual(s.peers[0].ip, "100.109.140.29"); XCTAssertEqual(s.peers[0].dnsName, "omarchy-msi.tail1.ts.net")
+        XCTAssertNil(s.peers[0].lastSeen, "never is no date"); XCTAssertNotNil(s.peers[1].lastSeen)
+        XCTAssertNil(Tailscale.parse(Data("not json".utf8)))
+    }
+
+    func testTailnetAddresses() {
+        XCTAssertTrue(Tailscale.isTailnet("100.109.140.29")); XCTAssertTrue(Tailscale.isTailnet("100.64.0.1")); XCTAssertTrue(Tailscale.isTailnet("100.127.255.254"))
+        XCTAssertFalse(Tailscale.isTailnet("100.63.0.1")); XCTAssertFalse(Tailscale.isTailnet("100.128.0.1")); XCTAssertFalse(Tailscale.isTailnet("192.168.0.157"))
+        XCTAssertTrue(Tailscale.isTailnet("omarchy-msi.tail32cedf.ts.net")); XCTAssertTrue(Tailscale.isTailnet("OMARCHY-MSI.tail32cedf.ts.net."))
+        XCTAssertFalse(Tailscale.isTailnet("example.com"))
+    }
+
+    func testAPeerKeepsItsProfileID() {
+        XCTAssertEqual(Tailscale.stableID("tailscale:vnc:n1"), Tailscale.stableID("tailscale:vnc:n1"))
+        XCTAssertNotEqual(Tailscale.stableID("tailscale:vnc:n1"), Tailscale.stableID("tailscale:ssh:n1"))
+    }
+
+    func testAToolThatHangsIsStopped() {
+        let start = Date()
+        XCTAssertNil(Tailscale.run("/bin/sleep", ["30"], timeout: 1))
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+        XCTAssertEqual(Tailscale.run("/bin/echo", ["hi"], timeout: 5)?.0, 0)
+    }
+
+    /// The forwarder hands each connection to the helper as its stdin and stdout: a stand-in that answers like a
+    /// server (it echoes its arguments, then what it reads).
+    func testTheForwarderRunsTheHelperPerConnection() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ts-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let saved = Tailscale.script
+        Tailscale.script = dir.appendingPathComponent("nc.sh")
+        defer { Tailscale.script = saved }
+        try "#!/bin/sh\necho \"to $1 $2\"\nhead -c 5\n".write(to: Tailscale.script, atomically: true, encoding: .utf8)
+        let f = try XCTUnwrap(Tailscale.Forwarder.to("100.100.1.1", 5901))
+        XCTAssertTrue(Tailscale.Forwarder.to("100.100.1.1", 5901) === f, "one per destination")
+        for _ in 0..<2 {
+            let fd = socket(AF_INET, SOCK_STREAM, 0)
+            var addr = sockaddr_in(); addr.sin_family = sa_family_t(AF_INET); addr.sin_addr.s_addr = inet_addr("127.0.0.1"); addr.sin_port = UInt16(f.localPort).bigEndian
+            let rc = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+            XCTAssertEqual(rc, 0)
+            _ = "hello".withCString { Darwin.write(fd, $0, 5) }
+            var got = Data(); var buf = [UInt8](repeating: 0, count: 256)
+            while true { let n = Darwin.read(fd, &buf, 256); if n <= 0 { break }; got.append(contentsOf: buf[0..<n]) }
+            close(fd)
+            XCTAssertEqual(String(data: got, encoding: .utf8), "to 100.100.1.1 5901\nhello")
+        }
+    }
+
+    /// With MYLINUX_TEST_TAILSCALE=<a tailnet host running VNC>: this Mac's real Tailscale, and a VNC server's
+    /// greeting and an ssh server's banner through it (nothing is logged in to).
+    func testThisMacsTailnet() throws {
+        guard let host = ProcessInfo.processInfo.environment["MYLINUX_TEST_TAILSCALE"] else { throw XCTSkip("MYLINUX_TEST_TAILSCALE not set") }
+        guard case .status(let c, let s) = Tailscale.detect() else { return XCTFail("no Tailscale found") }
+        print("tailscale: \(c.tool) \(c.socket ?? "-") state=\(s.state) userspace=\(s.userspace) peers=\(s.peers.count)")
+        XCTAssertEqual(s.state, "Running")
+        let to = Tailscale.endpoint(host, 5900)
+        XCTAssertEqual(to.routed, s.userspace)
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        var addr = sockaddr_in(); addr.sin_family = sa_family_t(AF_INET); addr.sin_addr.s_addr = inet_addr(to.routed ? "127.0.0.1" : host); addr.sin_port = UInt16(to.port).bigEndian
+        let rc = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        XCTAssertEqual(rc, 0)
+        var buf = [UInt8](repeating: 0, count: 12); var got = 0
+        while got < 12 { let n = Darwin.read(fd, &buf[got], 12 - got); if n <= 0 { break }; got += n }
+        close(fd)
+        XCTAssertEqual(String(bytes: buf, encoding: .ascii), "RFB 003.008\n")
+        if s.userspace {
+            // stdin stays open a moment, as ssh's does (tailscale nc ends at the end of its input)
+            let banner = Tailscale.run("/bin/sh", ["-c", "sleep 4 | sh \"\(Tailscale.script.path)\" \(host) 22 | head -c 8"], timeout: 15)
+            XCTAssertEqual(banner.flatMap { String(data: $0.1, encoding: .utf8) }, "SSH-2.0-")
+        }
+    }
+}

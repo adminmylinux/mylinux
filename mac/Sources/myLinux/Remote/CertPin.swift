@@ -41,7 +41,8 @@ enum CertPin {
 
     /// The server's certificate through the RFB + VeNCrypt X509 handshake. Completion on the main queue.
     static func fetch(host: String, port: Int, completion: @escaping (Result<Info, Error>) -> Void) {
-        let conn = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(integerLiteral: UInt16(port)), using: .tcp)
+        let to = Tailscale.endpoint(host, port)
+        let conn = NWConnection(host: NWEndpoint.Host(to.host), port: NWEndpoint.Port(integerLiteral: UInt16(to.port)), using: .tcp)
         var done = false
         func finish(_ r: Result<Info, Error>) { if !done { done = true; conn.cancel(); DispatchQueue.main.async { completion(r) } } }
         func fail(_ m: String) { finish(.failure(NSError(domain: "CertPin", code: 1, userInfo: [NSLocalizedDescriptionKey: m]))) }

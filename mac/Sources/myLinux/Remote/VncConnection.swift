@@ -127,8 +127,12 @@ final class VncConnection {
         var schemes: [UInt32] = [UInt32(rfbVeNCrypt), UInt32(rfbVncAuth), UInt32(rfbNoAuth), UInt32(rfbARD), 0]
         SetClientAuthSchemes(c, &schemes, -1)
         state = .connecting
-        // connect first, so the certificate can be verified against its own name later (libvncclient checks serverHost)
-        if ConnectToRFBServer(c, profile.host, Int32(profile.port)) == 0 { rfbClientCleanup(c); state = .failed("cannot connect to \(profile.host):\(profile.port)"); return }
+        // connect first, so the certificate can be verified against its own name later (libvncclient checks serverHost);
+        // a tailnet machine through this Mac's userspace Tailscale: to its local forwarder (Tailscale.swift)
+        let to = Tailscale.endpoint(profile.host, profile.port)
+        if ConnectToRFBServer(c, to.host, Int32(to.port)) == 0 {
+            rfbClientCleanup(c); state = .failed("cannot connect to \(profile.host):\(profile.port)" + (to.routed ? " through Tailscale" : "")); return
+        }
         c.pointee.listenSpecified = 1
         if rfbInitClient(c, nil, nil) == 0 {                       // frees the client on failure
             if needTrust || pinUsed != nil { probeCertificate(); return }

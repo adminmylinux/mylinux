@@ -57,7 +57,14 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 230, ideal: 250)
             .safeAreaInset(edge: .bottom) { sidebarFooter }
             // in the sidebar's toolbar, not the section header: a click anywhere in a sidebar header folds the section
-            .toolbar { ToolbarItem(placement: .automatic) { addMenu } }
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button { TailscaleWindow.show() } label: { Image(systemName: "circle.grid.3x3.fill") }
+                        .help("Tailscale: the machines of your tailnet, one click to VNC or SSH")
+                        .accessibilityLabel("Tailscale")
+                }
+                ToolbarItem(placement: .automatic) { addMenu }
+            }
         } detail: {
             if selection == ContentView.overviewID {
                 OverviewView(store: store, runs: runs) { selection = $0 }

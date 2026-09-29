@@ -283,6 +283,18 @@ back at the next launch (close them yourself and they do not); ⌘K is a quick-c
 machines.json…* reads the guest viewer's saved machines (copy `~/.config/mylinux/vnc/machines.json` and, for the
 passwords, `~/.config/mylinux/secrets.env` to the share first).
 
+**Tailscale** (the ⠿ button beside + above the sidebar, from 0.7.26): the machines of the Mac's tailnet with their name,
+IP, type and when they were last seen, each with a VNC and an SSH button, so a tailnet machine needs no profile. It
+reads the Mac's own Tailscale client (`tailscale status --json`: the Tailscale app, or Homebrew's CLI with the socket
+of a running tailscaled), so no API key; a Mac that is signed out signs in from there (`tailscale login`, whose page
+opens in the browser). The user name is asked the first time (VNC: only for a server that wants one, like wayvnc with
+a login) and remembered; a password ticked "Remember" is kept in the Keychain under an id made from the machine's, so
+it is found next time; the context menu has *… as…* and *Add to the Sidebar*. A Mac whose tailscaled runs in userspace
+mode (`--tun=userspace-networking`, `"TUN": false`) cannot reach tailnet addresses itself: ssh then gets a ProxyCommand
+and VNC (and the certificate probe) a forwarder on 127.0.0.1, both running `tailscale nc` (`tailscale-nc.sh` in the
+support folder); this applies to any profile whose host is a tailnet address (100.64.0.0/10, `*.ts.net`, a machine's
+name).
+
 Without this checkout the app works on its own: it downloads the release image into
 `~/Library/Application Support/myLinux` and keeps machines there, using its own copy of `run.sh`, and
 libvncclient with its libraries travel inside the bundle (`Contents/Frameworks`), so Homebrew is not needed.

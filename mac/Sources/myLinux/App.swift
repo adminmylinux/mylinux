@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
         SavedDownloads.saveInstalled()                   // the Linuxes already here are kept through Clear All Data
         LauncherUpdater.shared.startChecking()           // a newer launcher: the toolbar's Update button
+        Tailscale.refreshInBackground()                  // a userspace Tailscale: tailnet connections go through it
         RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
         Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
         MachineLink.serve()                              // the servers' own apps: their state, their requests
@@ -361,6 +362,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let n = c.window?.windowNumber ?? 0
                 let t = Process(); t.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); t.arguments = ["-x", "-l", String(n), args[i + 1]]
                 try? t.run(); t.waitUntilExit(); exit(0)
+            }
+            return
+        }
+        // `myLinux --show-tailscale <png>` (a scratch MYLINUX_SUPPORT_DIR): the Tailscale window, photographed once it has
+        // looked (<png>), and the launcher's window with its toolbar button (<png>-main.png)
+        if let i = args.firstIndex(of: "--show-tailscale"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { TailscaleWindow.show() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                for w in NSApp.windows where w.isVisible && w.title != "" {
+                    let out = w.title == "Tailscale" ? path : path.replacingOccurrences(of: ".png", with: "-main.png")
+                    if w.title != "Tailscale" && FileManager.default.fileExists(atPath: out) { continue }
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(w.windowNumber), out]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
             }
             return
         }
