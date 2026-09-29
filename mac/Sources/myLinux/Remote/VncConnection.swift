@@ -30,7 +30,8 @@ final class VncConnection {
     private var direct = true
     private var pinUsed: CertPin.Info?
     private var needTrust = false
-    private var lastLog = ""
+    /// libvncclient's last error line on this connection's thread (VncLog)
+    fileprivate var lastLog = ""
 
     init(profile: RemoteProfile) { self.profile = profile }
     deinit { staging?.deallocate() }
@@ -57,6 +58,9 @@ final class VncConnection {
     }
 
     private func run() {
+        VncLog.start()
+        Thread.current.threadDictionary[VncLog.key] = self
+        defer { Thread.current.threadDictionary[VncLog.key] = nil }
         guard let c = rfbGetClient(8, 3, 4) else { state = .failed("rfbGetClient failed"); return }
         rfbClientSetClientData(c, UnsafeMutableRawPointer(bitPattern: 1), Unmanaged.passUnretained(self).toOpaque())
         c.pointee.MallocFrameBuffer = { c in
@@ -128,7 +132,7 @@ final class VncConnection {
         c.pointee.listenSpecified = 1
         if rfbInitClient(c, nil, nil) == 0 {                       // frees the client on failure
             if needTrust || pinUsed != nil { probeCertificate(); return }
-            state = .failed("connection failed (wrong password, or the server refused)"); return
+            state = .failed(why("connection failed", or: "wrong password, or the server refused")); return
         }
         state = .connected
         while !quit {
@@ -153,7 +157,13 @@ final class VncConnection {
         }
         c.pointee.frameBuffer = nil
         rfbClientCleanup(c)
-        state = quit ? .closed : .failed("connection lost")
+        state = quit ? .closed : .failed(why("connection lost"))
+    }
+
+    /// The failure, with libvncclient's last error line when it gave one (the whole log: logs/vnc.log).
+    private func why(_ what: String, or guess: String? = nil) -> String {
+        if !lastLog.isEmpty { return "\(what): \(lastLog)" }
+        return guess.map { "\(what) (\($0))" } ?? what
     }
 
     /// after a failed X509 handshake: an unknown or changed certificate becomes a trust question
@@ -163,9 +173,58 @@ final class VncConnection {
             switch r {
             case .success(let info):
                 if wanted || info.fingerprint != pinned?.fingerprint { state = .untrusted(info, changed: !wanted) }
-                else { state = .failed("connection failed (wrong password, or the server refused)") }
+                else { state = .failed(why("connection failed", or: "wrong password, or the server refused")) }
             case .failure(let e): state = .failed("cannot read the server certificate: \(e.localizedDescription)")
             }
         }
     }
+}
+
+/// libvncclient's messages (CVncClient/shim.h), into logs/vnc.log; an error line is also kept by the connection whose
+/// thread reported it, for its failure message.
+enum VncLog {
+    static let key = "dev.mylinux.vnc"
+    /// logs/ of the support folder (a test points it at a folder of its own)
+    static var directory = Paths.logs
+    static var file: URL { directory.appendingPathComponent("vnc.log") }
+    private static let lock = NSLock()
+    private static var started = false
+
+    static func start() {
+        lock.lock(); defer { lock.unlock() }
+        guard !started else { return }
+        started = true
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // one run's worth: an old log over 1 MB starts again
+        if let size = try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int, size > 1 << 20 { try? FileManager.default.removeItem(at: file) }
+        mylinux_vnc_capture_log()
+    }
+
+    static func line(_ text: String, error: Bool) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let conn = Thread.current.threadDictionary[key] as? VncConnection
+        if error || isFailure(text) { conn?.lastLog = text }
+        write("\(Date().formatted(.iso8601)) [\(conn?.profile.title ?? "vnc")] \(error ? "error: " : "")\(text)\n")
+    }
+
+    /// libvncclient reports many failures through its ordinary log ("VNC connection failed: ...", "VNC server closed connection")
+    static func isFailure(_ text: String) -> Bool {
+        let t = text.lowercased()
+        return ["fail", "error", "unable", "closed", "refus", "too many", "unknown", "unsupported", "not supported"].contains { t.contains($0) }
+    }
+
+    private static func write(_ s: String) {
+        lock.lock(); defer { lock.unlock() }
+        guard let data = s.data(using: .utf8) else { return }
+        if let h = try? FileHandle(forWritingTo: file) { h.seekToEndOfFile(); h.write(data); try? h.close() }
+        else { try? data.write(to: file) }
+    }
+}
+
+/// CVncClient/shim.h calls this with each formatted libvncclient message.
+@_cdecl("mylinux_vnc_log_line")
+func mylinuxVncLogLine(_ line: UnsafePointer<CChar>?, _ error: Int32) {
+    guard let line else { return }
+    VncLog.line(String(cString: line), error: error != 0)
 }

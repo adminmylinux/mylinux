@@ -824,3 +824,37 @@ final class CertProbeTests: XCTestCase {
         XCTAssertTrue(info.pem.hasPrefix("-----BEGIN CERTIFICATE-----"))
     }
 }
+
+final class VncLogTests: XCTestCase {
+    /// A server that refuses with a reason: the failure says it, and logs/vnc.log has it.
+    func testRefusalReasonReachesTheMessage() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vnclog-\(UUID().uuidString)")
+        VncLog.directory = dir
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let listener = socket(AF_INET, SOCK_STREAM, 0)
+        var addr = sockaddr_in(); addr.sin_family = sa_family_t(AF_INET); addr.sin_addr.s_addr = inet_addr("127.0.0.1"); addr.sin_port = 0
+        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        withUnsafeMutablePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { _ = Darwin.bind(listener, $0, len); _ = getsockname(listener, $0, &len) } }
+        listen(listener, 1)
+        let port = Int(UInt16(bigEndian: addr.sin_port))
+        let reason = "Too many authentication failures"
+        Thread.detachNewThread {
+            let c = accept(listener, nil, nil)
+            _ = "RFB 003.008\n".withCString { Darwin.write(c, $0, 12) }
+            var buf = [UInt8](repeating: 0, count: 12); _ = read(c, &buf, 12)
+            var reply: [UInt8] = [0] + withUnsafeBytes(of: UInt32(reason.utf8.count).bigEndian, Array.init) + Array(reason.utf8)
+            _ = Darwin.write(c, &reply, reply.count)
+            close(c); close(listener)
+        }
+        var p = RemoteProfile(kind: .vnc); p.host = "127.0.0.1"; p.port = port; p.name = "refusing test server"
+        let conn = VncConnection(profile: p)
+        let failed = expectation(description: "failed")
+        var message = ""
+        conn.onState = { if case .failed(let m) = $0 { message = m; failed.fulfill() } }
+        conn.start()
+        wait(for: [failed], timeout: 15)
+        XCTAssertTrue(message.contains(reason), message)
+        let log = try String(contentsOf: VncLog.file, encoding: .utf8)
+        XCTAssertTrue(log.contains("[refusing test server]") && log.contains(reason), log)
+    }
+}
