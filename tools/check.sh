@@ -16,7 +16,7 @@ if [ -s "$FAILED" ]; then : > "$FAILED"; fail=$((fail + 1)); else echo ok; fi
 
 step "python: ast"
 python3 - <<'PY' || fail=$((fail + 1))
-import ast, glob, sys
+import ast, glob, os, sys
 bad = 0
 for f in glob.glob("tools/**/*.py", recursive=True) + glob.glob("server-apps/*.py") + ["omarchy/session/omarchy-session"]:
     try: ast.parse(open(f).read(), f)
@@ -25,6 +25,14 @@ for f in glob.glob("tools/**/*.py", recursive=True) + glob.glob("server-apps/*.p
 import json
 ids = set()
 for a in json.load(open("server-apps/catalog.json"))["apps"]:
+    if a.get("builtin"):
+        # a script that comes with the app (the speed test): beside it, and copied by the launcher
+        miss = [k for k in ("id", "name", "category", "description") if not a.get(k)]
+        if not os.path.exists("server-apps/" + a["builtin"]): miss.append("its script in server-apps")
+        if a["builtin"] not in open("mac/Sources/myLinux/Agents/ServerApps.swift").read(): miss.append("its script in ServerApps.files")
+        if a["builtin"] not in open("mac/build-app.sh").read(): miss.append("its script in build-app.sh")
+        if miss: print("CATALOG:", a.get("id"), "has no", ", ".join(miss)); bad += 1
+        ids.add(a.get("id")); continue
     miss = [k for k in ("id", "name", "category", "description", "bin", "run") if not a.get(k)]
     if a.get("id") in ids: miss.append("unique id")
     ids.add(a.get("id"))

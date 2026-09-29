@@ -5,7 +5,7 @@ import Foundation
 /// branch into the machine's Mac share, and types run.sh's line into the terminal; run.sh installs the distribution's
 /// Textual the first time. A change to the catalog or the app on main reaches every machine the next time Apps… opens.
 enum ServerApps {
-    static let files = ["run.sh", "mylinux_apps.py", "catalog.json"]
+    static let files = ["run.sh", "mylinux_apps.py", "catalog.json", "speedtest.py"]
     /// Where they go in the Mac share; the share is /mnt/mac inside (run-server.sh).
     static let shareFolder = ".mylinux/apps"
     /// Typed into the terminal; the leading space keeps it out of the history. Leaving the app starts a fresh login
@@ -23,6 +23,8 @@ enum ServerApps {
 
     static func cloudState(_ machine: Profile) -> [String: Any] {
         ["machine": machine.name,
+         // the share folder on the Mac: the speed test tells how to run it there too
+         "share": machine.shareDir,
          "selected": machine.cloudFolders,
          "folders": CloudFolder.allCases.map { f in
              ["id": f.rawValue, "title": f.title, "guest": f.guestName, "onMac": f.macPath() != nil] as [String: Any]
@@ -75,6 +77,7 @@ enum ServerApps {
         switch file {
         case "run.sh": return text.hasPrefix("#!") && text.contains("mylinux_apps.py")
         case "mylinux_apps.py": return text.contains("class MyLinuxApps")
+        case "speedtest.py": return text.contains("def run_test")
         case "catalog.json":
             guard let data = text.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
             return obj["apps"] is [Any]
@@ -94,7 +97,7 @@ enum ServerApps {
         return nil
     }
 
-    /// All three from GitHub, or nil (one version of the app, never a mix).
+    /// All of them from GitHub, or nil (one version of the app, never a mix).
     static func fromGitHub() async -> [String: String]? {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 8

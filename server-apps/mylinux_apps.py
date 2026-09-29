@@ -103,6 +103,7 @@ class AppEntry:
     keyboard: str | None = None       # a keyboard layout (its xkb name), in Omarchy
     chosen: bool = False              # a cloud drive the machine has (attached at its start)
     attached: bool = False            # its share is there (mounting it is all that is left)
+    builtin: str = ""                 # a script that comes with the app (the speed test): its path, run with python3
 
     @property
     def special(self) -> bool:
@@ -113,6 +114,8 @@ class AppEntry:
     def installable(self) -> bool:
         if self.alias is not None or self.keyboard is not None:
             return True
+        if self.builtin:
+            return False
         if self.cloud is not None:
             return bool(self.cloud.get("onMac")) or self.chosen
         return bool(self.packages or self.steps)
@@ -131,6 +134,12 @@ def load_catalog(path: Path, distro: str) -> list[AppEntry]:
     pkg_key = PACKAGE_KEYS[distro]
     apps = []
     for a in data["apps"]:
+        if a.get("builtin"):
+            script = path.parent / a["builtin"]
+            apps.append(AppEntry(id=a["id"], name=a["name"], category=a.get("category", "Other"), description=a.get("description", ""),
+                                 bins=[], run=f"python3 {shlex.quote(str(script))}", packages=[], steps=[], icon=a.get("icon", ""),
+                                 builtin=str(script)))
+            continue
         packages = list(a.get(pkg_key, []))
         steps = list(a.get("script", [])) + list(a.get(distro, []))
         # the distribution's own lines come after the shared ones, except its packages, which come first
@@ -368,6 +377,10 @@ def refresh(apps: list[AppEntry]) -> None:
         if a.alias is not None or a.keyboard is not None:
             a.found = a.name if a.enabled else None
             continue
+        if a.builtin:
+            # a launcher from before it copies only run.sh, the app and the catalog
+            a.found = a.builtin if os.path.exists(a.builtin) else None
+            continue
         if a.cloud is not None:
             mp = f"/mnt/{a.cloud['id']}"
             a.attached = a.cloud["id"] in tags
@@ -375,6 +388,42 @@ def refresh(apps: list[AppEntry]) -> None:
             a.description = describe_cloud(a)
         else:
             a.found = next((b for b in a.bins if shutil.which(b, path=path)), None)
+
+
+def mac_script(script: Path) -> str:
+    """The script as the Mac sees it, from the share folder the launcher names in cloud.json."""
+    try:
+        share = json.loads((script.parent.parent / "cloud.json").read_text()).get("share", "")
+    except (OSError, ValueError):
+        share = ""
+    return shlex.quote(f"{share}/.mylinux/apps/{script.name}") if share else f"…/.mylinux/apps/{script.name}"
+
+
+def speedtest_summary(script: Path) -> list[str]:
+    """The details of the speed test: what it does, and the latest result of each machine (speedtest.json)."""
+    lines = [f"[{MUTED}]Clones a JavaScript project (Excalidraw), installs its 60,000 small files with Bun, reads, deletes"
+             f" and installs them again, and builds it, on this machine's own disk. The same test runs on the Mac"
+             f" (its Terminal: python3 {escape(mac_script(script))}), and the results sit side by side.[/]", ""]
+    try:
+        runs = json.loads((script.parent.parent / "speedtest.json").read_text())
+    except (OSError, ValueError):
+        runs = []
+    latest: dict[str, dict] = {}
+    for r in runs if isinstance(runs, list) else []:
+        latest[r.get("machine", "?")] = r
+    if not latest:
+        return lines + [f"[{MUTED}]No results yet.[/]"]
+    mac = latest.get("Mac", {}).get("times", {})
+    def secs(v) -> str:
+        return "–" if v is None else f"{v:.2f} s" if v < 10 else f"{v:.1f} s"
+    for name in sorted(latest, key=lambda n: n != "Mac"):
+        t = latest[name].get("times", {})
+        lines.append(f"[b]{escape(name)}[/b]")
+        for step in ("delete", "reinstall", "build"):
+            v, m = t.get(step), mac.get(step)
+            vs = f"  [{GOOD}]{m / v:.0f}× faster[/]" if name != "Mac" and v and m and m / v >= 1.5 else ""
+            lines.append(f"  [{MUTED}]{step:<10}[/]{secs(v):>8}{vs}")
+    return lines
 
 
 class Confirm(ModalScreen[bool]):
@@ -524,7 +573,7 @@ class MyLinuxApps(App):
         if category == "All":
             return True
         if category == "Installed":
-            return a.installed and not a.special
+            return a.installed and not a.special and not a.builtin
         return a.category == category
 
     def fill_sidebar(self) -> None:
@@ -584,6 +633,8 @@ class MyLinuxApps(App):
             if a.chosen:
                 return "pending", WAIT, "Attached at the next start"
             return ("available", "", "On your Mac") if a.installable else ("unavailable", MUTED, "Not on this Mac")
+        if a.builtin:
+            return ("installed", GOOD, "Ready") if a.installed else ("unavailable", MUTED, "Comes with a newer myLinux Launcher")
         if a.installed:
             return "installed", GOOD, "Installed"
         if a.installable:
@@ -623,7 +674,7 @@ class MyLinuxApps(App):
 
     def show_detail(self) -> None:
         a = self.current()
-        programs = [x for x in self.apps if not x.special]
+        programs = [x for x in self.apps if not x.special and not x.builtin]
         head = f"{sum(1 for x in programs if x.installed)} of {len(programs)} installed"
         run, install, remove = (self.query_one(f"#{i}", Button) for i in ("run", "install", "remove"))
         for b in (run, install, remove):
@@ -681,6 +732,12 @@ class MyLinuxApps(App):
                 install.label = f"{glyph('add')}  Add"; install.display = True; install.add_class("primary")
             hint = ("Enter mounts it" if a.chosen and a.attached and not a.installed else "Enter takes it away" if a.chosen
                     else "Enter adds it" if a.installable else "sign in to it on the Mac first")
+        elif a.builtin:
+            lines += speedtest_summary(Path(a.builtin)) if a.installed else [
+                f"[{MUTED}]The launcher copies it with the app from version 0.7.25: update it (Settings › Updates), then open Apps again.[/]"]
+            if a.installed:
+                run.label = f"{glyph('run')}  Run"; run.display = True; run.add_class("primary")
+            hint = f"Enter runs the {a.name.lower()} (a few minutes)" if a.installed else words
         else:
             if a.installed:
                 lines += [f"[{MUTED}]{'Opens' if a.gui else 'Runs'}[/]", f"  {escape(a.command())}" + (" (in its own window)" if a.gui else ""), ""]
@@ -938,7 +995,8 @@ class MyLinuxApps(App):
             except OSError as e:
                 self.notify(f"Could not open {a.name}: {e}", severity="error")
             return
-        self.hand_over(a.command(), None, wait=False, env=a.env)
+        # the speed test ends with its table: kept on screen until Return
+        self.hand_over(a.command(), None, wait=bool(a.builtin), env=a.env)
 
     def hand_over(self, script: str, banner: str | None, wait: bool, env: dict[str, str] | None = None) -> int:
         """Gives the terminal to a shell running `script`, and takes it back after (App.suspend)."""

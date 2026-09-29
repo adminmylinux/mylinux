@@ -96,6 +96,8 @@
     {"id": "psql", "icon": "f1c0", "pacman": ["postgresql"], "name": "psql", "category": "Code", "description": "PostgreSQL's client",
      "bin": ["psql"], "run": "psql --version", "apk": ["postgresql-client"], "apt": ["postgresql-client"]},
 
+    {"id": "speedtest", "icon": "f0e4", "name": "Speed test", "category": "Tools", "builtin": "speedtest.py",
+     "description": "How fast this machine's disk is with 60,000 small files (bun install, rm -rf, a build), next to the Mac"},
     {"id": "ripgrep", "icon": "f002", "pacman": ["ripgrep"], "name": "ripgrep", "category": "Tools", "description": "Search file contents, fast (rg)",
      "bin": ["rg"], "run": "rg --version", "apk": ["ripgrep"], "apt": ["ripgrep"]},
     {"id": "fd", "icon": "f002", "pacman": ["fd"], "name": "fd", "category": "Tools", "description": "Find files, fast (fdfind on Debian)",

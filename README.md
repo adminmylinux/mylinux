@@ -122,7 +122,7 @@ run on the machine, installed ones first, with a search; Enter runs a program (t
 comes back when it ends) or installs it after showing the commands, Ctrl-R removes one that is only packages.
 `catalog.json` says per app which program shows it is installed, how it starts, and how it installs: Alpine's and
 Debian's packages, then lines of shell (Claude Code's and Codex's own installers, npm, Tailscale's service); an app a
-distribution does not package is listed dimmed there. The launcher copies the three files from `main` (or the copy
+distribution does not package is listed dimmed there. The launcher copies the files from `main` (or the copy
 inside the app) into the Mac share's `.mylinux/apps` and types `sh /mnt/mac/.mylinux/apps/run.sh`; the first run
 installs the distribution's Textual (`py3-textual`, `python3-textual`) and adds `mylinux-apps` to `~/.local/bin`, so
 a catalog change on `main` reaches every machine the next time Apps… opens. The **Cloud drives** rows on top come from `.mylinux/cloud.json`, which
@@ -132,7 +132,7 @@ confirmation: the app writes `.mylinux/cloud-request.json` and quits, and the la
 `~/.profile` and `~/.bashrc` also has the aliases `cc` and `cx`. The screen is a category sidebar (← → change it while typing
 in the search), the list, and a details panel with what Enter runs or installs and Run / Install / Update / Remove
 buttons, in Nerd Font symbols, which Ghostty has built in (`MYLINUX_APPS_PLAIN=1` for plain ones elsewhere);
-`mylinux-apps claude` opens with that search. **Aliases** come first: `cc` (Claude Code, updated, without permission
+`mylinux-apps claude` opens with that search. **Speed test** (Tools; `server-apps/speedtest.py`, from launcher 0.7.25) clones one pinned commit of Excalidraw, installs its ~60,000 small files with Bun, reads them, deletes them (`rm -rf node_modules`), installs them again from Bun's cache and builds it with vite, on the machine's own disk; the Mac runs the same script (`python3 <share>/.mylinux/apps/speedtest.py`, the Mac's own Python 3.9 is enough), and every run goes into `.mylinux/speedtest.json` in the share, so the table at the end (and the details panel) shows the latest run of each machine next to the Mac's. **Aliases** come first: `cc` (Claude Code, updated, without permission
 prompts), `cx` (Codex) and `gm` (Gemini CLI, yolo), from the catalog's `aliases`; Enter runs one, and turning one on
 or off rewrites `~/.config/mylinux/aliases.sh`, which run.sh's block sources (cc and cx are on from the start). In Omarchy a **Keyboard** group adds layouts after English (US)
 (which Omarchy's shortcuts need first): Norwegian, Swedish, Danish, Finnish, Icelandic, German, UK English and more;
