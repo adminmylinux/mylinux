@@ -203,6 +203,15 @@ until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window
 window where macOS puts it), `MYLINUX_OUT=dir` (kernel, rootfs, apps disk and the QEMU wrapper elsewhere
 than `out/`).
 
+### Claude Code on a new machine
+
+[`claude-bootstrap/`](claude-bootstrap/) logs a new Debian, Alpine or Omarchy machine (or any Linux box) into Claude
+Code without the browser: run `claude setup-token` once where you are logged in, then on the new machine
+`curl -fsSL https://mylinux.app/claude | sh` and paste the token. It is plain `sh` (a fresh Alpine has no bash),
+adds Alpine's musl packages, installs Claude Code with the official installer, keeps the token in
+`~/.config/claude/oauth-token.sh` (mode 600) loaded from `~/.profile`, `~/.bashrc` and `~/.zshrc`, skips the
+first-run screens and starts `claude`.
+
 ## The Mac app
 
 Instead of the command line, `mac/build-app.sh` builds **myLinux Launcher.app**: saved machines with a
