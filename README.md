@@ -293,7 +293,7 @@ machines.json…* reads the guest viewer's saved machines (copy `~/.config/mylin
 passwords, `~/.config/mylinux/secrets.env` to the share first).
 
 **mylinux.app** (the launcher's icon beside the version, from 0.7.28): the site's account (sign in, your machines, API
-tokens) in a window about the size of a large phone, with back, home, reload and "open in the browser". WebKit keeps
+tokens) in a window a little wider than a large phone (540 points), with back, home, reload and "open in the browser". WebKit keeps
 its cookies in a store of its own, so the sign-in lasts; a sign-in popup (Google's) opens as a real window, other
 new-window links go to the browser.
 

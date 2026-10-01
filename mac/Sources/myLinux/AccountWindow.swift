@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-/// mylinux.app in a window of its own, about the size of a large phone: the account (sign in, the machines, API
+/// mylinux.app in a window of its own, a little wider than a large phone: the account (sign in, the machines, API
 /// tokens) beside the launcher. Its cookies are kept in a WebKit store of its own, so the sign-in lasts. Sign-in
 /// flows that open a popup (Google's) get a real popup window; other links that open a new window go to the browser.
 final class AccountWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
@@ -34,7 +34,7 @@ final class AccountWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindo
         config.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         web = WKWebView(frame: .zero, configuration: config)
         web.allowsBackForwardNavigationGestures = true
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 880), styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 880), styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         super.init()
         window.title = "mylinux.app"
@@ -42,7 +42,7 @@ final class AccountWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindo
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
-        window.setFrameAutosaveName("mylinux.app account")
+        window.setFrameAutosaveName("mylinux.app account 540")      // a new name: the old size (430) does not come back
         web.navigationDelegate = self; web.uiDelegate = self
 
         func button(_ b: NSButton, _ symbol: String, _ tip: String, _ action: Selector) -> NSButton {
