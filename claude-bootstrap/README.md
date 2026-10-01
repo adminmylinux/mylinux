@@ -33,6 +33,16 @@ Paste the token when asked. The script:
 
 It is plain `sh`, so it also runs on a fresh Alpine, which has no bash until the script adds it.
 
+With your key saved at mylinux.app instead (the account's **API** tab: save the token under *Saved keys*, make an
+*API key*), nothing needs pasting but that API key, once per machine:
+
+```bash
+curl -fsSL https://mylinux.app/install/claude | sh
+```
+
+It fetches the saved Claude Code token (or, when there is none, a saved Anthropic API key, which this script then
+approves ahead in `~/.claude.json` so Claude Code does not ask about it) and runs this script with it.
+
 Without questions, for automation:
 
 ```bash

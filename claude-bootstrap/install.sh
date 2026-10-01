@@ -5,7 +5,9 @@
 #   (the same file: https://raw.githubusercontent.com/adminmylinux/mylinux/main/claude-bootstrap/install.sh)
 #
 # The token comes from `claude setup-token` on a machine that is already logged in. It is asked for (not
-# echoed), or taken from $CLAUDE_CODE_OAUTH_TOKEN when that is set. Nothing secret lives in this script.
+# echoed), or taken from $CLAUDE_CODE_OAUTH_TOKEN when that is set; an Anthropic API key in $ANTHROPIC_API_KEY
+# (and no token) is used instead, approved ahead so Claude Code does not ask about it
+# (https://mylinux.app/install/claude hands over the one you saved there). Nothing secret lives in this script.
 # Plain sh, so it runs on a fresh Alpine (BusyBox ash, no bash) as well as Debian, Arch/Omarchy and macOS.
 #
 # Options (environment):
@@ -52,13 +54,19 @@ fi
 have curl || die "curl is required"
 have bash || die "bash is required by Claude Code's installer"
 
-# --- 1. token -----------------------------------------------------------------------------------------------
+# --- 1. token (or an API key) -------------------------------------------------------------------------------
 token="${CLAUDE_CODE_OAUTH_TOKEN:-}"
-if [ -z "$token" ] && [ -f "$TOKEN_FILE" ]; then
+apikey=""
+[ -z "$token" ] && apikey="$(printf '%s' "${ANTHROPIC_API_KEY:-}" | tr -d '[:space:]')"
+if [ -n "$apikey" ]; then
+  case "$apikey" in *[!A-Za-z0-9_-]*) die "that does not look like an API key (letters, digits, - and _ only)" ;; esac
+  case "$apikey" in sk-ant-api*) ;; *) warn "the API key does not start with sk-ant-api; continuing anyway" ;; esac
+fi
+if [ -z "$token" ] && [ -z "$apikey" ] && [ -f "$TOKEN_FILE" ]; then
   token="$(. "$TOKEN_FILE"; printf '%s' "${CLAUDE_CODE_OAUTH_TOKEN:-}")"
   [ -n "$token" ] && say "Using the token already saved in $TOKEN_FILE"
 fi
-if [ -z "$token" ]; then
+if [ -z "$token" ] && [ -z "$apikey" ]; then
   [ -n "$TTY" ] || die "no terminal to ask for the token; set CLAUDE_CODE_OAUTH_TOKEN and run again"
   printf 'Paste your Claude Code token (from `claude setup-token`, input hidden): ' >"$TTY"
   stty -echo <"$TTY" 2>/dev/null || true
@@ -66,21 +74,26 @@ if [ -z "$token" ]; then
   stty echo <"$TTY" 2>/dev/null || true
   printf '\n' >"$TTY"
 fi
-token="$(printf '%s' "$token" | tr -d '[:space:]')"
-[ -n "$token" ] || die "no token given"
-case "$token" in
-  *[!A-Za-z0-9_-]*) die "that does not look like a token (letters, digits, - and _ only)" ;;
-esac
-case "$token" in
-  sk-ant-oat*) ;;
-  *) warn "the token does not start with sk-ant-oat; continuing anyway" ;;
-esac
+if [ -z "$apikey" ]; then
+  token="$(printf '%s' "$token" | tr -d '[:space:]')"
+  [ -n "$token" ] || die "no token given"
+  case "$token" in
+    *[!A-Za-z0-9_-]*) die "that does not look like a token (letters, digits, - and _ only)" ;;
+  esac
+  case "$token" in
+    sk-ant-oat*) ;;
+    *) warn "the token does not start with sk-ant-oat; continuing anyway" ;;
+  esac
+fi
 
 mkdir -p "$(dirname "$TOKEN_FILE")"
+# the file holds one of the two: with both, the API key would win over the subscription
 ( umask 077
-  { printf "export CLAUDE_CODE_OAUTH_TOKEN='%s'\n" "$token"; if [ -n "$EXTRA_ENV" ]; then printf '%s\n' "$EXTRA_ENV"; fi; } >"$TOKEN_FILE" )
+  { if [ -n "$apikey" ]; then printf "unset CLAUDE_CODE_OAUTH_TOKEN\nexport ANTHROPIC_API_KEY='%s'\n" "$apikey"
+    else printf "export CLAUDE_CODE_OAUTH_TOKEN='%s'\n" "$token"; fi
+    if [ -n "$EXTRA_ENV" ]; then printf '%s\n' "$EXTRA_ENV"; fi; } >"$TOKEN_FILE" )
 chmod 600 "$TOKEN_FILE"
-say "Token saved in $TOKEN_FILE (mode 600)"
+if [ -n "$apikey" ]; then say "API key saved in $TOKEN_FILE (mode 600)"; else say "Token saved in $TOKEN_FILE (mode 600)"; fi
 
 # Every new shell loads the token and finds ~/.local/bin: ~/.profile for login shells (Alpine's ash reads only
 # that), ~/.bashrc for bash, ~/.zshrc when zsh is there.
@@ -113,27 +126,44 @@ else
   have claude || die "claude is not on PATH after the install"
 fi
 
-# --- 3. skip the first-run screens (the login comes from the token) -----------------------------------------
+# --- 3. skip the first-run screens (the login comes from the token), and approve an API key ahead -------------
+# Claude Code keeps its approved API keys by their last 20 characters in ~/.claude.json
 cfg="$HOME/.claude.json"
-if [ ! -s "$cfg" ]; then
-  printf '{"hasCompletedOnboarding": true}\n' >"$cfg"
-elif ! grep -q '"hasCompletedOnboarding": *true' "$cfg"; then
-  tmp="$(mktemp)"
-  if have jq; then
-    jq '.hasCompletedOnboarding = true' "$cfg" >"$tmp" && mv "$tmp" "$cfg"
-  elif have python3; then
-    python3 - "$cfg" <<'PY'
+approve="$(printf '%s' "$apikey" | tail -c 20)"
+[ -s "$cfg" ] || printf '{}\n' >"$cfg"
+tmp="$(mktemp)"
+if have jq; then
+  jq --arg k "$approve" '.hasCompletedOnboarding = true
+    | if $k == "" then . else .customApiKeyResponses.approved = ((.customApiKeyResponses.approved // []) - [$k] + [$k])
+      | .customApiKeyResponses.rejected = ((.customApiKeyResponses.rejected // []) - [$k]) end' "$cfg" >"$tmp" && mv "$tmp" "$cfg"
+elif have python3; then
+  python3 - "$cfg" "$approve" <<'PY'
 import json, sys
-p = sys.argv[1]
+p, k = sys.argv[1], sys.argv[2]
 d = json.load(open(p))
 d["hasCompletedOnboarding"] = True
+if k:
+    r = d.setdefault("customApiKeyResponses", {})
+    r["approved"] = [x for x in r.get("approved", []) if x != k] + [k]
+    r["rejected"] = [x for x in r.get("rejected", []) if x != k]
 json.dump(d, open(p, "w"), indent=2)
 PY
-    rm -f "$tmp"
-  else
-    # no jq or python3 (a minimal box): the key goes right after the first "{"
-    awk '!done && sub(/\{/, "{\"hasCompletedOnboarding\": true,") { done = 1 } { print }' "$cfg" >"$tmp" && mv "$tmp" "$cfg"
+  rm -f "$tmp"
+else
+  # no jq or python3 (a minimal box): the keys go right after the first "{" when they are not there yet
+  add=""
+  grep -q '"hasCompletedOnboarding": *true' "$cfg" || add='"hasCompletedOnboarding": true,'
+  if [ -n "$approve" ] && ! grep -q '"customApiKeyResponses"' "$cfg"; then
+    add="$add \"customApiKeyResponses\": {\"approved\": [\"$approve\"], \"rejected\": []},"
+  elif [ -n "$approve" ] && ! grep -qF "\"$approve\"" "$cfg"; then
+    warn "add the API key to customApiKeyResponses in $cfg by hand, or approve it when claude asks"
   fi
+  if [ -n "$add" ]; then
+    # an empty object takes them without the trailing comma
+    if [ "$(tr -d ' \n' <"$cfg")" = "{}" ]; then printf '{%s}\n' "${add%,}" >"$cfg"
+    else awk -v a="$add" '!done && sub(/\{/, "{" a) { done = 1 } { print }' "$cfg" >"$tmp" && mv "$tmp" "$cfg"; fi
+  fi
+  rm -f "$tmp"
 fi
 
 # --- 4. start -----------------------------------------------------------------------------------------------
