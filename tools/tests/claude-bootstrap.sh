@@ -74,6 +74,17 @@ hasnt "the key is gone from the file" "$f" "ANTHROPIC_API_KEY"
 out=$(run "$H" "$PYBIN")
 has "a run with neither reuses the saved token" "$out" "Using the token already saved"
 
+echo "claude-bootstrap: the subscription's name"
+H="$T/home-account"; mkdir -p "$H"
+out=$(run "$H" "$PYBIN" CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-acc0123456789 MYLINUX_CLAUDE_ACCOUNT="viktor_gmail;rm x")
+has "it is saved beside the token, cleaned" "$(cat "$H/.config/claude/oauth-token.sh")" "export MYLINUX_CLAUDE_ACCOUNT='viktor_gmailrmx'"
+out=$(run "$H" "$PYBIN" CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-acc0123456789)
+has "a run without one keeps it" "$(cat "$H/.config/claude/oauth-token.sh")" "export MYLINUX_CLAUDE_ACCOUNT='viktor_gmailrmx'"
+out=$(run "$H" "$PYBIN" CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-acc0123456789 MYLINUX_CLAUDE_ACCOUNT=work)
+has "a new one replaces it" "$(cat "$H/.config/claude/oauth-token.sh")" "export MYLINUX_CLAUDE_ACCOUNT='work'"
+v=$(env -i HOME="$H" sh -c '. "$HOME/.profile"; printf %s "$MYLINUX_CLAUDE_ACCOUNT"')
+[ "$v" = work ] && ok "a new login shell has it" || ko "a new login shell has it ($v)"
+
 echo "claude-bootstrap: refused input"
 H="$T/home-bad"; mkdir -p "$H"
 out=$(run "$H" "$PYBIN" ANTHROPIC_API_KEY="sk-ant-api03-bad;rm -rf x"); rc=$?

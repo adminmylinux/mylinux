@@ -86,11 +86,19 @@ if [ -z "$apikey" ]; then
   esac
 fi
 
+# the subscription's name (MYLINUX_CLAUDE_ACCOUNT, e.g. viktor_gmail: mylinux.app/install/claude passes the name the
+# key was saved under), for a status line; a run without one keeps the one saved before
+account="$(printf '%s' "${MYLINUX_CLAUDE_ACCOUNT:-}" | tr -cd 'A-Za-z0-9._@-')"
+if [ -z "$account" ] && [ -f "$TOKEN_FILE" ]; then
+  account="$(. "$TOKEN_FILE" 2>/dev/null; printf '%s' "${MYLINUX_CLAUDE_ACCOUNT:-}" | tr -cd 'A-Za-z0-9._@-')"
+fi
+
 mkdir -p "$(dirname "$TOKEN_FILE")"
 # the file holds one of the two: with both, the API key would win over the subscription
 ( umask 077
   { if [ -n "$apikey" ]; then printf "unset CLAUDE_CODE_OAUTH_TOKEN\nexport ANTHROPIC_API_KEY='%s'\n" "$apikey"
     else printf "export CLAUDE_CODE_OAUTH_TOKEN='%s'\n" "$token"; fi
+    if [ -n "$account" ]; then printf "export MYLINUX_CLAUDE_ACCOUNT='%s'\n" "$account"; fi
     if [ -n "$EXTRA_ENV" ]; then printf '%s\n' "$EXTRA_ENV"; fi; } >"$TOKEN_FILE" )
 chmod 600 "$TOKEN_FILE"
 if [ -n "$apikey" ]; then say "API key saved in $TOKEN_FILE (mode 600)"; else say "Token saved in $TOKEN_FILE (mode 600)"; fi
