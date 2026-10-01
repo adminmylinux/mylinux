@@ -242,6 +242,13 @@ struct VersionAndSettings: View {
 
     var body: some View {
         update
+        // mylinux.app: the account (machines, API tokens) in a phone-sized window of its own
+        Button { AccountWindow.show() } label: {
+            Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 20, height: 20)
+        }
+        .buttonStyle(.borderless)
+        .help("mylinux.app: your account, in a window of its own")
+        .accessibilityLabel("mylinux.app")
         Text(AppInfo.shortVersion).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
             .padding(.leading, 8)
             .help(AppInfo.versionText).accessibilityLabel(AppInfo.versionText)

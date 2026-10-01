@@ -365,6 +365,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --show-account <png>` (a scratch MYLINUX_SUPPORT_DIR): the mylinux.app window once its page has loaded
+        // (<png>), and the launcher's window with the toolbar button (<png>-main.png)
+        if let i = args.firstIndex(of: "--show-account"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { AccountWindow.show() }
+            let wait = Double(ProcessInfo.processInfo.environment["MYLINUX_TEST_WAIT"] ?? "12") ?? 12
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait - 5) {
+                AccountWindow.testPage { print("account page: \($0)"); fflush(stdout) }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                for w in NSApp.windows where w.isVisible && w.title != "" {
+                    let account = w.frame.width < 600
+                    let out = account ? path : path.replacingOccurrences(of: ".png", with: "-main.png")
+                    if !account && FileManager.default.fileExists(atPath: out) { continue }
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(w.windowNumber), out]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --show-tailscale <png>` (a scratch MYLINUX_SUPPORT_DIR): the Tailscale window, photographed once it has
         // looked (<png>), and the launcher's window with its toolbar button (<png>-main.png)
         if let i = args.firstIndex(of: "--show-tailscale"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {

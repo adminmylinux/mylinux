@@ -292,6 +292,11 @@ back at the next launch (close them yourself and they do not); ⌘K is a quick-c
 machines.json…* reads the guest viewer's saved machines (copy `~/.config/mylinux/vnc/machines.json` and, for the
 passwords, `~/.config/mylinux/secrets.env` to the share first).
 
+**mylinux.app** (the launcher's icon beside the version, from 0.7.28): the site's account (sign in, your machines, API
+tokens) in a window about the size of a large phone, with back, home, reload and "open in the browser". WebKit keeps
+its cookies in a store of its own, so the sign-in lasts; a sign-in popup (Google's) opens as a real window, other
+new-window links go to the browser.
+
 **Tailscale** (the ⠿ button beside + above the sidebar, from 0.7.26): the machines of the Mac's tailnet with their name,
 IP, type and when they were last seen, each with a VNC and an SSH button, so a tailnet machine needs no profile. It
 reads the Mac's own Tailscale client (`tailscale status --json`: the Tailscale app, or Homebrew's CLI with the socket
