@@ -153,6 +153,17 @@ final class AccountWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindo
         w.makeKeyAndOrderFront(nil)
         return popup
     }
+    /// <input type="file">: the Mac's open panel (the Claude tab's Open file…, for a settings.json from Dropbox, say).
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.canChooseFiles = true
+        panel.showsHiddenFiles = true            // ~/.claude and the like
+        panel.beginSheetModal(for: webView.window ?? window) { r in completionHandler(r == .OK ? panel.urls : nil) }
+    }
+
     func webViewDidClose(_ webView: WKWebView) {
         if let w = popups.first(where: { $0.contentView === webView }) { w.close(); popups.removeAll { $0 === w } }
     }
