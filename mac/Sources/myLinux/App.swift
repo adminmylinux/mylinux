@@ -365,6 +365,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --shot <png>` (a scratch MYLINUX_SUPPORT_DIR): the launcher's window after MYLINUX_TEST_WAIT seconds
+        // (default 8), sheets included
+        if let i = args.firstIndex(of: "--shot"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1]
+            let wait = Double(ProcessInfo.processInfo.environment["MYLINUX_TEST_WAIT"] ?? "8") ?? 8
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                if let w = NSApp.windows.first(where: { $0.isVisible && $0.title != "" && $0.sheetParent == nil }) {
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(w.windowNumber), path]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --show-account <png>` (a scratch MYLINUX_SUPPORT_DIR): the mylinux.app window once its page has loaded
         // (<png>), and the launcher's window with the toolbar button (<png>-main.png)
         if let i = args.firstIndex(of: "--show-account"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {

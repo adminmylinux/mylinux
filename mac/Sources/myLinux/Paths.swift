@@ -68,7 +68,10 @@ final class AppSettings: ObservableObject {
 
     private init() {
         placeWindow = UserDefaults.standard.bool(forKey: "placeWindow")
-        if let saved = UserDefaults.standard.string(forKey: "repoPath") {
+        let env = ProcessInfo.processInfo.environment
+        if env["MYLINUX_TEST_FRESH"] == "1", env["MYLINUX_SUPPORT_DIR"] != nil {
+            repoPath = ""                       // a test (scratch MYLINUX_SUPPORT_DIR) as a new install, not developer mode
+        } else if let saved = UserDefaults.standard.string(forKey: "repoPath") {
             repoPath = saved
         } else if let built = Paths.buildRepo, Paths.isCheckout(built) {
             repoPath = built                    // built from a checkout on this Mac: start in developer mode

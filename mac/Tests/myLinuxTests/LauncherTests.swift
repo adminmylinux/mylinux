@@ -983,3 +983,17 @@ final class TailscaleTests: XCTestCase {
         }
     }
 }
+
+final class FreshInstallTests: XCTestCase {
+    /// A new install has no machines (the welcome offers them); removing the last one leaves none, not a new myLinux.
+    func testANewInstallStartsWithoutMachines() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fresh-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("profiles.json")
+        guard !AppSettings.shared.developerMode else { throw XCTSkip("developer mode keeps the checkout's machine") }
+        XCTAssertTrue(ProfileStore(file: file).profiles.isEmpty, "nothing made unasked")
+        try "[]".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertTrue(ProfileStore(file: file).profiles.isEmpty, "an emptied list stays empty")
+    }
+}

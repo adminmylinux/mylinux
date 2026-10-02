@@ -222,11 +222,12 @@ final class ProfileStore: ObservableObject {
 
     init(file: URL = Paths.profilesFile, settings: AppSettings = .shared) {
         self.file = file
-        if let data = try? Data(contentsOf: file), let list = try? JSONDecoder().decode([Profile].self, from: data), !list.isEmpty {
+        if let data = try? Data(contentsOf: file), let list = try? JSONDecoder().decode([Profile].self, from: data) {
             profiles = list
-        } else {
+        } else if settings.developerMode {
             profiles = [ProfileStore.firstProfile(settings: settings)]
         }
+        // otherwise none: a new install starts empty, and the welcome offers the machines (nothing is made unasked)
         // every start: automatic machines get the memory this Mac suits
         for i in profiles.indices { profiles[i].applyAutomaticMemory() }
         loaded = true

@@ -24,6 +24,10 @@ struct ContentView: View {
                 OverviewRow()
                     .tag(ContentView.overviewID)
                 Section("Machines") {
+                    if store.profiles.isEmpty {
+                        Button("Download Linux…") { NotificationCenter.default.post(name: WelcomeSheet.showNotification, object: nil) }
+                            .buttonStyle(.link).font(.caption)
+                    }
                     ForEach(store.profiles) { p in
                         MachineRow(profile: p, runner: runs.runner(for: p.id)).tag(p.id)
                             .contextMenu {
@@ -88,9 +92,11 @@ struct ContentView: View {
             runs.startWatching(store)
             // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
             OmarchyManager.shared.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings)
-            if !settings.developerMode, !images.present, !OmarchyManager.shared.present, !ServerImageManager.debian.present, !ServerImageManager.alpine.present,
-               !UserDefaults.standard.bool(forKey: "welcomeShown") {
-                UserDefaults.standard.set(true, forKey: "welcomeShown"); showWelcome = true
+            // (no machines and nothing downloaded: a new install, or one whose data was cleared; not a remembered flag,
+            // which outlives the data and kept a fresh start from showing it)
+            if !settings.developerMode, store.profiles.isEmpty, !images.present, !OmarchyManager.shared.present,
+               !ServerImageManager.debian.present, !ServerImageManager.alpine.present {
+                showWelcome = true
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
@@ -197,6 +203,7 @@ struct ContentView: View {
 }
 
 struct ImageStatusView: View {
+    @ObservedObject private var store = ProfileStore.shared
     @ObservedObject var images: ImageManager
     @EnvironmentObject var settings: AppSettings
 
@@ -213,7 +220,7 @@ struct ImageStatusView: View {
                 }
             } else if settings.developerMode {
                 Banner(text: "No image in the checkout's out/. Build it with ./build.sh.", kind: .warning)
-            } else {
+            } else if store.profiles.contains(where: { $0.kind == .mylinux }) {
                 Banner(text: "The myLinux image is not downloaded yet.", kind: .warning)
                 Button("Download myLinux") { images.download(settings) }.buttonStyle(.borderedProminent)
             }
