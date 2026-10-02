@@ -93,7 +93,7 @@ struct MachineView: View {
             if let saved, saved != draft.cloudFolders { draft.cloudFolders = saved }
         }
         .onAppear { runtime.refresh(settings); images.refresh(settings); if isOmarchy { omarchy.refresh(settings) }; if isServer { server.refresh(settings) } }
-        .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
+        .toolbar { HeaderToolbar() }
     }
 
     // ---- header: icon, name, state, actions ------------------------------------------------------------------------

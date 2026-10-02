@@ -292,7 +292,7 @@ back at the next launch (close them yourself and they do not); ⌘K is a quick-c
 machines.json…* reads the guest viewer's saved machines (copy `~/.config/mylinux/vnc/machines.json` and, for the
 passwords, `~/.config/mylinux/secrets.env` to the share first).
 
-**mylinux.app** (the launcher's icon beside the version, from 0.7.28): the site's account (sign in, your machines, API
+**mylinux.app** (the globe in the middle of the header, from 0.7.28; 0.7.31 moved it there): the site's account (sign in, your machines, API
 tokens) in a window a little wider than a large phone (540 points), with back, home, reload and "open in the browser". WebKit keeps
 its cookies in a store of its own, so the sign-in lasts; a sign-in popup (Google's) opens as a real window, other
 new-window links go to the browser; a page's file field (the Claude tab's *Open file…*) opens the Mac's open panel.

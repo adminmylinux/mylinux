@@ -305,7 +305,7 @@ struct OverviewView: View {
             }
             .padding(24)
         }
-        .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
+        .toolbar { HeaderToolbar() }
     }
 
     private var table: some View {

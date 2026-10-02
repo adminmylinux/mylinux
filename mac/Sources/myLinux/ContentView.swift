@@ -73,11 +73,11 @@ struct ContentView: View {
                     .id(p.id)
             } else if let r = selectedRemote {
                 RemoteEditor(profile: r).id(r.id)
-                    .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
+                    .toolbar { HeaderToolbar() }
             } else {
                 ContentUnavailableView("No machine selected", systemImage: "desktopcomputer",
                                        description: Text("Pick a machine on the left, or add one."))
-                    .toolbar { ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() } }
+                    .toolbar { HeaderToolbar() }
             }
         }
         .onAppear {
@@ -237,18 +237,24 @@ struct Banner: View {
 }
 
 /// Top right of the window: which launcher this is, then the way to its settings.
+/// The detail column's header: mylinux.app (the account, in a window of its own) in the middle, the version and
+/// Settings on the right.
+struct HeaderToolbar: ToolbarContent {
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Button { AccountWindow.show() } label: { Image(systemName: "globe") }
+                .help("mylinux.app: your account, keys and Claude setup, in a window of its own")
+                .accessibilityLabel("mylinux.app")
+        }
+        ToolbarItemGroup(placement: .primaryAction) { VersionAndSettings() }
+    }
+}
+
 struct VersionAndSettings: View {
     @ObservedObject private var updater = LauncherUpdater.shared
 
     var body: some View {
         update
-        // mylinux.app: the account (machines, API tokens) in a phone-sized window of its own
-        Button { AccountWindow.show() } label: {
-            Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 20, height: 20)
-        }
-        .buttonStyle(.borderless)
-        .help("mylinux.app: your account, in a window of its own")
-        .accessibilityLabel("mylinux.app")
         Text(AppInfo.shortVersion).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
             .padding(.leading, 8)
             .help(AppInfo.versionText).accessibilityLabel(AppInfo.versionText)
