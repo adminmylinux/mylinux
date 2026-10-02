@@ -153,6 +153,28 @@ final class AccountWindow: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindo
         w.makeKeyAndOrderFront(nil)
         return popup
     }
+    // ---- a page's alert(), confirm() and prompt(): Mac sheets (without these a web view answers them unseen: confirm()
+    // says no, so Delete and Revoke did nothing) ----
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping () -> Void) {
+        let alert = NSAlert(); alert.messageText = message; alert.addButton(withTitle: "OK")
+        alert.beginSheetModal(for: webView.window ?? window) { _ in completionHandler() }
+    }
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (Bool) -> Void) {
+        let alert = NSAlert(); alert.messageText = message
+        alert.addButton(withTitle: "OK"); alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: webView.window ?? window) { r in completionHandler(r == .alertFirstButtonReturn) }
+    }
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (String?) -> Void) {
+        let alert = NSAlert(); alert.messageText = prompt
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24)); field.stringValue = defaultText ?? ""
+        alert.accessoryView = field; alert.window.initialFirstResponder = field
+        alert.addButton(withTitle: "OK"); alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: webView.window ?? window) { r in completionHandler(r == .alertFirstButtonReturn ? field.stringValue : nil) }
+    }
+
     /// <input type="file">: the Mac's open panel (the Claude tab's Open file…, for a settings.json from Dropbox, say).
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping ([URL]?) -> Void) {
