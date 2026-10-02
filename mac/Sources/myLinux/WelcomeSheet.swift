@@ -46,6 +46,7 @@ struct WelcomeSheet: View {
                 ForEach(Self.offers, id: \.kind) { row($0) }
             }
             .padding(.horizontal, 24)
+            keyboard
             footer
         }
         .frame(width: 640)
@@ -159,6 +160,28 @@ struct WelcomeSheet: View {
         } else if let e = m.lastError, started, chosen.contains(kind) {
             Text(e).font(.caption).foregroundStyle(.red).lineLimit(3).padding(.top, 4)
         }
+    }
+
+    /// Keyboard control (macOS's Accessibility permission), asked here so a new install meets it once, explained:
+    /// ⌘Space in the servers' windows, Omarchy's every-key mode, a remote desktop that takes every key.
+    @State private var keyboardAllowed = AXIsProcessTrusted()
+    private var keyboard: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "keyboard").font(.system(size: 22)).foregroundStyle(.secondary).frame(width: 40)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Keyboard control").fontWeight(.semibold)
+                Text("Lets ⌘Space and the Command keys reach your machines (Find and Run, Omarchy's Super key). macOS asks once; optional.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if keyboardAllowed {
+                Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).labelStyle(.titleAndIcon)
+            } else {
+                Button("Allow…") { KeyboardGrab.askPermission() }
+            }
+        }
+        .padding(.horizontal, 24).padding(.top, 14)
+        .onReceive(Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()) { _ in keyboardAllowed = AXIsProcessTrusted() }
     }
 
     private var footer: some View {

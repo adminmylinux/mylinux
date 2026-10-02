@@ -328,7 +328,9 @@ final class ProfileStore: ObservableObject {
     }
 
     private func save() {
-        guard !ProfileStore.readOnly else { return }
+        // a launcher handing over to a newer one writes nothing more: the data is the new one's (it may have been
+        // cleared meanwhile, and an old copy would bring its machines back)
+        guard !ProfileStore.readOnly, !Handover.handingOver else { return }
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
