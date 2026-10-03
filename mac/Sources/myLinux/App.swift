@@ -13,6 +13,8 @@ struct MyLinuxApp: App {
         // helper mode, before any window: run-omarchy.sh starts the launcher's own binary as the clipboard bridge
         let args = CommandLine.arguments
         if args.count == 3, args[1] == "--omarchy-clipboard" { exit(OmarchyClipboard.run(socketPath: args[2])) }
+        // Clear All Data's second half: once the launcher that asked has quit, its data goes, then a fresh one starts
+        if args.count == 4, args[1] == "--finish-start-over", let pid = Int32(args[2]) { exit(StartOver.finish(after: pid, relaunch: args[3])) }
     }
 
     var body: some Scene {
