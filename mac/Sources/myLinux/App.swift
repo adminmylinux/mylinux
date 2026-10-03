@@ -367,6 +367,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --test-placement` (a scratch MYLINUX_SUPPORT_DIR): the window list's frame of this app's own window
+        // against AppKit's, as MachineWindowPlacement converts it
+        if args.contains("--test-placement"), ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let vis = NSScreen.screens[0].visibleFrame
+            let known = NSRect(x: vis.minX + 137, y: vis.minY + 91, width: 640, height: 420)
+            let w = NSWindow(contentRect: known, styleMask: [.titled], backing: .buffered, defer: false)
+            w.setFrame(known, display: true); w.orderFrontRegardless()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                print("appkit: \(NSStringFromRect(w.frame))")
+                print("placement: \(MachineWindowPlacement.frame(pid: getpid()).map { NSStringFromRect($0) } ?? "none")")
+                let probe = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+                if let f = MachineWindowPlacement.frame(pid: getpid()) {
+                    var g = probe.frame; g.origin = NSPoint(x: f.midX - g.width / 2, y: f.midY - g.height / 2); probe.setFrame(g, display: false)
+                    print("centred: \(NSStringFromRect(probe.frame)) inside: \(w.frame.contains(probe.frame))")
+                }
+                fflush(stdout); exit(0)
+            }
+            return
+        }
         // `myLinux --show-mount-share <png>` (a scratch MYLINUX_SUPPORT_DIR): the Mount a Share dialog for a stand-in Omarchy
         if let i = args.firstIndex(of: "--show-mount-share"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1]

@@ -227,7 +227,7 @@ enum MountShareWindow {
         w.isReleasedWhenClosed = false
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in open[machine.id] = nil }
         open[machine.id] = w
-        w.center()
+        MachineWindowPlacement.place(w, for: machine)     // in front of the machine's own window, on its screen
         w.makeKeyAndOrderFront(nil)
     }
 }

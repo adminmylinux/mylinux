@@ -148,7 +148,7 @@ enum CloudFoldersWindow {
         w.isReleasedWhenClosed = false
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in open[id] = nil }
         open[id] = w
-        w.center()
+        MachineWindowPlacement.place(w, for: p)           // in front of the machine's own window, on its screen
         w.makeKeyAndOrderFront(nil)
     }
 }
