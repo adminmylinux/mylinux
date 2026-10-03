@@ -997,3 +997,48 @@ final class FreshInstallTests: XCTestCase {
         XCTAssertTrue(ProfileStore(file: file).profiles.isEmpty, "an emptied list stays empty")
     }
 }
+
+final class MountShareTests: XCTestCase {
+    func testThisMacsSharesAreRead() {
+        let text = """
+        \t\t\tList of Share Points
+        name:\t\tViktor Kjartansson’s Public Folder
+        path:\t\t/Users/vikkjart/Public
+        \tsmb:\t{
+        \t\tname:\tViktor Kjartansson’s Public Folder
+        \t\tshared:\t1
+        \t\tguest access:\t1
+        \t}
+
+        name:\t\tNot over SMB
+        path:\t\t/Users/x/Other
+        \tsmb:\t{
+        \t\tname:\tNot over SMB
+        \t\tshared:\t0
+        \t}
+        """
+        XCTAssertEqual(MountShare.parseShares(text), ["Viktor Kjartansson’s Public Folder"])
+    }
+
+    func testANameInsideIsSuggested() {
+        XCTAssertEqual(MountShare.suggestedName("Viktor Kjartansson’s Public Folder"), "Public")
+        XCTAssertEqual(MountShare.suggestedName("media library"), "MediaLibrary")
+        XCTAssertEqual(MountShare.suggestedName("Bilder 2026"), "Bilder2026")
+    }
+
+    func testWhatTheScriptWouldRefuseIsSaidFirst() {
+        var r = MountShare.Request(server: "10.0.2.2", share: "Viktor Kjartansson’s Public Folder", name: "Public", user: "vikkjart")
+        XCTAssertNil(r.problem)
+        r.server = "100.109.140.29"; XCTAssertNil(r.problem)
+        r.server = "nas; rm -rf /"; XCTAssertNotNil(r.problem)
+        r.server = "nas"; r.share = "a/b"; XCTAssertNotNil(r.problem)
+        r.share = "media"; r.name = "../x"; XCTAssertNotNil(r.problem)
+        r.name = ".hidden"; XCTAssertNotNil(r.problem)
+        r.name = "Media"; r.user = ""; XCTAssertNil(r.problem, "a guest share has no user")
+    }
+
+    func testTheScriptIsAmongTheFilesCopiedIn() {
+        XCTAssertTrue(ServerApps.files.contains("mount-share.sh"))
+        XCTAssertTrue(MountShare.guestLine.hasPrefix(" "), "the leading space keeps it out of the shell history")
+    }
+}

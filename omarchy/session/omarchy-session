@@ -6,7 +6,7 @@
     omarchy-session status     show the saved layout
     omarchy-session interval <minutes>|off   how often the timer saves (off stops it; the login restore stays)
     omarchy-session agent      run by a user unit: takes commands the Mac window drops into the share folder
-                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N, apps) and keeps status.json
+                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N, apps, share) and keeps status.json
                                there for the window's Session menu
     omarchy-session enable | disable      the units (install.sh enables them)
 
@@ -161,6 +161,24 @@ def apps():
     cmd = apps_command(shutil.which("xdg-terminal-exec"))
     ok = dispatch(f"hl.dsp.exec_cmd({lua_string(cmd)})", ["exec", cmd])
     print(("opened: " if ok else "could not open: ") + cmd)
+SHARE = Path("/mnt/mac/.mylinux/apps/mount-share.sh")
+SHARE_ARGS = Path("/mnt/mac/.mylinux/mount-share.args")
+
+def share_command(terminal_exec):
+    """Mount a Share… (the launcher's dialog, from Omarchy's ⌘ menu): the share mounted in a terminal, which asks for
+    its password and sudo there, and stays open with the outcome."""
+    inner = f"sh {SHARE} --from {SHARE_ARGS}; printf '\\nReturn closes this window. '; read _"
+    if terminal_exec:
+        return f"{terminal_exec} --title='Mount a Share' -e sh -c {shlex.quote(inner)}"
+    return f"{os.environ.get('TERMINAL') or 'alacritty'} -e sh -c {shlex.quote(inner)}"
+
+def share():
+    if not SHARE.exists() or not SHARE_ARGS.exists():
+        print(f"{SHARE} or {SHARE_ARGS} is not there (Mount a Share… in the Mac window puts them there)"); return
+    cmd = share_command(shutil.which("xdg-terminal-exec"))
+    ok = dispatch(f"hl.dsp.exec_cmd({lua_string(cmd)})", ["exec", cmd])
+    print(("opened: " if ok else "could not open: ") + cmd)
+
 TIMER_DROPIN = Path.home() / ".config/systemd/user/omarchy-session-save.timer.d/interval.conf"
 
 def parse_interval(dropin_text):
@@ -211,6 +229,7 @@ def agent():
                 elif words[0] == "restore": restore()
                 elif words[0] == "interval" and len(words) > 1: interval(words[1])
                 elif words[0] == "apps": apps()
+                elif words[0] == "share": share()
                 write_status()
         except OSError:
             pass
@@ -251,6 +270,7 @@ def selftest():
     assert apps_command("/usr/local/bin/xdg-terminal-exec") == "/usr/local/bin/xdg-terminal-exec --title='myLinux Apps' -e sh -c 'MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh; exec bash -l'"
     os.environ["TERMINAL"] = "foot"
     assert apps_command(None) == "foot -e sh -c 'MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh; exec bash -l'"
+    assert share_command("/usr/local/bin/xdg-terminal-exec").startswith("/usr/local/bin/xdg-terminal-exec --title='Mount a Share' -e sh -c 'sh /mnt/mac/.mylinux/apps/mount-share.sh --from /mnt/mac/.mylinux/mount-share.args;")
     print("omarchy-session selftest ok")
 
 if __name__ == "__main__":

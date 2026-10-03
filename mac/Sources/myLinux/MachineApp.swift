@@ -261,6 +261,14 @@ enum MachineLink {
             case "restart":
                 if r.isActive || r.canStopElsewhere { r.restart(p) }
             case "cloud": CloudFoldersWindow.show(p.id)       // ⇧⌘P or Machine › Cloud Folders… in a desktop's window
+            case "share":                                         // Machine › Mount a Share… in a desktop's window
+                if p.kind == .omarchy { MountShareWindow.show(p) }
+                else {
+                    NSApp.activate()
+                    let alert = NSAlert(); alert.messageText = "Mount a Share in \(p.name)"
+                    alert.informativeText = "Mounting shares is there in Omarchy, Debian and Alpine; myLinux does not have it yet."
+                    alert.runModal()
+                }
             case "apps":                                          // ⇧⌘A or Machine › Apps… in a desktop's window
                 Task { @MainActor in
                     let problem: String? = p.kind == .omarchy ? await ServerApps.openInOmarchy(p)

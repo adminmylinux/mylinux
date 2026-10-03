@@ -297,6 +297,18 @@ tokens) in a window a little wider than a large phone (540 points), with back, h
 its cookies in a store of its own, so the sign-in lasts; a sign-in popup (Google's) opens as a real window, other
 new-window links go to the browser; a page's file field (the Claude tab's *Open file…*) opens the Mac's open panel.
 
+**Mount a Share…** (the CMD menu of a Debian or Alpine window, the ⌘ menu in Omarchy's title bar and its Machine
+menu, from 0.7.35 with runtime 11.1.1-14): an SMB share from this Mac, a NAS or another computer as `~/<name>` inside,
+now and at every start. The dialog starts at this Mac as the machine sees it (`10.0.2.2`, QEMU's user network), offers
+this Mac's own shares (`sharing -l`) and says when its File Sharing is off; any other address can be typed (a Tailscale
+address works when the Mac runs the Tailscale app, not a userspace tailscaled). The request goes into the share as
+`.mylinux/mount-share.args`; `server-apps/mount-share.sh` (copied in with myLinux Apps) runs in the machine's terminal
+(a server's window types the line; Omarchy's session helper opens a terminal, its `share` command), asks for the
+share's password there (it never passes through the Mac) and sudo once, installs cifs-utils, keeps the user and
+password in `/etc/mylinux/smb/<name>.cred` (root only), adds a marked `/etc/fstab` entry (`nofail,_netdev`, and
+`x-systemd.automount` under systemd, so a start does not wait for a NAS that is off) and mounts it;
+`mount-share.sh --remove <name>` forgets one.
+
 **Tailscale** (the ⠿ button beside + above the sidebar, from 0.7.26): the machines of the Mac's tailnet with their name,
 IP, type and when they were last seen, each with a VNC and an SSH button, so a tailnet machine needs no profile. It
 reads the Mac's own Tailscale client (`tailscale status --json`: the Tailscale app, or Homebrew's CLI with the socket

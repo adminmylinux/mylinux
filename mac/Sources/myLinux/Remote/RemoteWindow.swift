@@ -333,6 +333,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             let apps = NSMenuItem(title: "Apps…", action: #selector(openApps), keyEquivalent: "a"); apps.keyEquivalentModifierMask = [.command, .shift]; apps.target = self
             apps.toolTip = "myLinux Apps: find, run and install programs in the terminal"
             pop.menu?.addItem(apps)
+            let share = NSMenuItem(title: "Mount a Share…", action: #selector(mountShare), keyEquivalent: ""); share.target = self
+            share.toolTip = "An SMB share from this Mac, a NAS or another computer, as a folder in your home inside"
+            pop.menu?.addItem(share)
             pop.menu?.addItem(.separator())
             let tab = NSMenuItem(title: "New Terminal Tab", action: #selector(newTerminal), keyEquivalent: "t"); tab.target = self; pop.menu?.addItem(tab)
             let term = NSMenuItem(title: "Split Terminal", action: #selector(splitTerminal), keyEquivalent: "\r"); term.target = self; pop.menu?.addItem(term)
@@ -535,6 +538,30 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             t.type(ServerApps.command + "\n")
             self.window?.makeFirstResponder(t.keyView)
         }
+    }
+
+    // ---- the myLinux menu: Mount a Share… ----
+    /// The dialog over this window; Mount leaves the request in the share and types the script's line into the terminal.
+    @objc func mountShare() {
+        guard let window, sheetWindow == nil, let t = ssh else { return }
+        let machine = ProfileStore.shared.profiles.first { $0.id == (profile.machineID ?? profile.id) }
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: MountShareView(machine: machine?.name ?? profile.title, mount: { [weak self] r in
+            guard let self else { return }
+            self.endSheet()
+            Task { @MainActor in
+                if let problem = await MountShare.prepare(r, shareDir: self.profile.shareMacPath) {
+                    let alert = NSAlert(); alert.messageText = "Mount a Share"; alert.informativeText = problem
+                    if let w = self.window { alert.beginSheetModal(for: w, completionHandler: nil) }
+                    return
+                }
+                t.type(MountShare.guestLine + "\n")
+                self.window?.makeFirstResponder(t.keyView)
+            }
+        }, cancel: { [weak self] in self?.endSheet() })))
+        (sheet.contentViewController as? NSHostingController<MountShareView>)?.sizingOptions = [.preferredContentSize]
+        sheet.styleMask = [.titled]
+        sheetWindow = sheet
+        window.beginSheet(sheet) { _ in }
     }
 
     /// The restart for new cloud folders, step by step with its seconds, over this window.

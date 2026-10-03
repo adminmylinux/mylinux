@@ -5,7 +5,7 @@ import Foundation
 /// branch into the machine's Mac share, and types run.sh's line into the terminal; run.sh installs the distribution's
 /// Textual the first time. A change to the catalog or the app on main reaches every machine the next time Apps… opens.
 enum ServerApps {
-    static let files = ["run.sh", "mylinux_apps.py", "catalog.json", "speedtest.py"]
+    static let files = ["run.sh", "mylinux_apps.py", "catalog.json", "speedtest.py", "mount-share.sh"]
     /// Where they go in the Mac share; the share is /mnt/mac inside (run-server.sh).
     static let shareFolder = ".mylinux/apps"
     /// Typed into the terminal; the leading space keeps it out of the history. Leaving the app starts a fresh login
@@ -78,6 +78,7 @@ enum ServerApps {
         case "run.sh": return text.hasPrefix("#!") && text.contains("mylinux_apps.py")
         case "mylinux_apps.py": return text.contains("class MyLinuxApps")
         case "speedtest.py": return text.contains("def run_test")
+        case "mount-share.sh": return text.hasPrefix("#!") && text.contains("mylinux-share:")
         case "catalog.json":
             guard let data = text.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
             return obj["apps"] is [Any]
