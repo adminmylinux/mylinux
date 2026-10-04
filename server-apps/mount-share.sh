@@ -34,7 +34,9 @@ if [ "${1:-}" = --remove ]; then
 fi
 
 if [ "${1:-}" = --from ]; then
-  f="${2:-}"; [ -f "$f" ] || die "nothing asked ($f is not there)"
+  f="${2:-}"
+  # a window brought back after a restart (or opened twice) finds the request used up: nothing to do
+  if [ ! -f "$f" ]; then say "Nothing to mount here: this window came back without a request. Mount a Share… in the launcher (the ⌘ menu) asks again."; exit 0; fi
   { IFS= read -r server; IFS= read -r share; IFS= read -r name; IFS= read -r user || true; } <"$f"
   rm -f "$f"
 else

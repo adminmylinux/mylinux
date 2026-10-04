@@ -53,6 +53,10 @@ def cwd_of(pid):
     try: return os.readlink(f"/proc/{pid}/cwd")
     except OSError: return None
 
+def one_shot(argv, title):
+    """A window that did one job and is not wanted back (Mount a Share…'s terminal: its request is used up)."""
+    return title == "Mount a Share" or any("mount-share.sh" in a for a in argv)
+
 def snapshot():
     """The open windows, or None when Hyprland does not answer (not running, or already gone at logout)."""
     clients = hyprctl("clients")
@@ -64,7 +68,7 @@ def snapshot():
         cls = c.get("class") or c.get("initialClass") or ""
         if ws <= 0 or not cls or cls in SKIP_CLASSES or not c.get("mapped", True): continue
         argv = command_of(c.get("pid", 0))
-        if not argv: continue
+        if not argv or one_shot(argv, c.get("title", "")): continue
         w = {"class": cls, "workspace": ws, "title": c.get("title", ""), "command": argv, "floating": bool(c.get("floating"))}
         if cls in TERMINAL_CWD and (cwd := cwd_of(c["pid"])): w["cwd"] = cwd
         windows.append(w)
@@ -85,6 +89,7 @@ def plan(saved, current):
         if ws > 0 and cls: have[(cls, ws)] = have.get((cls, ws), 0) + 1
     out = []
     for w in saved.get("windows", []):
+        if one_shot(w.get("command", []), w.get("title", "")): continue      # saved by a helper before it skipped them
         key = (w["class"], w["workspace"])
         if have.get(key, 0) > 0: have[key] -= 1; continue
         out.append(w)
@@ -270,6 +275,9 @@ def selftest():
     assert apps_command("/usr/local/bin/xdg-terminal-exec") == "/usr/local/bin/xdg-terminal-exec --title='myLinux Apps' -e sh -c 'MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh; exec bash -l'"
     os.environ["TERMINAL"] = "foot"
     assert apps_command(None) == "foot -e sh -c 'MYLINUX_APPS_RELOGIN=1 sh /mnt/mac/.mylinux/apps/run.sh; exec bash -l'"
+    assert one_shot(["alacritty", "-e", "sh", "-c", "sh /mnt/mac/.mylinux/apps/mount-share.sh --from x"], "")
+    assert one_shot(["ghostty"], "Mount a Share") and not one_shot(["alacritty"], "~")
+    assert plan({"windows": [{"class": "Alacritty", "workspace": 1, "title": "Mount a Share", "command": ["alacritty"]}]}, []) == []
     assert share_command("/usr/local/bin/xdg-terminal-exec").startswith("/usr/local/bin/xdg-terminal-exec --title='Mount a Share' -e sh -c 'sh /mnt/mac/.mylinux/apps/mount-share.sh --from /mnt/mac/.mylinux/mount-share.args;")
     print("omarchy-session selftest ok")
 
