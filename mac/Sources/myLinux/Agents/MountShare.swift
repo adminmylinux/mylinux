@@ -142,12 +142,25 @@ struct MountShareView: View {
                     HStack {
                         TextField("Its name on the server", text: $r.share).textFieldStyle(.roundedBorder)
                             .onChange(of: r.share) { _, v in if !nameEdited { r.name = MountShare.suggestedName(v) } }
-                        if r.server == MountShare.thisMac && !shares.isEmpty {
+                        if r.server == MountShare.thisMac {
                             Menu {
-                                ForEach(shares, id: \.self) { s in Button(s) { r.share = s } }
+                                // what this Mac offers: its shared folders (File Sharing), and to your own account your home
+                                Section("Shared folders") {
+                                    if shares.isEmpty { Text("None yet") }
+                                    ForEach(shares, id: \.self) { s in Button(s) { r.share = s } }
+                                }
+                                Section("With your account") {
+                                    Button("Your home folder (\(NSUserName()))") {
+                                        r.share = NSUserName(); r.name = "MacHome"; nameEdited = true; r.user = NSUserName()
+                                    }
+                                }
+                                Divider()
+                                Button("Share Another Folder…") {
+                                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Sharing-Settings.extension")!)
+                                }
                             } label: { Image(systemName: "chevron.down") }
                             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                            .help("This Mac's shares")
+                            .help("What this Mac shares")
                         }
                     }
                 }
