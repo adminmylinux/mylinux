@@ -103,5 +103,11 @@ case "$err" in
   *"No such file"*|*"error(2)"*)
     say "The server has no share called \"$share\"." ;;
 esac
-say "The entry stays in /etc/fstab (mount ~/$name tries again; mount-share.sh --remove $name forgets it)"
+# nothing kept from a share that does not mount: under systemd its entry would leave ~/<name> as a dead automount
+# (root's d---------, "No such device")
+fstab_without "$name" | as_root tee /etc/fstab.mylinux-new >/dev/null && as_root mv /etc/fstab.mylinux-new /etc/fstab
+as_root rm -f "$CRED_DIR/$name.cred"
+[ -d /run/systemd/system ] && as_root systemctl daemon-reload
+rmdir "$mp" 2>/dev/null || true
+say "Nothing was kept; Mount a Share… again once that is fixed."
 exit 1
