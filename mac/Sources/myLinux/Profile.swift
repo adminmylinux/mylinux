@@ -39,6 +39,7 @@ struct Profile: Codable, Identifiable, Hashable {
     var sound = true            // AUDIO
     var sshPort = 0             // SSH=1 and FORWARD=<port>:22 when not 0: ssh -p <port> <user>@127.0.0.1 from the Mac
     var cloudFolders: [String] = []   // CloudFolder raw values, shared inside as ~/Dropbox and so on (EXTRA_SHARES)
+    var macFolders: [MacFolder] = []  // Mac folders of the user's choosing, shared the same way as ~/<name> (EXTRA_SHARES)
 
     init(name: String, appsDisk: String, shareDir: String) {
         self.name = name; self.appsDisk = appsDisk; self.shareDir = shareDir
@@ -62,6 +63,7 @@ struct Profile: Codable, Identifiable, Hashable {
         sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? true
         sshPort = try c.decodeIfPresent(Int.self, forKey: .sshPort) ?? 0
         cloudFolders = try c.decodeIfPresent([String].self, forKey: .cloudFolders) ?? []
+        macFolders = try c.decodeIfPresent([MacFolder].self, forKey: .macFolders) ?? []
         // saved before Automatic existed: automatic when still at that launcher's fixed default, else the user's choice
         memoryAuto = try c.decodeIfPresent(Bool.self, forKey: .memoryAuto) ?? (memoryGB == Profile.legacyMemoryGB[kind])
     }
@@ -158,7 +160,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !shareDir.isEmpty { env["SHARE_DIR"] = shareDir }
             if !qmpSocket.isEmpty { env["QMP"] = qmpSocket }
             if cpus > 0 { env["CPUS"] = String(cpus) }
-            let extra = CloudFolder.extraShares(cloudFolders)
+            let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             return env
         }
@@ -179,7 +181,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
-            let extra = CloudFolder.extraShares(cloudFolders)
+            let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             env.merge(appBundleEnvironment) { $1 }
             return env
@@ -197,7 +199,7 @@ struct Profile: Codable, Identifiable, Hashable {
             "SERIAL": "unix:\(serialSocket),server,nowait",
         ]
         if !resolution.isEmpty { env["RES"] = resolution.lowercased() }
-        let extra = CloudFolder.extraShares(cloudFolders)
+        let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
         if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
         env.merge(appBundleEnvironment) { $1 }
         return env

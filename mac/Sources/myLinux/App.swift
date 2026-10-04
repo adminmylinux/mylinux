@@ -386,6 +386,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --show-cloud-folders <png>` (a scratch MYLINUX_SUPPORT_DIR): the Cloud Folders window of a stand-in
+        // Omarchy with one Mac folder
+        if let i = args.firstIndex(of: "--show-cloud-folders"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1]
+            var p = ProfileStore.shared.add(kind: .omarchy)
+            p.macFolders = [MacFolder(name: "Projects", path: NSHomeDirectory() + "/prjs")]; p.cloudFolders = ["dropbox"]
+            ProfileStore.shared.update(p)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { CloudFoldersWindow.show(p.id) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                if let w = NSApp.windows.first(where: { $0.isVisible && $0.title.hasSuffix("Cloud Folders") }) {
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(w.windowNumber), path]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --show-mount-share <png>` (a scratch MYLINUX_SUPPORT_DIR): the Mount a Share dialog for a stand-in Omarchy
         if let i = args.firstIndex(of: "--show-mount-share"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1]

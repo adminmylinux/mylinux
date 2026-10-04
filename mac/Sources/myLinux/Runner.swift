@@ -144,12 +144,12 @@ final class Runner: ObservableObject {
         connectSerial()
         sshReady = false
         // myLinux: its cloud folders are mounted through the root console once its shell is up (appendConsole)
-        cloudConsolePending = p.kind == .mylinux ? p.cloudFolders : nil
+        cloudConsolePending = p.kind == .mylinux ? (p.cloudFolders, p.macFolders) : nil
         if p.isServer { openTerminal(p) }
     }
     /// myLinux's cloud folders, to mount at the console's first prompt after a start (CloudFolder.consoleScript;
     /// also with none ticked, so links to folders taken away go).
-    private var cloudConsolePending: [String]?
+    private var cloudConsolePending: ([String], [MacFolder])?
 
     /// The last lines run.sh wrote, for the message on an unexpected exit.
     private func logTail(lines: Int) -> [String] {
@@ -238,7 +238,7 @@ final class Runner: ObservableObject {
         if console.count > consoleLimit { console = String(console.suffix(consoleLimit * 3 / 4)) }
         if let picked = cloudConsolePending, process != nil, console.range(of: #"(^|\n)[^\n]*# ?$"#, options: .regularExpression) != nil {
             cloudConsolePending = nil
-            send(CloudFolder.consoleScript(picked) + "\n")
+            send(CloudFolder.consoleScript(picked.0, mac: picked.1) + "\n")
         }
     }
 
@@ -284,7 +284,7 @@ final class Runner: ObservableObject {
                     t.waitUntilExit()
                     if t.terminationStatus == 0 {
                         // the cloud folders (Install Script… › Cloud): mounted before the terminal opens, so ~/Dropbox is there
-                        DispatchQueue.main.sync { self.sshAnsweredAt = Date(); self.mountingCloud = !p.cloudFolders.isEmpty }
+                        DispatchQueue.main.sync { self.sshAnsweredAt = Date(); self.mountingCloud = !p.cloudFolders.isEmpty || !p.macFolders.isEmpty }
                         self.mountCloudFolders(p, sshArgs: SshTerminal.arguments(for: profile))
                         DispatchQueue.main.async {
                             self.mountingCloud = false; self.readyAt = Date()
@@ -312,7 +312,7 @@ final class Runner: ObservableObject {
         let input = Pipe(); t.standardInput = input
         t.standardOutput = FileHandle.nullDevice; t.standardError = FileHandle.nullDevice
         guard (try? t.run()) != nil else { return }
-        input.fileHandleForWriting.write(Data(CloudFolder.mountScript(p.cloudFolders).utf8))
+        input.fileHandleForWriting.write(Data(CloudFolder.mountScript(p.cloudFolders, mac: p.macFolders).utf8))
         try? input.fileHandleForWriting.close()
         let deadline = Date().addingTimeInterval(20)
         while t.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
@@ -561,10 +561,13 @@ final class RunManager: ObservableObject {
     /// myLinux Apps added or took away a cloud drive (ServerApps.takeCloudRequest): saved, and a running machine
     /// restarts to attach them; its terminal reconnects, and the folders are mounted as after any start.
     private func cloudRequest(_ id: UUID, store: ProfileStore) {
-        guard var q = store.profiles.first(where: { $0.id == id }), let folders = ServerApps.takeCloudRequest(q.shareDir) else { return }
+        guard var q = store.profiles.first(where: { $0.id == id }), let asked = ServerApps.takeCloudRequest(q.shareDir) else { return }
         let r = runner(for: id)
-        guard folders != q.cloudFolders else { ServerApps.writeCloudState(q); return }
-        q.cloudFolders = folders
+        // Apps can take a Mac folder away (adding one is the Cloud Folders dialog's Add Folder…)
+        let mac = q.macFolders.filter { asked.contains($0.tag) }
+        let folders = CloudFolder.allCases.map(\.rawValue).filter { asked.contains($0) }
+        guard folders != q.cloudFolders || mac != q.macFolders else { ServerApps.writeCloudState(q); return }
+        q.cloudFolders = folders; q.macFolders = mac
         store.update(q)
         ServerApps.writeCloudState(q)
         if r.isActive || r.canStopElsewhere { r.restart(q) }

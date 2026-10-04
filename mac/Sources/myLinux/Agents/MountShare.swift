@@ -1,4 +1,5 @@
 import AppKit
+import Network
 import SwiftUI
 
 /// Mount a Share…: an SMB share (this Mac's own, a NAS's, a PC's, one on the tailnet) inside a machine at ~/<name>,
@@ -106,6 +107,64 @@ enum MountShare {
     }
 }
 
+/// The file servers on the local network (Bonjour's _smb._tcp: a Synology, another Mac), with their IPv4 addresses: a
+/// machine cannot resolve .local names (QEMU's user network does not pass on multicast), so the dialog fills in the
+/// address. This Mac itself is left out (it is "This Mac").
+@MainActor
+final class SMBServers: ObservableObject {
+    struct Server: Hashable, Identifiable { let name: String; let address: String; var id: String { name } }
+    @Published private(set) var found: [Server] = []
+    private var browser: NWBrowser?
+    private var resolving: [String: NWConnection] = [:]
+
+    func start() {
+        guard browser == nil else { return }
+        let b = NWBrowser(for: .bonjour(type: "_smb._tcp", domain: "local."), using: .tcp)
+        b.browseResultsChangedHandler = { [weak self] results, _ in
+            Task { @MainActor in self?.resolve(results) }
+        }
+        b.start(queue: .main)
+        browser = b
+    }
+
+    func stop() {
+        browser?.cancel(); browser = nil
+        resolving.values.forEach { $0.cancel() }; resolving.removeAll()
+    }
+
+    private func resolve(_ results: Set<NWBrowser.Result>) {
+        let me = Host.current().localizedName ?? ""
+        for r in results {
+            guard case .service(let name, _, _, _) = r.endpoint, name != me, name != ProcessInfo.processInfo.hostName,
+                  resolving[name] == nil, !found.contains(where: { $0.name == name }) else { continue }
+            // a connection to the service tells its address; it is closed once it does
+            let params = NWParameters.tcp
+            if let ip = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options { ip.version = .v4 }
+            let c = NWConnection(to: r.endpoint, using: params)
+            resolving[name] = c
+            c.stateUpdateHandler = { [weak self] state in
+                Task { @MainActor in
+                    guard let self else { return }
+                    switch state {
+                    case .ready:
+                        if case .hostPort(let host, _) = c.currentPath?.remoteEndpoint, case .ipv4(let v4) = host {
+                            let address = "\(v4)".components(separatedBy: "%").first ?? "\(v4)"
+                            if !self.found.contains(where: { $0.name == name }) {
+                                self.found.append(Server(name: name, address: address)); self.found.sort { $0.name < $1.name }
+                            }
+                        }
+                        c.cancel(); self.resolving[name] = nil
+                    case .failed, .cancelled:
+                        self.resolving[name] = nil
+                    default: break
+                    }
+                }
+            }
+            c.start(queue: .main)
+        }
+    }
+}
+
 /// The dialog: where the share is, what it is called, the name inside and the user; Mount hands it on.
 struct MountShareView: View {
     let machine: String
@@ -115,6 +174,7 @@ struct MountShareView: View {
     @State private var nameEdited = false
     @State private var shares: [String] = []
     @State private var sharingOn = true
+    @StateObject private var network = SMBServers()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -133,6 +193,16 @@ struct MountShareView: View {
                         TextField("10.0.2.2", text: $r.server).textFieldStyle(.roundedBorder)
                         Menu {
                             Button("This Mac (\(MountShare.thisMac))") { r.server = MountShare.thisMac; if r.user.isEmpty { r.user = NSUserName() } }
+                            Section("On your network") {
+                                if network.found.isEmpty { Text("Looking…") }
+                                ForEach(network.found) { s in
+                                    Button("\(s.name) (\(s.address))") {
+                                        r.server = s.address
+                                        if r.server != MountShare.thisMac && r.user == NSUserName() { r.user = "" }
+                                        if shares.contains(r.share) { r.share = ""; r.name = "" }
+                                    }
+                                }
+                            }
                         } label: { Image(systemName: "chevron.down") }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                     }
@@ -200,7 +270,9 @@ struct MountShareView: View {
         }
         .padding(20)
         .frame(width: 520)
+        .onDisappear { network.stop() }
         .onAppear {
+            network.start()
             DispatchQueue.global(qos: .userInitiated).async {
                 let list = MountShare.macShares(), on = MountShare.fileSharingOn()
                 DispatchQueue.main.async {

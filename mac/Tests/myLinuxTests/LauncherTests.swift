@@ -1042,3 +1042,45 @@ final class MountShareTests: XCTestCase {
         XCTAssertTrue(MountShare.guestLine.hasPrefix(" "), "the leading space keeps it out of the shell history")
     }
 }
+
+final class MacFolderTests: XCTestCase {
+    let home = "/Users/me"
+
+    func testWhatCanBeShared() {
+        XCTAssertNil(MacFolder.problem(name: "Projects", path: "/Users/me/prjs", others: [], home: home))
+        XCTAssertNil(MacFolder.problem(name: "Disk", path: "/Volumes/Backup", others: [], home: home))
+        for path in ["/", "/Users", "/Users/me", "/Users/me/Library", "/Users/me/Library/Mail", "/System", "/Volumes", "/Applications"] {
+            XCTAssertNotNil(MacFolder.problem(name: "X", path: path, others: [], home: home), path)
+        }
+        XCTAssertNil(MacFolder.problem(name: "Box", path: "/Users/me/Library/CloudStorage/Box-Box", others: [], home: home))
+        XCTAssertNotNil(MacFolder.problem(name: "a b", path: "/Users/me/x", others: [], home: home), "one word")
+        XCTAssertNotNil(MacFolder.problem(name: "Dropbox", path: "/Users/me/x", others: [], home: home), "a cloud folder's name")
+        let p = MacFolder(name: "Projects", path: "/Users/me/prjs")
+        XCTAssertNotNil(MacFolder.problem(name: "projects", path: "/Users/me/other", others: [p], home: home), "the same tag")
+        XCTAssertNotNil(MacFolder.problem(name: "Work", path: "/Users/me/prjs", others: [p], home: home), "the same folder")
+        XCTAssertEqual(p.tag, "mac-projects")
+    }
+
+    func testNamesAreSuggested() {
+        XCTAssertEqual(MacFolder.suggestedName("/Users/me/prjs"), "prjs")
+        XCTAssertEqual(MacFolder.suggestedName("/Users/me/My Projects"), "MyProjects")
+        XCTAssertEqual(MacFolder.suggestedName("/Volumes/Backup Disk 2"), "BackupDisk2")
+    }
+
+    func testTheyAreSharedMountedAndListed() {
+        let m = MacFolder(name: "Projects", path: "/Users/me/prjs")
+        XCTAssertEqual(CloudFolder.extraShares([], mac: [m]), "mac-projects=/Users/me/prjs")
+        let script = CloudFolder.mountScript([], mac: [m])
+        XCTAssertTrue(script.contains(#"want="mac-projects:Projects""#))
+        XCTAssertTrue(script.contains("$1 ~ /^mac-/"), "taken-away Mac folders are cleaned up")
+        XCTAssertTrue(CloudFolder.consoleScript([], mac: [m]).contains("mac-projects:Projects"))
+        var p = ProfileStore.newProfile(named: "O", kind: .omarchy); p.macFolders = [m]
+        let state = ServerApps.cloudState(p)
+        XCTAssertEqual((state["selected"] as? [String])?.last, "mac-projects")
+        let last = (state["folders"] as? [[String: Any]])?.last
+        XCTAssertEqual(last?["guest"] as? String, "Projects"); XCTAssertEqual(last?["mac"] as? Bool, true)
+        if let out = ProcessInfo.processInfo.environment["MYLINUX_TEST_WRITE_MOUNT_SCRIPT"] {
+            try? CloudFolder.mountScript(["dropbox"], mac: [m]).write(toFile: out, atomically: true, encoding: .utf8)
+        }
+    }
+}

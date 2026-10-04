@@ -41,23 +41,26 @@ enum CloudFolder: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// EXTRA_SHARES for run-server.sh: one "tag=path" line per ticked folder that is on this Mac.
-    static func extraShares(_ picked: [String]) -> String {
-        CloudFolder.allCases.filter { picked.contains($0.rawValue) }.compactMap { f in f.macPath().map { "\(f.rawValue)=\($0)" } }
+    /// EXTRA_SHARES for run-server.sh: one "tag=path" line per ticked folder that is on this Mac, and per Mac folder.
+    static func extraShares(_ picked: [String], mac: [MacFolder] = []) -> String {
+        (CloudFolder.allCases.filter { picked.contains($0.rawValue) }.compactMap { f in f.macPath().map { "\(f.rawValue)=\($0)" } }
+         + mac.map { "\($0.tag)=\($0.path)" })
             .joined(separator: "\n")
     }
 
-    /// "dropbox:Dropbox onedrive:OneDrive" for the ticked folders, or all of them.
-    private static func pairs(_ picked: [String]? = nil) -> String {
-        CloudFolder.allCases.filter { picked?.contains($0.rawValue) ?? true }.map { "\($0.rawValue):\($0.guestName)" }.joined(separator: " ")
+    /// "dropbox:Dropbox onedrive:OneDrive mac-projects:Projects" for the ticked folders and the Mac folders, or all
+    /// the cloud ones and the Mac folders.
+    private static func pairs(_ picked: [String]? = nil, mac: [MacFolder]) -> String {
+        (CloudFolder.allCases.filter { picked?.contains($0.rawValue) ?? true }.map { "\($0.rawValue):\($0.guestName)" }
+         + mac.map { "\($0.tag):\($0.name)" }).joined(separator: " ")
     }
 
     /// What the launcher runs in the machine after each start (over its SSH connection, as its user): mount each
     /// ticked folder at /mnt/<tag> through /etc/fstab (so a reboot inside mounts it too) and link it as ~/<name>;
     /// take out the ones no longer ticked. Root through doas (Alpine) or sudo (Debian); a real ~/<name> is left alone.
     /// `root`: the command for root instead (Omarchy's pasted commands: a sudo that may ask for the password).
-    static func mountScript(_ picked: [String], root: String? = nil) -> String {
-        let want = pairs(picked), all = pairs()
+    static func mountScript(_ picked: [String], mac: [MacFolder] = [], root: String? = nil) -> String {
+        let want = pairs(picked, mac: mac), all = pairs(mac: mac)
         let r = root.map { "R=; [ \"$(id -u)\" = 0 ] || R=\"\($0)\"" } ?? #"R=; [ "$(id -u)" = 0 ] || { command -v doas >/dev/null && R="doas" || R="sudo -n"; }"#
         return """
         \(r)
@@ -79,6 +82,14 @@ enum CloudFolder: String, CaseIterable, Codable, Identifiable {
               [ "$(readlink "$HOME/$name" 2>/dev/null)" != "$mp" ] || rm -f "$HOME/$name" ;;
           esac
         done
+        # Mac folders taken away (their tags are mac-<name>): the fstab line, the mount and the link go
+        for tag in $(awk '$1 ~ /^mac-/ { print $1 }' /etc/fstab 2>/dev/null); do
+          case " $want " in *" $tag:"*) continue ;; esac
+          mp=/mnt/$tag
+          ! mountpoint -q "$mp" || $R umount "$mp"
+          $R sed -i "\\#^$tag $mp #d" /etc/fstab; changed=1
+          for l in "$HOME"/*; do [ -L "$l" ] && [ "$(readlink "$l")" = "$mp" ] && rm -f "$l"; done
+        done
         # systemd reads fstab into mount units: tell it about the change (no "fstab has been modified" hint)
         [ -z "${changed:-}" ] || ! command -v systemctl >/dev/null || $R systemctl daemon-reload 2>/dev/null || true
         """
@@ -86,16 +97,53 @@ enum CloudFolder: String, CaseIterable, Codable, Identifiable {
 
     /// Omarchy: the commands to paste once into a terminal inside (the launcher has no way in as root). The fstab
     /// lines they write mount the folders at every start from then on.
-    static func pasteScript(_ picked: [String]) -> String {
-        "# myLinux: the Mac's cloud folders in your home folder (sudo asks for your password)\n" + mountScript(picked, root: "sudo")
+    static func pasteScript(_ picked: [String], mac: [MacFolder] = []) -> String {
+        "# myLinux: the Mac's cloud folders and Mac folders in your home folder (sudo asks for your password)\n" + mountScript(picked, mac: mac, root: "sudo")
     }
 
     /// myLinux: what the launcher types into the machine's root console at every start (its root filesystem lives in
     /// RAM, so nothing like fstab lasts): once the apps disk's home is bound over /root, mount each ticked folder at
     /// /mnt/<tag>, bind it into the apps chroot, link it as ~/<name>; take out links to folders no longer ticked.
     /// One line, in the background, so the console is free again at once.
-    static func consoleScript(_ picked: [String]) -> String {
-        let want = pairs(picked), all = pairs()
-        return #" ( i=0; while ! mountpoint -q /root && [ $i -lt 90 ]; do sleep 1; i=$((i+1)); done; want=""# + want + #""; for pair in "# + all + #"; do tag=${pair%%:*}; name=${pair#*:}; mp=/mnt/$tag; case " $want " in *" $pair "*) mkdir -p $mp; mountpoint -q $mp || mount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 $tag $mp || continue; if mountpoint -q /mnt/apps; then mkdir -p /mnt/apps$mp; mountpoint -q /mnt/apps$mp || mount --bind $mp /mnt/apps$mp; fi; if [ ! -e /root/$name ] || [ -L /root/$name ]; then ln -sfn $mp /root/$name; fi ;; *) [ "$(readlink /root/$name 2>/dev/null)" != "$mp" ] || rm -f /root/$name ;; esac; done ) >/dev/null 2>&1 &"#
+    static func consoleScript(_ picked: [String], mac: [MacFolder] = []) -> String {
+        let want = pairs(picked, mac: mac), all = pairs(mac: mac)
+        return #" ( i=0; while ! mountpoint -q /root && [ $i -lt 90 ]; do sleep 1; i=$((i+1)); done; want=""# + want + #""; for pair in "# + all + #"; do tag=${pair%%:*}; name=${pair#*:}; mp=/mnt/$tag; case " $want " in *" $pair "*) mkdir -p $mp; mountpoint -q $mp || mount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 $tag $mp || continue; if mountpoint -q /mnt/apps; then mkdir -p /mnt/apps$mp; mountpoint -q /mnt/apps$mp || mount --bind $mp /mnt/apps$mp; fi; if [ ! -e /root/$name ] || [ -L /root/$name ]; then ln -sfn $mp /root/$name; fi ;; *) [ "$(readlink /root/$name 2>/dev/null)" != "$mp" ] || rm -f /root/$name ;; esac; done; for l in /root/*; do t=$(readlink $l 2>/dev/null); case $t in /mnt/mac-*) case " $want " in *" ${t#/mnt/}:"*) ;; *) rm -f $l ;; esac ;; esac; done ) >/dev/null 2>&1 &"#
+    }
+}
+
+/// A Mac folder of the user's own choosing (Cloud Folders › Mac folders › Add Folder…), shared into the machine like a
+/// cloud folder: 9p tag mac-<name>, mounted at /mnt/mac-<name> and linked as ~/<name> inside.
+struct MacFolder: Codable, Hashable, Identifiable {
+    var name: String            // ~/<name> inside
+    var path: String            // the folder on this Mac
+    var id: String { tag }
+    var tag: String { "mac-" + Paths.slug(name) }
+
+    /// What is wrong with sharing `path` as ~/`name` beside `others`, in words; nil when it is fine. The same folders
+    /// tools/extra-shares.sh refuses: the whole disk or home, system folders, the Library.
+    static func problem(name: String, path: String, others: [MacFolder], home: String = NSHomeDirectory()) -> String? {
+        if name.isEmpty || name.hasPrefix(".") || name.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) == nil {
+            return "The name inside is one word: letters, digits, . _ -"
+        }
+        if MacFolder(name: name, path: path).tag.count > 31 { return "The name inside is at most 27 characters (QEMU's share tags are short)." }
+        let taken = CloudFolder.allCases.map(\.guestName) + ["Mac"]
+        if taken.contains(where: { $0.lowercased() == name.lowercased() }) { return "~/\(name) is taken (a cloud folder or the Mac share)." }
+        if others.contains(where: { $0.tag == MacFolder(name: name, path: path).tag }) { return "There is a Mac folder called \(name) already." }
+        if others.contains(where: { $0.path == path }) { return "That folder is shared already." }
+        if path.contains(",") { return "The folder's path must not contain a comma." }
+        let refused = ["/", "/Users", "/private", "/tmp", "/private/tmp", "/System", "/Library", "/Applications", "/Volumes", home, home + "/Library"]
+        if refused.contains(path) || path.hasPrefix(home + "/Library/") && !path.hasPrefix(home + "/Library/CloudStorage/") && !path.hasPrefix(home + "/Library/Mobile Documents/") {
+            return "Not that one: the whole disk, your home folder, system folders and the Library stay on the Mac. Pick a folder inside them."
+        }
+        return nil
+    }
+
+    /// A name for inside from the folder's own: "My Projects" → MyProjects.
+    static func suggestedName(_ path: String) -> String {
+        let last = (path as NSString).lastPathComponent
+        let words = last.split(whereSeparator: { !$0.isLetter && !$0.isNumber && !"._-".contains($0) })
+        let ascii = words.map { String($0.unicodeScalars.filter { $0.isASCII && (CharacterSet.alphanumerics.contains($0) || "._-".unicodeScalars.contains($0)) }) }.filter { !$0.isEmpty }
+        let joined = ascii.count > 1 ? ascii.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined() : (ascii.first ?? "")
+        return String(joined.prefix(30)).trimmingCharacters(in: CharacterSet(charactersIn: "."))
     }
 }

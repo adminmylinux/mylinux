@@ -297,10 +297,18 @@ tokens) in a window a little wider than a large phone (540 points), with back, h
 its cookies in a store of its own, so the sign-in lasts; a sign-in popup (Google's) opens as a real window, other
 new-window links go to the browser; a page's file field (the Claude tab's *Open file…*) opens the Mac's open panel.
 
+**Mac folders** (Cloud Folders › Add Folder…, from 0.7.39): any folder on the Mac (a project, an external disk) shared
+into a machine as `~/<name>`, the same way as the cloud folders: a 9p share with the tag `mac-<name>` (EXTRA_SHARES,
+attached at the start, so saving restarts a running machine), mounted at `/mnt/mac-<name>` through `/etc/fstab` and
+linked into the home folder (Debian and Alpine after each start, myLinux by its console, Omarchy with Apps › Cloud drives
+or the pasted commands). The whole disk, the home folder, system folders and `~/Library` are refused, as
+`tools/extra-shares.sh` refuses them; taking a folder away also removes its fstab line and link inside. myLinux Apps
+lists them under Cloud drives, where Take Away works too.
+
 **Mount a Share…** (the CMD menu of a Debian or Alpine window, the ⌘ menu in Omarchy's title bar and its Machine
 menu, from 0.7.35 with runtime 11.1.1-14): an SMB share from this Mac, a NAS or another computer as `~/<name>` inside,
 now and at every start. The dialog starts at this Mac as the machine sees it (`10.0.2.2`, QEMU's user network), offers
-this Mac's own shares (`sharing -l`) and says when its File Sharing is off; any other address can be typed (a Tailscale
+this Mac's own shares (`sharing -l`, and your home folder to your own account) and says when its File Sharing is off; the Server menu lists the file servers Bonjour finds on the network (`_smb._tcp`: a Synology, another Mac) with their IPv4 addresses, which a machine needs since it cannot resolve `.local` names (Info.plist: NSLocalNetworkUsageDescription, NSBonjourServices); any other address can be typed (a Tailscale
 address works when the Mac runs the Tailscale app, not a userspace tailscaled). The request goes into the share as
 `.mylinux/mount-share.args`; `server-apps/mount-share.sh` (copied in with myLinux Apps) runs in the machine's terminal
 (a server's window types the line; Omarchy's session helper opens a terminal, its `share` command), asks for the

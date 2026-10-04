@@ -25,9 +25,13 @@ enum ServerApps {
         ["machine": machine.name,
          // the share folder on the Mac: the speed test tells how to run it there too
          "share": machine.shareDir,
-         "selected": machine.cloudFolders,
+         "selected": machine.cloudFolders + machine.macFolders.map(\.tag),
+         // the Mac folders (Add Folder…) after the cloud ones: "mac" and their path on the Mac
          "folders": CloudFolder.allCases.map { f in
              ["id": f.rawValue, "title": f.title, "guest": f.guestName, "onMac": f.macPath() != nil] as [String: Any]
+         } + machine.macFolders.map { m in
+             ["id": m.tag, "title": m.name, "guest": m.name, "onMac": FileManager.default.fileExists(atPath: m.path), "mac": true,
+              "path": (m.path as NSString).abbreviatingWithTildeInPath] as [String: Any]
          }]
     }
 
@@ -38,13 +42,14 @@ enum ServerApps {
         try? data.write(to: url, options: .atomic)
     }
 
-    /// The app's request, taken (the file is removed), or nil. Only known folder names count.
+    /// The app's request, taken (the file is removed), or nil: the known cloud folders it keeps, in their order, then the
+    /// Mac folder tags (mac-<name>) it keeps.
     static func takeCloudRequest(_ share: String) -> [String]? {
         let url = cloudRequestFile(share)
         guard let data = try? Data(contentsOf: url) else { return nil }
         try? FileManager.default.removeItem(at: url)
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let folders = obj["folders"] as? [String] else { return nil }
-        return CloudFolder.allCases.map(\.rawValue).filter { folders.contains($0) }
+        return CloudFolder.allCases.map(\.rawValue).filter { folders.contains($0) } + folders.filter { $0.hasPrefix("mac-") }
     }
 
     // ---- Omarchy: ⇧⌘A or Machine › Apps… in its window -----------------------------------------------------------------

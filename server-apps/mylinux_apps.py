@@ -161,6 +161,8 @@ def load_cloud(state: Path) -> tuple[list[AppEntry], str]:
     drives = []
     for f in data.get("folders", []):
         icons = {"dropbox": "f16b", "onedrive": "f03ca", "icloud": "f179", "googledrive": "f02b6"}
+        if f.get("mac"):
+            icons[f["id"]] = "f07b"    # a Mac folder (the launcher's Add Folder…)
         drives.append(AppEntry(id="cloud:" + f["id"], name=f["title"], category="Cloud drives", description="",
                                bins=[], run=f"cd ~/{f['guest']} && ls", packages=[], steps=[],
                                cloud=f, chosen=f["id"] in chosen, icon=icons.get(f["id"], "")))
@@ -219,6 +221,12 @@ def in_fstab(tag: str) -> bool:
 
 def describe_cloud(a: AppEntry) -> str:
     f = a.cloud or {}
+    if f.get("mac"):
+        if a.installed:
+            return f"Your Mac's {f.get('path', 'folder')}, in ~/{f['guest']}"
+        if a.attached:
+            return f"Your Mac's {f.get('path', 'folder')}: Enter mounts it as ~/{f['guest']}"
+        return f"Your Mac's {f.get('path', 'folder')}, at the next start"
     if a.chosen and a.installed:
         return f"Your Mac's {f['title']}, in ~/{f['guest']}"
     if a.chosen and a.attached:
@@ -721,8 +729,12 @@ class MyLinuxApps(App):
                     else f"Enter turns {a.name} on" if not a.enabled else f"install {app.name} first")
         elif a.cloud is not None:
             f = a.cloud
-            lines += [f"[{MUTED}]Your Mac's {escape(f['title'])} folder as ~/{escape(f['guest'])}; the Mac keeps it in sync."
-                      f" Adding or taking it away restarts the machine.[/]"]
+            if f.get("mac"):
+                lines += [f"[{MUTED}]The Mac folder {escape(f.get('path', ''))} as ~/{escape(f['guest'])}, read and written from both sides."
+                          f" Taking it away restarts the machine; the launcher's Cloud Folders › Add Folder… adds more.[/]"]
+            else:
+                lines += [f"[{MUTED}]Your Mac's {escape(f['title'])} folder as ~/{escape(f['guest'])}; the Mac keeps it in sync."
+                          f" Adding or taking it away restarts the machine.[/]"]
             if a.chosen and a.attached and not a.installed:
                 install.label = f"{glyph('add')}  Mount"; install.display = True; install.add_class("primary")
                 remove.label = f"{glyph('remove')}  Take Away"; remove.display = True

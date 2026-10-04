@@ -11,6 +11,8 @@ struct CloudTab: View {
     var restarting: () -> Void = {}
     @ObservedObject private var store = ProfileStore.shared
     @State private var picked: Set<String> = []
+    /// the Mac folders as edited here (Add Folder…, a name changed, one taken away), saved with Save
+    @State private var macDraft: [MacFolder] = []
     @State private var loaded = false
     /// A desktop's dialog stays open after Save: Omarchy's commands are pasted once it is back.
     @State private var savedNow = false
@@ -18,7 +20,15 @@ struct CloudTab: View {
 
     private var saved: Profile? { store.profiles.first { $0.id == machineID } }
     private var running: Bool { RunManager.shared.runner(for: machineID).isActive }
-    private var changed: Bool { Set(saved?.cloudFolders ?? []) != picked }
+    private var changed: Bool { Set(saved?.cloudFolders ?? []) != picked || (saved?.macFolders ?? []) != macDraft }
+    /// The first Mac folder that cannot be shared as it is, in words.
+    private var macProblem: String? {
+        for (i, m) in macDraft.enumerated() {
+            var others = macDraft; others.remove(at: i)
+            if let p = MacFolder.problem(name: m.name, path: m.path, others: others) { return "\(m.name.isEmpty ? (m.path as NSString).lastPathComponent : m.name): \(p)" }
+        }
+        return nil
+    }
     private var kind: Profile.Kind? { saved?.kind }
     private var desktop: Bool { kind.map { !$0.isServer } ?? false }
 
@@ -35,6 +45,7 @@ struct CloudTab: View {
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.25)))
+            macFolders
             Text(running ? "Folders are attached when the machine starts: saving a change restarts \(machine)\(desktop ? "" : ", and its terminals reconnect")."
                          : "Folders are attached when the machine starts, so a change takes effect at the next Start.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -52,17 +63,16 @@ struct CloudTab: View {
                 } else {
                     Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction)
                     Button(running ? "Save and Restart" : "Save") { save() }
-                        .keyboardShortcut(.defaultAction).disabled(!changed || saved == nil)
+                        .keyboardShortcut(.defaultAction).disabled(!changed || saved == nil || macProblem != nil)
                 }
             }
         }
-        .frame(height: desktop ? nil : 458)
-        .onAppear { if !loaded { picked = Set(saved?.cloudFolders ?? []); loaded = true } }
+        .onAppear { if !loaded { picked = Set(saved?.cloudFolders ?? []); macDraft = saved?.macFolders ?? []; loaded = true } }
     }
 
     /// Omarchy: the launcher has no way in as root, so the mounting is a paste, once, in a terminal inside.
     @ViewBuilder private var omarchyCommands: some View {
-        let script = CloudFolder.pasteScript(CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) })
+        let script = CloudFolder.pasteScript(CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) }, mac: macDraft)
         VStack(alignment: .leading, spacing: 8) {
             Text("Once, inside \(machine)").font(.headline)
             Text("After the restart, Apps… (⇧⌘A in its window) › Cloud drives mounts it with your password. Or by hand:")
@@ -92,6 +102,55 @@ struct CloudTab: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
     }
 
+    /// Any folder on this Mac (a project, a disk), shared the same way as ~/<name>.
+    @ViewBuilder private var macFolders: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Mac folders").font(.headline)
+                Spacer()
+                Button { addFolder() } label: { Label("Add Folder…", systemImage: "folder.badge.plus") }
+            }
+            if macDraft.isEmpty {
+                Text("Any folder on this Mac, a project or a disk, as ~/<name> inside; read and written from both sides.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(macDraft.enumerated()), id: \.offset) { i, m in
+                        if i > 0 { Divider() }
+                        HStack(spacing: 12) {
+                            Image(systemName: "folder").foregroundStyle(.secondary)
+                            Text((m.path as NSString).abbreviatingWithTildeInPath).font(.callout).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Text("~/").font(.callout.monospaced()).foregroundStyle(.secondary)
+                            TextField("Name", text: Binding(get: { macDraft[i].name }, set: { macDraft[i].name = $0 }))
+                                .textFieldStyle(.roundedBorder).font(.callout.monospaced()).frame(width: 150)
+                            Button { macDraft.remove(at: i) } label: { Image(systemName: "minus.circle") }
+                                .buttonStyle(.borderless).help("Take this folder away")
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                    }
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.25)))
+            }
+            if let p = macProblem { Text(p).font(.caption).foregroundStyle(.red) }
+        }
+    }
+
+    private func addFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
+        panel.prompt = "Share"; panel.message = "A folder to share with \(machine)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let path = url.standardizedFileURL.path
+        // a free name: the folder's own, then with 2, 3 ...
+        var base = MacFolder.suggestedName(path); if base.isEmpty { base = "Folder" }
+        var name = base, n = 2
+        while MacFolder.problem(name: name, path: "/x/\(UUID().uuidString)", others: macDraft) != nil && n < 50 { name = "\(base)\(n)"; n += 1 }
+        macDraft.append(MacFolder(name: name, path: path))
+    }
+
     private func row(_ f: CloudFolder) -> some View {
         let path = f.macPath()
         return HStack(spacing: 12) {
@@ -113,11 +172,13 @@ struct CloudTab: View {
     private func save() {
         guard var p = saved else { return }
         p.cloudFolders = CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) }
+        p.macFolders = macDraft
         store.update(p)
         let r = RunManager.shared.runner(for: machineID)
         if MachineApp.active {
             // in the machine's own app: the launcher saves and restarts; this window shows the seconds
-            MachineLink.request(["action": "cloudFolders", "folders": p.cloudFolders, "restart": r.isActive])
+            MachineLink.request(["action": "cloudFolders", "folders": p.cloudFolders, "restart": r.isActive,
+                                 "mac": p.macFolders.map { ["name": $0.name, "path": $0.path] }])
             if r.isActive { r.mirrorRestartAsked(); restarting() } else { dismiss() }
             return
         }

@@ -256,6 +256,9 @@ enum MachineLink {
             case "cloudFolders":
                 var q = p
                 q.cloudFolders = (info["folders"] as? [String]) ?? []
+                if let mac = info["mac"] as? [[String: String]] {
+                    q.macFolders = mac.compactMap { d in d["name"].flatMap { n in d["path"].map { MacFolder(name: n, path: $0) } } }
+                }
                 ProfileStore.shared.update(q)
                 if info["restart"] as? Bool == true, r.isActive || r.state == .inUseElsewhere { r.restart(q) }
             case "restart":
