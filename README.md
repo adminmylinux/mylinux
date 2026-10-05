@@ -134,7 +134,16 @@ in the search), the list, and a details panel with what Enter runs or installs a
 buttons, in Nerd Font symbols, which Ghostty has built in (`MYLINUX_APPS_PLAIN=1` for plain ones elsewhere);
 `mylinux-apps claude` opens with that search. **Speed test** (Tools; `server-apps/speedtest.py`, from launcher 0.7.25) clones one pinned commit of Excalidraw, installs its ~60,000 small files with Bun, reads them, deletes them (`rm -rf node_modules`), installs them again from Bun's cache and builds it with vite, on the machine's own disk; the Mac runs the same script (`python3 <share>/.mylinux/apps/speedtest.py`, the Mac's own Python 3.9 is enough), and every run goes into `.mylinux/speedtest.json` in the share, so the table at the end (and the details panel) shows the latest run of each machine next to the Mac's. **Aliases** come first: `cc` (Claude Code, updated, without permission
 prompts), `cx` (Codex) and `gm` (Gemini CLI, yolo), from the catalog's `aliases`; Enter runs one, and turning one on
-or off rewrites `~/.config/mylinux/aliases.sh`, which run.sh's block sources (cc and cx are on from the start). In Omarchy a **Keyboard** group adds layouts after English (US)
+or off rewrites `~/.config/mylinux/aliases.sh`, which run.sh's block sources (cc and cx are on from the start). Above them, **Claude Code** adds a Claude
+subscription as an alias of its own: a dialog asks for the alias name (cc1, then cc2, …), an account name (acc) and the
+long-lived token from `claude setup-token` (hidden), plus an optional myLinux API key. The token and the name go into
+`~/.config/mylinux/claude-accounts/<alias>.env` (mode 600, not into the alias), and the alias is
+`( . that file && claude update && claude --dangerously-skip-permissions )`: a subshell, so each terminal keeps its own
+subscription and several run side by side. Once, at setup: Claude Code is installed when missing, `~/.claude.json` is
+marked onboarded (the token is the login), mylinux.app's status line is installed (it shows `MYLINUX_CLAUDE_ACCOUNT`,
+which the file sets), and with an API key (given, or saved on the machine) your skills from mylinux.app too. Each
+subscription is a row: Enter runs it, ^U takes a new token, ^R removes it. `tools/tests/apps-claude.sh` drives it with
+Textual's pilot. In Omarchy a **Keyboard** group adds layouts after English (US)
 (which Omarchy's shortcuts need first): Norwegian, Swedish, Danish, Finnish, Icelandic, German, UK English and more;
 turning one on or off rewrites a marked `hl.config` block at the end of `~/.config/hypr/input.lua` (the file as it was
 kept as `input.lua.before-mylinux`) and reloads Hyprland; Left Alt + Right Alt switches (`grp:alts_toggle`), and Enter

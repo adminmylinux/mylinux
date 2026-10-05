@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -104,15 +105,17 @@ class AppEntry:
     chosen: bool = False              # a cloud drive the machine has (attached at its start)
     attached: bool = False            # its share is there (mounting it is all that is left)
     builtin: str = ""                 # a script that comes with the app (the speed test): its path, run with python3
+    account: str | None = None        # a Claude Code subscription's alias (cc1, ...): the account name it shows
+    setup: bool = False               # the Claude Code row: adds a subscription (the dialog)
 
     @property
     def special(self) -> bool:
         """An alias or a cloud drive: listed on top, not a program."""
-        return self.cloud is not None or self.alias is not None or self.keyboard is not None
+        return self.cloud is not None or self.alias is not None or self.keyboard is not None or self.setup
 
     @property
     def installable(self) -> bool:
-        if self.alias is not None or self.keyboard is not None:
+        if self.alias is not None or self.keyboard is not None or self.setup:
             return True
         if self.builtin:
             return False
@@ -263,6 +266,8 @@ def write_aliases(catalog_aliases: list[dict], on: set[str]) -> None:
     ALIASES_FILE.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# myLinux Apps: the aliases turned on in it (Aliases, at the top); it rewrites this file"]
     lines += [f"alias {a['name']}={quote_alias(a['command'])}" for a in catalog_aliases if a["name"] in on]
+    # the Claude Code subscriptions (Claude Code, at the top): each alias with its own token, always on
+    lines += [f"alias {name}={quote_alias(account_command(name))}" for name, _ in load_accounts()]
     tmp = ALIASES_FILE.with_suffix(".tmp")
     tmp.write_text("\n".join(lines) + "\n")
     tmp.replace(ALIASES_FILE)
@@ -275,6 +280,108 @@ def load_aliases(path: Path) -> tuple[list[AppEntry], list[dict]]:
                         bins=[], run=a["command"], packages=[], steps=[], alias=a, enabled=a["name"] in on)
                for a in catalog_aliases]
     return entries, catalog_aliases
+
+
+# ---- Claude Code subscriptions: an alias per subscription (cc1, cc2, ...) that starts Claude Code with that
+# subscription's long-lived token (claude setup-token) and its name in MYLINUX_CLAUDE_ACCOUNT, which the status line
+# shows. The token and the name are in ~/.config/mylinux/claude-accounts/<alias>.env (mode 600), not in the alias; the
+# alias reads them in a subshell, so each terminal keeps its own subscription and several run side by side.
+ACCOUNTS_DIR = HOME / ".config/mylinux/claude-accounts"
+SITE = os.environ.get("MYLINUX_SITE", "https://mylinux.app")
+API_KEY_FILE = HOME / ".config/mylinux/api-key"
+ALIAS_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,31}$")
+ACCOUNT_RE = re.compile(r"^[A-Za-z0-9._@-]{1,40}$")
+TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,}$")
+
+
+def account_command(name: str) -> str:
+    return (f'( . "$HOME/.config/mylinux/claude-accounts/{name}.env" && unset ANTHROPIC_API_KEY'
+            f' && claude update && claude --dangerously-skip-permissions )')
+
+
+def load_accounts() -> list[tuple[str, str]]:
+    """(alias, account name) for each saved subscription."""
+    out = []
+    for f in sorted(ACCOUNTS_DIR.glob("*.env")) if ACCOUNTS_DIR.is_dir() else []:
+        if not ALIAS_RE.match(f.stem):
+            continue
+        account = ""
+        try:
+            for line in f.read_text().splitlines():
+                if line.startswith("export MYLINUX_CLAUDE_ACCOUNT="):
+                    account = line.split("=", 1)[1].strip("'\"")
+        except OSError:
+            continue
+        out.append((f.stem, account))
+    return out
+
+
+def save_account(name: str, account: str, token: str) -> None:
+    """The subscription's file, for this user only (written before anything reads it)."""
+    ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(ACCOUNTS_DIR, 0o700)
+    path, tmp = ACCOUNTS_DIR / f"{name}.env", ACCOUNTS_DIR / f".{name}.env.tmp"
+    text = (f"# myLinux Apps: Claude Code as {account} (the alias {name}); a long-lived token from claude setup-token\n"
+            f"export CLAUDE_CODE_OAUTH_TOKEN='{token}'\nexport MYLINUX_CLAUDE_ACCOUNT='{account}'\n")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+
+
+def remove_account(name: str) -> None:
+    (ACCOUNTS_DIR / f"{name}.env").unlink(missing_ok=True)
+
+
+def next_alias(taken: set[str]) -> str:
+    n = 1
+    while f"cc{n}" in taken:
+        n += 1
+    return f"cc{n}"
+
+
+def mark_onboarded() -> None:
+    """~/.claude.json says the first-run screens are done: the login is the token, so Claude Code starts straight in."""
+    cfg = HOME / ".claude.json"
+    try:
+        data = json.loads(cfg.read_text()) if cfg.exists() and cfg.stat().st_size else {}
+    except (OSError, ValueError):
+        return                                    # not JSON (being written?): left alone, Claude Code asks once
+    if data.get("hasCompletedOnboarding") is True:
+        return
+    data["hasCompletedOnboarding"] = True
+    tmp = cfg.with_name(".claude.json.mylinux-tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    if cfg.exists():
+        os.chmod(tmp, cfg.stat().st_mode & 0o777)
+    tmp.replace(cfg)
+
+
+def account_setup_script(install_claude: str | None, skills: bool) -> str:
+    """What runs once when a subscription is added (shown before it runs; no secrets in it)."""
+    lines = []
+    if install_claude:
+        lines += ["# Claude Code itself", install_claude]
+    lines += ["# the status line: the subscription's name, context, limits, cost, model",
+              f"curl -fsSL {SITE}/install/statusline | sh"]
+    if skills:
+        lines += ["# your skills, commands and CLAUDE.md from mylinux.app (the Claude tab)",
+                  f"curl -fsSL {SITE}/install/skills | sh"]
+    return "\n".join(lines)
+
+
+def load_account_rows() -> list[AppEntry]:
+    rows = [AppEntry(id="claude-account:new", name="Claude Code", category="Aliases",
+                     description="Add a Claude subscription as an alias (cc1, cc2, …) with its own token", bins=[], run="",
+                     packages=[], steps=[], icon="f06a9", setup=True)]
+    for name, account in load_accounts():
+        cmd = account_command(name)
+        rows.append(AppEntry(id="claude-account:" + name, name=name, category="Aliases",
+                             description=f"Claude Code as {account or name}", bins=[], run=cmd, packages=[], steps=[],
+                             alias={"name": name, "command": cmd, "app": "claude", "description": ""}, enabled=True,
+                             account=account or name))
+    return rows
 
 
 # ---- keyboard layouts (Omarchy): English (US) first, which Omarchy's shortcuts need, and the ones turned on after it;
@@ -473,6 +580,112 @@ class Confirm(ModalScreen[bool]):
         self.dismiss(True)
 
 
+class ClaudeAccount(ModalScreen[dict | None]):
+    """Claude Code: a subscription as an alias. Alias name, account name, the long-lived token (hidden) and, optional,
+    the myLinux API key for your skills from mylinux.app. Enter moves to the next field, and on the last one sets up."""
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+    DEFAULT_CSS = f"""
+    ClaudeAccount {{ align: center middle; background: #0b1220 70%; }}
+    #box {{ width: 84; max-width: 95%; height: auto; max-height: 95%; border: round {ACCENT}; background: #182235; padding: 1 2; }}
+    #title {{ text-style: bold; }}
+    #intro {{ color: {MUTED}; margin-bottom: 1; }}
+    .label {{ margin-top: 1; }}
+    .hint {{ color: {MUTED}; }}
+    ClaudeAccount Input {{ border: round #334155; background: #111827; }}
+    ClaudeAccount Input:focus {{ border: round {ACCENT}; }}
+    #error {{ color: #f87171; height: auto; margin-top: 1; }}
+    #buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    #buttons Button {{ margin-left: 2; border: none; height: 1; min-width: 12; background: #243247; }}
+    #buttons Button:hover {{ background: #334155; }}
+    #buttons #ok {{ background: {ACCENT}; color: #ffffff; text-style: bold; }}
+    """
+
+    def __init__(self, alias: str, account: str, taken: set[str], reserved: set[str], have_api_key: bool, editing: bool) -> None:
+        super().__init__()
+        self.alias0, self.account0, self.taken, self.reserved = alias, account, taken, reserved
+        self.have_api_key, self.editing = have_api_key, editing
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="box"):
+            yield Static(f"Claude Code: {'a new token for ' + self.alias0 if self.editing else 'add a subscription'}", id="title", markup=False)
+            yield Static("Each subscription gets an alias that starts Claude Code with its own token, so several run side "
+                         "by side in different terminals. Make the token with claude setup-token on a machine where you "
+                         "are signed in.", id="intro", markup=False)
+            yield Static("Alias name", classes="label")
+            yield Input(value=self.alias0, placeholder="cc1", id="alias", disabled=self.editing)
+            yield Static("Account name", classes="label")
+            yield Input(value=self.account0, placeholder="acc", id="account")
+            yield Static("Shown in Claude Code's status line (MYLINUX_CLAUDE_ACCOUNT).", classes="hint")
+            yield Static("Claude Code Long Living Token:", classes="label")
+            yield Input(placeholder="sk-ant-oat01-…", password=True, id="token")
+            yield Static("myLinux API key (optional)", classes="label")
+            yield Input(placeholder="saved on this machine" if self.have_api_key else "mlx_… for your skills from mylinux.app",
+                        password=True, id="apikey")
+            yield Static("With it (or one saved here), your skills, commands and CLAUDE.md from mylinux.app are installed "
+                         "too; the status line always is.", classes="hint")
+            yield Static("", id="error")
+            with Horizontal(id="buttons"):
+                yield Button("Cancel", id="cancel")
+                yield Button("Save" if self.editing else "Set Up", id="ok")
+
+    def on_mount(self) -> None:
+        self.query_one("#token" if self.editing else "#alias", Input).focus()
+
+    def values(self) -> dict | None:
+        """The fields, checked; None (after saying what is wrong) when one is not right."""
+        alias = self.query_one("#alias", Input).value.strip()
+        account = self.query_one("#account", Input).value.strip()
+        token = "".join(self.query_one("#token", Input).value.split())
+        apikey = "".join(self.query_one("#apikey", Input).value.split())
+        problem = None
+        if not ALIAS_RE.match(alias):
+            problem = "The alias name is one word: letters, digits, - and _, starting with a letter."
+        elif alias in self.reserved:
+            problem = f"{alias} is one of myLinux Apps' own aliases: pick another name (cc1, cc2, …)."
+        elif alias in self.taken and not self.editing:
+            problem = f"{alias} is already a subscription: pick another name, or select its row and press ^U for a new token."
+        elif shutil.which(alias):
+            problem = f"{alias} is already a program on this machine: pick another name."
+        elif not ACCOUNT_RE.match(account):
+            problem = "The account name is one word: letters, digits, . _ @ -"
+        elif not token:
+            problem = "Paste the token from claude setup-token."
+        elif not TOKEN_RE.match(token):
+            problem = "That does not look like a token from claude setup-token (sk-ant-oat01-…)."
+        elif apikey and not apikey.startswith("mlx_"):
+            problem = "A myLinux API key starts with mlx_ (made at mylinux.app, the API tab); or leave it empty."
+        self.query_one("#error", Static).update(problem or "")
+        if problem:
+            return None
+        if not token.startswith("sk-ant-oat"):
+            self.app.notify("The token does not start with sk-ant-oat; using it anyway.", severity="warning")
+        return {"alias": alias, "account": account, "token": token, "apikey": apikey}
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        event.stop()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        order = [w for w in self.query(Input) if not w.disabled]
+        i = order.index(event.input)
+        if i + 1 < len(order) and not order[i + 1].value:
+            order[i + 1].focus()
+        else:
+            self.action_ok()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.action_ok() if event.button.id == "ok" else self.dismiss(None)
+
+    def action_ok(self) -> None:
+        v = self.values()
+        if v is not None:
+            self.dismiss(v)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class MyLinuxApps(App):
     TITLE = "myLinux Apps"
     CSS = f"""
@@ -531,7 +744,7 @@ class MyLinuxApps(App):
         self.cloud_request = catalog.parent.parent / "cloud-request.json"
         drives, self.machine = load_cloud(self.cloud_state)
         aliases, self.catalog_aliases = load_aliases(catalog)
-        self.apps = aliases + drives + load_keyboards() + load_catalog(catalog, self.distro)
+        self.apps = load_account_rows() + aliases + drives + load_keyboards() + load_catalog(catalog, self.distro)
         self.keymap = active_keymap() if any(a.keyboard for a in self.apps) else ""
         refresh(self.apps)
         self.shown: list[AppEntry] = []
@@ -628,6 +841,14 @@ class MyLinuxApps(App):
             if a.enabled:
                 return "installed", GOOD, "On (Left Alt + Right Alt switches)"
             return "available", "", "Off"
+        if a.setup:
+            n = sum(1 for x in self.apps if x.account is not None)
+            return "available", "", f"{n} subscription{'s' if n != 1 else ''} set up" if n else "Add a subscription"
+        if a.account is not None:
+            app = self.app_of(a)
+            if app is not None and not app.installed:
+                return "pending", WAIT, f"{a.account}; Claude Code is not installed yet"
+            return "installed", GOOD, f"{a.account}, in new shells"
         if a.alias is not None:
             app = self.app_of(a)
             if a.enabled and app is not None and not app.installed:
@@ -657,7 +878,7 @@ class MyLinuxApps(App):
         table.clear()
         # the cloud drives on top; then installed, then what can be installed here, then the rest; by category and name
         # the aliases, then the cloud drives, on top; then installed programs, then installable ones, then the rest
-        order = lambda a: (-3 if a.alias is not None else -2 if a.cloud is not None else -1 if a.keyboard is not None
+        order = lambda a: (-5 if a.setup else -4 if a.account is not None else -3 if a.alias is not None else -2 if a.cloud is not None else -1 if a.keyboard is not None
                            else 0 if a.installed else 1 if a.installable else 2, a.category,
                            "" if a.keyboard == "us" else a.name.lower() if a.keyboard is None else ("0" if a.enabled else "1") + a.name.lower())
         # a search looks in every category
@@ -710,6 +931,31 @@ class MyLinuxApps(App):
             else:
                 install.label = f"{glyph('add')}  Turn On"; install.display = True; install.add_class("primary")
             hint = f"Enter switches to {a.name}" if a.enabled else f"Enter adds {a.name}"
+        elif a.setup:
+            subs = [x for x in self.apps if x.account is not None]
+            lines += [f"[{MUTED}]Each subscription is an alias (cc1, cc2, …) that starts Claude Code with its own long-lived "
+                      f"token, without permission prompts, and shows its account name in the status line. Several run side by "
+                      f"side, one per terminal.[/]", "",
+                      f"[{MUTED}]Make a token with [b]claude setup-token[/b] on a machine where you are signed in (it is valid "
+                      f"for about a year).[/]", ""]
+            if subs:
+                lines += [f"[{MUTED}]Set up:[/] " + escape(", ".join(f"{x.name} ({x.account})" for x in subs))]
+            install.label = f"{glyph('add')}  Add Subscription"; install.display = True; install.add_class("primary")
+            hint = "Enter adds a subscription"
+        elif a.account is not None:
+            app = self.app_of(a)
+            lines += [f"[{MUTED}]Starts Claude Code as[/] [b]{escape(a.account)}[/b][{MUTED}], updated first, without permission prompts.[/]", "",
+                      f"[{MUTED}]Typed as [b]{escape(a.name)}[/b] in a new shell. The token is in "
+                      f"~/.config/mylinux/claude-accounts/{escape(a.name)}.env (only you can read it).[/]"]
+            if app is None or app.installed:
+                run.label = f"{glyph('run')}  Run"; run.display = True; run.add_class("primary")
+            else:
+                install.label = f"{glyph('install')}  Install Claude Code"; install.display = True; install.add_class("primary")
+            if app is None or app.installed:
+                install.label = f"{glyph('update')}  New Token"; install.display = True
+            remove.label = f"{glyph('remove')}  Remove"; remove.display = True
+            hint = (f"Enter runs {a.name} · ^U new token · ^R removes" if app is None or app.installed
+                    else "install Claude Code first")
         elif a.alias is not None:
             app = self.app_of(a)
             lines += [f"[{MUTED}]Runs[/]", f"  {escape(a.alias['command'])}", "",
@@ -796,7 +1042,8 @@ class MyLinuxApps(App):
         self.query_one(Input).focus()
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        self.fill()
+        if event.input.id == "search":            # a dialog's fields are not the search
+            self.fill()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         self.show_detail()
@@ -833,6 +1080,8 @@ class MyLinuxApps(App):
             return
         if a.keyboard is not None:
             self.use_layout(a) if a.enabled else self.set_layout(a, True)
+        elif a.setup:
+            self.add_account()
         elif a.alias is not None:
             app = self.app_of(a)
             if not a.enabled:
@@ -946,6 +1195,17 @@ class MyLinuxApps(App):
             if not a.enabled:
                 self.set_layout(a, True)
             return
+        if a is not None and a.setup:
+            self.add_account()
+            return
+        if a is not None and a.account is not None:
+            app = self.app_of(a)
+            if app is not None and not app.installed:
+                self.move_to(app)
+                self.action_install()
+            else:
+                self.add_account(a)        # a new token for it
+            return
         if a is not None and a.alias is not None:
             app = self.app_of(a)
             if app is not None and not app.installed:
@@ -975,6 +1235,17 @@ class MyLinuxApps(App):
             if a.enabled:
                 self.set_layout(a, False)
             return
+        if a is not None and a.account is not None:
+            def gone(yes: bool | None) -> None:
+                if yes:
+                    remove_account(a.name)
+                    write_aliases(self.catalog_aliases, {x.name for x in self.apps if x.alias is not None and x.enabled and x.account is None})
+                    self.reload_accounts()
+                    self.notify(f"{a.name} is gone (its token too); new shells no longer have it.")
+            self.push_screen(Confirm(f"Remove {a.name}?", f"The alias {a.name} and the token of {a.account} on this machine "
+                                     f"go away. The token itself stays valid: revoke it at claude.ai if you no longer need it.",
+                                     "Remove"), gone)
+            return
         if a is not None and a.alias is not None:
             if a.enabled:
                 self.set_alias(a, False)
@@ -996,6 +1267,41 @@ class MyLinuxApps(App):
                 self.fill_sidebar()
                 self.fill(keep=a.id)
         self.push_screen(Confirm(f"Remove {a.name}?", script, "Remove"), answered)
+
+    # ---- Claude Code subscriptions -------------------------------------------------------------------------------------
+    def reload_accounts(self, keep: str | None = None) -> None:
+        self.apps = load_account_rows() + [x for x in self.apps if not x.setup and x.account is None]
+        refresh(self.apps); self.fill_sidebar(); self.fill(keep=keep)
+
+    def add_account(self, existing: AppEntry | None = None) -> None:
+        """The dialog; then the token saved, the alias written, and once: Claude Code, the status line, the skills."""
+        taken = {x.name for x in self.apps if x.account is not None}
+        reserved = {x["name"] for x in self.catalog_aliases} | {"claude", "mylinux-apps"}
+        dialog = ClaudeAccount(existing.name if existing else next_alias(taken), existing.account if existing else "acc",
+                               taken, reserved, API_KEY_FILE.exists(), editing=existing is not None)
+
+        def answered(v: dict | None) -> None:
+            if not v:
+                return
+            try:
+                save_account(v["alias"], v["account"], v["token"])
+                write_aliases(self.catalog_aliases, {x.name for x in self.apps if x.alias is not None and x.enabled and x.account is None})
+            except OSError as e:
+                self.notify(f"Could not save the subscription: {e}", severity="error")
+                return
+            claude = next((x for x in self.apps if x.id == "claude"), None)
+            install = install_script(claude, self.distro) if claude is not None and not claude.installed else None
+            skills = bool(v["apikey"]) or API_KEY_FILE.exists()
+            env = {"MYLINUX_API_KEY": v["apikey"]} if v["apikey"] else {}
+            rc = self.hand_over(account_setup_script(install, skills), f"Claude Code as {v['account']} ({v['alias']})", wait=True, env=env)
+            mark_onboarded()                  # after the install, which writes ~/.claude.json itself
+            self.reload_accounts(keep="claude-account:" + v["alias"])
+            if rc == 0:
+                self.notify(f"{v['alias']} is ready: Enter runs it here, and new shells have it. Claude Code shows {v['account']} in its status line.")
+            else:
+                self.notify(f"{v['alias']} is saved, but a setup step failed (see its output): Enter on Claude Code again retries.",
+                            severity="warning")
+        self.push_screen(dialog, answered)
 
     def run_app(self, a: AppEntry) -> None:
         if a.gui:
