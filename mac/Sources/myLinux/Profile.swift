@@ -296,10 +296,12 @@ final class ProfileStore: ObservableObject {
             while used.contains(port) { port += 1 }
             p.sshPort = port
         }
-        // a slug already used by another profile's folder gets a suffix
+        // a slug already used by another profile's folder, or left on disk by a removed machine (its disk would boot
+        // again as the "new" machine), gets a suffix
         var folder = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
         var n = 2
-        while profiles.contains(where: { $0.appsDisk == p.appsDisk || $0.shareDir == p.shareDir }) {
+        while profiles.contains(where: { $0.appsDisk == p.appsDisk || $0.shareDir == p.shareDir })
+                || ProfileStore.leftOver(URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()) {
             folder = Paths.machines.appendingPathComponent("\(Paths.slug(name))-\(n)", isDirectory: true); n += 1
             let fresh = ProfileStore.newProfile(named: name, kind: kind, folder: folder)
             p.appsDisk = fresh.appsDisk; p.shareDir = fresh.shareDir
@@ -313,11 +315,42 @@ final class ProfileStore: ObservableObject {
         profiles[i] = p
     }
 
-    /// Removes the profile only; its disk and share stay on disk.
-    func remove(_ id: UUID) {
+    /// Removes the profile; with `trashFiles`, also its disk and share (machineFiles), into the Trash.
+    /// Returns what could not be moved to the Trash, in words; nil when everything went.
+    @discardableResult
+    func remove(_ id: UUID, trashFiles: Bool = false) -> String? {
+        let p = profiles.first { $0.id == id }
         profiles.removeAll { $0.id == id }
         // the machine's own app (MachineApp, make-app-bundle.sh) goes with it
         try? FileManager.default.removeItem(at: AppSettings.shared.outDir.appendingPathComponent("machines/\(id.uuidString.lowercased())"))
+        guard trashFiles, let p else { return nil }
+        var failed: [String] = []
+        for url in machineFiles(p) {
+            do { try FileManager.default.trashItem(at: url, resultingItemURL: nil) }
+            catch { failed.append("\(url.path): \(error.localizedDescription)") }
+        }
+        return failed.isEmpty ? nil : failed.joined(separator: "\n")
+    }
+
+    /// What goes to the Trash with a machine: its own folder under machines/ (disk, share, kernel, keys) when no other
+    /// machine uses it; else (a folder chosen by hand, a checkout's out/apps.img) only its disk, never a shared folder.
+    func machineFiles(_ p: Profile, machinesRoot: URL = Paths.machines) -> [URL] {
+        let fm = FileManager.default
+        let disk = URL(fileURLWithPath: p.appsDisk), folder = disk.deletingLastPathComponent().standardizedFileURL
+        let others = profiles.filter { $0.id != p.id }
+        let inMachines = folder.deletingLastPathComponent().path == machinesRoot.standardizedFileURL.path
+        let folderShared = others.contains { URL(fileURLWithPath: $0.appsDisk).deletingLastPathComponent().standardizedFileURL == folder
+            || URL(fileURLWithPath: $0.shareDir).standardizedFileURL.path.hasPrefix(folder.path + "/") }
+        if inMachines && !folderShared { return fm.fileExists(atPath: folder.path) ? [folder] : [] }
+        let diskShared = others.contains { $0.appsDisk == p.appsDisk }
+        return !diskShared && fm.fileExists(atPath: disk.path) ? [disk] : []
+    }
+
+    /// A folder under machines/ that a removed machine left behind (its disk, or a share with files in it).
+    static func leftOver(_ folder: URL) -> Bool {
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(atPath: folder.path) else { return false }
+        return items.contains { !$0.hasPrefix(".") }
     }
 
     /// A machine's own app (MachineApp) reads the list but never writes it: the launcher keeps it.

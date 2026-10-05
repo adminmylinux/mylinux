@@ -267,6 +267,48 @@ final class DebianProfileTests: XCTestCase {
     }
 }
 
+final class RemoveMachineTests: XCTestCase {
+    /// A removed machine's folder is not handed to the next machine of its kind (its disk booted again as the "new" one).
+    func testALeftOverFolderCountsOnlyWithFilesInIt() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("mylinux-leftover-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+        XCTAssertFalse(ProfileStore.leftOver(dir.appendingPathComponent("omarchy")), "no folder")
+        try fm.createDirectory(at: dir.appendingPathComponent("omarchy"), withIntermediateDirectories: true)
+        try Data().write(to: dir.appendingPathComponent("omarchy/.DS_Store"))
+        XCTAssertFalse(ProfileStore.leftOver(dir.appendingPathComponent("omarchy")), "empty but for hidden files")
+        try Data([1]).write(to: dir.appendingPathComponent("omarchy/omarchy.ext4"))
+        XCTAssertTrue(ProfileStore.leftOver(dir.appendingPathComponent("omarchy")), "a disk left behind")
+    }
+
+    /// What Move to Trash takes: the machine's own folder under machines/, else only its disk; never a folder or disk
+    /// another machine uses.
+    func testMachineFilesAreTheMachinesOwn() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("mylinux-machines-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let store = ProfileStore(file: root.appendingPathComponent("profiles.json"))
+        let own = ProfileStore.newProfile(named: "Omarchy", kind: .omarchy, folder: root.appendingPathComponent("omarchy"))
+        try fm.createDirectory(atPath: own.shareDir, withIntermediateDirectories: true)
+        try Data([1]).write(to: URL(fileURLWithPath: own.appsDisk))
+        store.profiles = [own]
+        XCTAssertEqual(store.machineFiles(own, machinesRoot: root).map(\.lastPathComponent), ["omarchy"], "its whole folder")
+        // a machine whose share is inside that folder keeps the folder; only the disk goes
+        var other = ProfileStore.newProfile(named: "Debian", kind: .debian, folder: root.appendingPathComponent("debian"))
+        other.shareDir = own.shareDir
+        store.profiles = [own, other]
+        XCTAssertEqual(store.machineFiles(own, machinesRoot: root).map(\.lastPathComponent), ["omarchy.ext4"])
+        // a disk outside machines/ (a checkout's out/apps.img): the disk alone; nothing when another machine uses it
+        let elsewhere = Profile(name: "Dev", appsDisk: own.appsDisk, shareDir: "/tmp/somewhere")
+        store.profiles = [own, elsewhere]
+        XCTAssertEqual(store.machineFiles(elsewhere, machinesRoot: root.appendingPathComponent("x")), [], "the disk is another machine's too")
+        XCTAssertEqual(store.machineFiles(elsewhere, machinesRoot: root).count, 0)
+        try? fm.removeItem(atPath: own.appsDisk)
+        store.profiles = [own]
+        XCTAssertEqual(store.machineFiles(own, machinesRoot: root.appendingPathComponent("x")), [], "no disk, nothing")
+    }
+}
+
 final class AlpineServerTests: XCTestCase {
     func testAnAlpineMachineMapsOntoRunAlpineSh() {
         let p = ProfileStore.newProfile(named: "Alpine", kind: .alpine, folder: URL(fileURLWithPath: "/m/alpine"))

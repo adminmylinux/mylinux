@@ -190,15 +190,51 @@ struct ContentView: View {
         remote.remove(r.id)
     }
 
+    /// Remove: its disk and files to the Trash (what a new machine of the kind should not boot again), or kept for a
+    /// later machine; a running machine is shut down first.
     private func remove(_ p: Profile) {
+        let r = RunManager.shared.runner(for: p.id)
+        if r.isActive || r.state == .inUseElsewhere {
+            let alert = NSAlert()
+            alert.messageText = "Shut down “\(p.name)” first"
+            alert.informativeText = "A running machine cannot be removed: its disk is in use."
+            alert.runModal()
+            return
+        }
+        let files = store.machineFiles(p)
         let alert = NSAlert()
-        alert.messageText = "Remove “\(p.name)” from the list?"
-        alert.informativeText = "Its apps disk and share folder stay on disk:\n\(p.appsDisk)"
-        alert.addButton(withTitle: "Remove")
+        alert.messageText = "Remove “\(p.name)”?"
+        if files.isEmpty {
+            alert.informativeText = "There are no files of its own to remove."
+            alert.addButton(withTitle: "Remove")
+        } else {
+            let size = files.reduce(Int64(0)) { $0 + Self.allocatedSize($1) }
+            alert.informativeText = "Move its disk and files (\(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))) to the Trash, "
+                + "or keep them where they are?\n\n" + files.map { $0.path }.joined(separator: "\n")
+            let trash = alert.addButton(withTitle: "Move to Trash")
+            trash.hasDestructiveAction = true
+            alert.addButton(withTitle: "Keep Files")
+        }
         alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let answer = alert.runModal()
+        let trashFiles = !files.isEmpty && answer == .alertFirstButtonReturn
+        let keep = files.isEmpty ? answer == .alertFirstButtonReturn : answer == .alertSecondButtonReturn
+        guard trashFiles || keep else { return }
         if selection == p.id { selection = store.profiles.first { $0.id != p.id }?.id }
-        store.remove(p.id)
+        if let problem = store.remove(p.id, trashFiles: trashFiles) {
+            let a = NSAlert(); a.messageText = "Some files of “\(p.name)” are still there"; a.informativeText = problem; a.runModal()
+        }
+    }
+
+    /// Space a file or folder takes on disk (a sparse disk image counts what it holds, not its size).
+    static func allocatedSize(_ url: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .isDirectoryKey]
+        guard let v = try? url.resourceValues(forKeys: keys) else { return 0 }
+        if v.isDirectory != true { return Int64(v.totalFileAllocatedSize ?? 0) }
+        var total: Int64 = 0
+        let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: Array(keys))
+        while let f = e?.nextObject() as? URL { total += Int64((try? f.resourceValues(forKeys: keys))?.totalFileAllocatedSize ?? 0) }
+        return total
     }
 }
 
