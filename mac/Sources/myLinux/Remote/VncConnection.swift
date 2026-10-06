@@ -137,10 +137,19 @@ final class VncConnection {
             rfbClientCleanup(c); state = .failed("cannot connect to \(profile.host):\(profile.port)" + (to.routed ? " through Tailscale" : "")); return
         }
         c.pointee.listenSpecified = 1
+        // a server that takes the connection but never says hello (a stuck wayvnc) would keep "Connecting…" up for
+        // good: the handshake gets 10 s for each read, a connection that is up waits as long as it must
+        c.pointee.readTimeout = 10
+        let began = Date()
         if rfbInitClient(c, nil, nil) == 0 {                       // frees the client on failure
             if needTrust || pinUsed != nil { probeCertificate(); return }
+            if Date().timeIntervalSince(began) >= 9.5 {
+                state = .failed("\(profile.title) took the connection but its VNC server did not answer within 10 seconds. "
+                    + "It is likely stuck there (wayvnc on Omarchy): restart it on that machine, or sign out and in again."); return
+            }
             state = .failed(why("connection failed", or: "wrong password, or the server refused")); return
         }
+        c.pointee.readTimeout = 0
         state = .connected
         while !quit {
             let r = WaitForMessage(c, 5000)

@@ -823,6 +823,23 @@ final class RemoteSessionTests: XCTestCase {
         let entries = try RemoteImport.load(dir.appendingPathComponent("vnc/machines.json"))
         XCTAssertEqual(entries.map(\.password), ["secret", nil, nil])
     }
+    func testAVncServerThatNeverAnswersEndsInAMessage() throws {
+        // a server that takes the connection and says nothing (a stuck wayvnc): not "Connecting…" for ever
+        let fd = socket(AF_INET, SOCK_STREAM, 0); XCTAssertGreaterThanOrEqual(fd, 0); defer { close(fd) }
+        var addr = sockaddr_in(); addr.sin_family = sa_family_t(AF_INET); addr.sin_addr.s_addr = inet_addr("127.0.0.1"); addr.sin_port = 0
+        _ = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        Darwin.listen(fd, 4)
+        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        _ = withUnsafeMutablePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &len) } }
+        var p = RemoteProfile(kind: .vnc); p.name = "silent"; p.host = "127.0.0.1"; p.port = Int(UInt16(bigEndian: addr.sin_port))
+        let c = VncConnection(profile: p)
+        let failed = expectation(description: "failed")
+        var message = ""
+        c.onState = { st in if case .failed(let m) = st { message = m; failed.fulfill() } }
+        c.start()
+        wait(for: [failed], timeout: 20)
+        XCTAssertTrue(message.contains("did not answer within 10 seconds"), message)
+    }
     func testVncDesktopsSendEveryKeyByDefaultOnceMoved() throws {
         XCTAssertEqual(RemoteProfile(kind: .vnc).keyboard, .all)
         XCTAssertEqual(RemoteProfile(kind: .ssh).keyboard, .mac)
