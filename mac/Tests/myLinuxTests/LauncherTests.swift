@@ -825,6 +825,9 @@ final class RemoteSessionTests: XCTestCase {
     }
     func testAVncServerThatNeverAnswersEndsInAMessage() throws {
         // a server that takes the connection and says nothing (a stuck wayvnc): not "Connecting…" for ever
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vnclog-\(UUID().uuidString)")
+        VncLog.directory = dir
+        defer { try? FileManager.default.removeItem(at: dir) }
         let fd = socket(AF_INET, SOCK_STREAM, 0); XCTAssertGreaterThanOrEqual(fd, 0); defer { close(fd) }
         var addr = sockaddr_in(); addr.sin_family = sa_family_t(AF_INET); addr.sin_addr.s_addr = inet_addr("127.0.0.1"); addr.sin_port = 0
         _ = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }

@@ -213,9 +213,9 @@ enum VncLog {
 
     static func start() {
         lock.lock(); defer { lock.unlock() }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)      // each time: a test may have moved it
         guard !started else { return }
         started = true
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // one run's worth: an old log over 1 MB starts again
         if let size = try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int, size > 1 << 20 { try? FileManager.default.removeItem(at: file) }
         mylinux_vnc_capture_log()
