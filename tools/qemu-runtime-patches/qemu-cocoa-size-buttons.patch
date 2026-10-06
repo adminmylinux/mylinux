@@ -69,7 +69,7 @@
  
      /*
       * Check -[NSEvent modifierFlags] here.
-@@ -1125,6 +1164,30 @@
+@@ -1125,7 +1164,31 @@
              return true;
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
@@ -83,7 +83,7 @@
 +                dispatch_async(dispatch_get_main_queue(), ^{ [[self window] toggleFullScreen:nil]; });
 +                return true;
 +            }
-+
+ 
 +            // myLinux: Shift+Command+P is the launcher's Cloud Folders dialog for this machine and Shift+Command+A its
 +            // Apps… (myLinux Apps in a terminal inside), also with every key going to the guest (it gets the modifiers only)
 +            if (mylinux_restart_available() && ([event keyCode] == kVK_ANSI_P || [event keyCode] == kVK_ANSI_A) &&
@@ -97,9 +97,10 @@
 +                }
 +                return true;
 +            }
- 
++
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
+             if (![self isKeyboardCaptured] &&
 @@ -1147,9 +1210,12 @@
                              [self selectConsoleLocked:key - '0' - 1]; /* ascii math */
                              return true;
@@ -124,12 +125,10 @@
      return isMouseGrabbed ||
             (full_grab_enabled && [[self window] isKeyWindow]);
  }
-@@ -1403,6 +1472,25 @@
- @end
+@@ -1405,17 +1474,45 @@
  
  
-+
-+/*
+ /*
 + * myLinux: while the window follows the guest's mode, macOS may move it (the title bar stays on a screen) but not
 + * shrink it to fit a screen, as it never shrank the fixed window: the mode is sized for the display the window is
 + * placed on, which need not be the one it opens on, and a window smaller than the mode draws a text console wrongly.
@@ -147,10 +146,10 @@
 +    return NSMakeRect(c.origin.x, NSMaxY(c) - frameRect.size.height, frameRect.size.width, frameRect.size.height);
 +}
 +@end
- 
- /*
++
++/*
   ------------------------------------------------------
-@@ -1410,12 +1498,20 @@
+     QemuCocoaAppController
   ------------------------------------------------------
  */
  @interface QemuCocoaAppController : NSObject
@@ -166,13 +165,14 @@
 +- (void)sizeButtonSmaller:(id)sender;
 +- (void)showFullScreenPanel;
 +- (NSMenu *)sessionMenuForPanel:(BOOL)panel;
++- (void)addLauncherCommands:(NSMenu *)menu;
 +- (void)sessionSave:(id)sender;
 +- (void)sessionRestore:(id)sender;
 +- (void)sessionInterval:(id)sender;
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1423,6 +1519,9 @@
+@@ -1423,6 +1520,9 @@
  - (void)removePause;
  - (void)restartQEMU:(id)sender;
  - (void)powerDownQEMU:(id)sender;
@@ -182,7 +182,7 @@
  - (void)ejectDeviceMedia:(id)sender;
  - (void)changeDeviceMedia:(id)sender;
  - (BOOL)verifyQuit;
-@@ -1475,7 +1574,7 @@
+@@ -1475,7 +1575,7 @@
          }
  
          // create a window
@@ -191,7 +191,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1588,9 @@
+@@ -1489,8 +1589,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -202,7 +202,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1653,62 @@
+@@ -1553,28 +1654,62 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -266,7 +266,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1716,23 @@
+@@ -1582,6 +1717,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -290,7 +290,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1826,410 @@
+@@ -1675,12 +1827,473 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -380,17 +380,43 @@
 +    return mylinux_size_buttons() && !mylinux_user_sized && !([window styleMask] & NSWindowStyleMaskFullScreen);
 +}
 +static bool mylinux_session(void) { return mylinux_env("MYLINUX_SESSION_CMD") != NULL; }
++/*
++ * myLinux: MYLINUX_COMMANDS_MENU gives a desktop without Omarchy's session tool (Arch with Plasma) the ⌘ menu too:
++ * the launcher's commands it names, space separated (apps snippets cloud share; 1 for all), and no session part.
++ * Omarchy's (MYLINUX_SESSION_CMD) has them all and the session.
++ */
++static bool mylinux_commands_menu(void) { return mylinux_session() || mylinux_env("MYLINUX_COMMANDS_MENU") != NULL; }
++static bool mylinux_command_shown(const char *name)
++{
++    if (mylinux_session()) {
++        return true;
++    }
++    const char *list = mylinux_env("MYLINUX_COMMANDS_MENU");
++    if (!list) {
++        return false;
++    }
++    if (strcmp(list, "1") == 0) {
++        return true;
++    }
++    size_t n = strlen(name);
++    for (const char *p = strstr(list, name); p; p = strstr(p + n, name)) {
++        if ((p == list || p[-1] == ' ') && (p[n] == '\0' || p[n] == ' ')) {
++            return true;
++        }
++    }
++    return false;
++}
 +
 +- (void)installSizeButtons
 +{
-+    if (!mylinux_size_buttons() && !mylinux_session()) {
++    if (!mylinux_size_buttons() && !mylinux_commands_menu()) {
 +        return;
 +    }
 +    NSToolbar *toolbar = [[NSToolbar alloc] initWithIdentifier:@"mylinux-window"];
 +    [toolbar setDelegate:self];
 +    [toolbar setDisplayMode:NSToolbarDisplayModeIconOnly];
 +    [toolbar setAllowsUserCustomization:NO];
-+    if (mylinux_session()) {
++    if (mylinux_commands_menu()) {
 +        [toolbar setCenteredItemIdentifier:@"mylinux.session"];
 +    }
 +    [[cocoaView window] setToolbarStyle:NSWindowToolbarStyleUnifiedCompact];
@@ -400,7 +426,7 @@
 +- (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar
 +{
 +    NSMutableArray *ids = [NSMutableArray arrayWithObject:NSToolbarFlexibleSpaceItemIdentifier];
-+    if (mylinux_session()) {
++    if (mylinux_commands_menu()) {
 +        [ids addObject:@"mylinux.session"];
 +        [ids addObject:NSToolbarFlexibleSpaceItemIdentifier];
 +    }
@@ -424,7 +450,8 @@
 +        NSMenuToolbarItem *item = [[NSMenuToolbarItem alloc] initWithItemIdentifier:identifier];
 +        [item setImage:[NSImage imageWithSystemSymbolName:@"command" accessibilityDescription:@"Commands"]];
 +        [item setLabel:@"Commands"];
-+        [item setToolTip:@"Apps (⇧⌘A), Cloud Folders (⇧⌘P), and saving and restoring the Omarchy session"];
++        [item setToolTip:mylinux_session() ? @"Apps (⇧⌘A), Cloud Folders (⇧⌘P), and saving and restoring the Omarchy session"
++                                           : @"Snippets, Cloud Folders (⇧⌘P) and Mount a Share (⌘P opens this menu)"];
 +        [item setShowsIndicator:YES];
 +        [item setMenu:[self sessionMenuForPanel:NO]];
 +        return item;
@@ -473,6 +500,49 @@
 +    return [object isKindOfClass:[NSDictionary class]] ? object : nil;
 +}
 +
++/* what the launcher does for this machine, as far as this desktop has it (the keys themselves are caught before the
++   guest, see handleEvent) */
++- (void)addLauncherCommands:(NSMenu *)menu
++{
++    if (!mylinux_restart_available()) {
++        return;
++    }
++    NSMenuItem *item;
++    if (mylinux_command_shown("apps")) {
++        item = [menu addItemWithTitle:@"Apps…" action:@selector(mylinuxApps:) keyEquivalent:@"A"];
++        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
++        [item setTarget:self];
++    }
++    if (mylinux_command_shown("snippets")) {
++        item = [menu addItemWithTitle:@"Snippets…" action:@selector(mylinuxSnippets:) keyEquivalent:@""];
++        [item setTarget:self];
++    }
++    if (mylinux_command_shown("cloud")) {
++        item = [menu addItemWithTitle:@"Cloud Folders…" action:@selector(mylinuxCloudFolders:) keyEquivalent:@"P"];
++        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
++        [item setTarget:self];
++    }
++    if (mylinux_command_shown("share")) {
++        item = [menu addItemWithTitle:@"Mount a Share…" action:@selector(mylinuxMountShare:) keyEquivalent:@""];
++        [item setTarget:self];
++    }
++}
++
++/* myLinux: ⌘P (Machine › Commands), while ⌘ stays with the Mac: the ⌘ menu, opened under the middle of the title bar */
++- (void)mylinuxShowCommands:(id)sender
++{
++    NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Commands"] autorelease];
++    [menu setAutoenablesItems:NO];
++    [self addLauncherCommands:menu];
++    if ([menu numberOfItems] == 0) {
++        return;
++    }
++    NSView *content = [[cocoaView window] contentView];
++    NSRect b = [content bounds];
++    NSPoint at = NSMakePoint(NSMidX(b) - 70, [content isFlipped] ? NSMinY(b) : NSMaxY(b));
++    [menu popUpMenuPositioningItem:nil atLocation:at inView:content];
++}
++
 +- (void)menuNeedsUpdate:(NSMenu *)menu
 +{
 +    if (menu != session_menu && menu != session_panel_menu) {
@@ -484,21 +554,14 @@
 +    NSMenuItem *face = [[[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""] autorelease];
 +    [face setImage:[NSImage imageWithSystemSymbolName:@"command" accessibilityDescription:@"Commands"]];
 +    [menu addItem:face];
-+    NSMenuItem *item;
-+    /* what the launcher does for this machine (the keys themselves are caught before the guest, see handleEvent) */
++    [self addLauncherCommands:menu];
++    if (!mylinux_session()) {
++        return;
++    }
 +    if (mylinux_restart_available()) {
-+        item = [menu addItemWithTitle:@"Apps…" action:@selector(mylinuxApps:) keyEquivalent:@"A"];
-+        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
-+        [item setTarget:self];
-+        item = [menu addItemWithTitle:@"Snippets…" action:@selector(mylinuxSnippets:) keyEquivalent:@""];
-+        [item setTarget:self];
-+        item = [menu addItemWithTitle:@"Cloud Folders…" action:@selector(mylinuxCloudFolders:) keyEquivalent:@"P"];
-+        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
-+        [item setTarget:self];
-+        item = [menu addItemWithTitle:@"Mount a Share…" action:@selector(mylinuxMountShare:) keyEquivalent:@""];
-+        [item setTarget:self];
 +        [menu addItem:[NSMenuItem separatorItem]];
 +    }
++    NSMenuItem *item;
 +    item = [menu addItemWithTitle:@"Save Session Now" action:@selector(sessionSave:) keyEquivalent:@""];
 +    [item setTarget:self];
 +    item = [menu addItemWithTitle:@"Restore Session" action:@selector(sessionRestore:) keyEquivalent:@""];
@@ -566,7 +629,7 @@
 +
 +- (void)showFullScreenPanel
 +{
-+    if (!mylinux_size_buttons() && !mylinux_session()) {
++    if (!mylinux_size_buttons() && !mylinux_commands_menu()) {
 +        return;
 +    }
 +    if (!fullscreen_panel) {
@@ -578,7 +641,7 @@
 +        [grip setFrame:NSMakeRect(6, 8, 14, 22)];
 +        [grip setToolTip:@"Drag to move"];
 +        [views addObject:grip];
-+        if (mylinux_session()) {
++        if (mylinux_commands_menu()) {
 +            NSPopUpButton *session = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(x, 6, 48, 26) pullsDown:YES];
 +            [session setBezelStyle:NSBezelStyleToolbar];
 +            [session setMenu:[self sessionMenuForPanel:YES]];
@@ -701,7 +764,7 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1756,6 +2305,78 @@
+@@ -1756,6 +2369,78 @@
      });
  }
  
@@ -780,7 +843,7 @@
  /* Ejects the media.
   * Uses sender's tag to figure out the device to eject.
   */
-@@ -1935,7 +2556,21 @@
+@@ -1935,7 +2620,24 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
@@ -798,6 +861,9 @@
 +        [cloud setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
 +        [menu addItem:cloud];
 +        [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Mount a Share…" action: @selector(mylinuxMountShare:) keyEquivalent: @""] autorelease]];
++        if (mylinux_commands_menu()) {
++            [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Commands" action: @selector(mylinuxShowCommands:) keyEquivalent: @"p"] autorelease]];
++        }
 +    }
      menuItem = [[[NSMenuItem alloc] initWithTitle: @"Machine" action:nil keyEquivalent:@""] autorelease];
      [menuItem setSubmenu:menu];

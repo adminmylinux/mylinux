@@ -62,6 +62,38 @@
    "text": "curl -fsSL https://mylinux.app/install/claude | sh"
   },
   {
+   "id": "codex-install",
+   "name": "Install Codex",
+   "os": [
+    "omarchy",
+    "debian",
+    "alpine",
+    "arch"
+   ],
+   "description": "OpenAI's coding agent in the terminal, with OpenAI's own installer; then codex signs you in",
+   "text": "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh"
+  },
+  {
+   "id": "claude-desktop-arch",
+   "name": "Claude Desktop app",
+   "os": [
+    "arch",
+    "omarchy"
+   ],
+   "description": "Anthropic's desktop app (Chat, Cowork and Claude Code in a window), built from the AUR's claude-desktop; again updates it",
+   "text": "(\nset -e\nsudo pacman -S --needed --noconfirm base-devel curl\nd=$(mktemp -d); cd \"$d\"\ncurl -fsSL https://aur.archlinux.org/cgit/aur.git/snapshot/claude-desktop.tar.gz | tar xz\ncd claude-desktop && makepkg -s --noconfirm\nsudo pacman -U --needed --noconfirm claude-desktop-*.pkg.tar.*\ncd / && rm -rf \"$d\"\nf=\"${XDG_CONFIG_HOME:-$HOME/.config}/claude-desktop-flags.conf\"; mkdir -p \"${f%/*}\"; touch \"$f\"\nif [ -x /usr/bin/kwalletd6 ]; then grep -qx -- '--password-store=basic' \"$f\" || echo '--password-store=basic' >> \"$f\"; fi\necho \"Claude Desktop is installed: it is in the application launcher\"\n)"
+  },
+  {
+   "id": "codex-desktop-arch",
+   "name": "Codex desktop app",
+   "os": [
+    "arch",
+    "omarchy"
+   ],
+   "description": "OpenAI's ChatGPT and Codex desktop app for Linux, built from the AUR's chatgpt-desktop (OpenAI's own build); drawn without the GPU, which it cannot use in a machine; again updates it",
+   "text": "(\nset -e\nsudo pacman -S --needed --noconfirm base-devel curl\nd=$(mktemp -d); cd \"$d\"\ncurl -fsSL https://aur.archlinux.org/cgit/aur.git/snapshot/chatgpt-desktop.tar.gz | tar xz\ncd chatgpt-desktop && makepkg -s --noconfirm\nsudo pacman -U --needed --noconfirm chatgpt-desktop-*.pkg.tar.*\ncd / && rm -rf \"$d\"\nf=\"${XDG_CONFIG_HOME:-$HOME/.config}/chatgpt-flags.conf\"; mkdir -p \"${f%/*}\"; touch \"$f\"\ngrep -qx -- '--disable-gpu' \"$f\" || echo '--disable-gpu' >> \"$f\"\nif [ -x /usr/bin/kwalletd6 ]; then grep -qx -- '--password-store=basic' \"$f\" || echo '--password-store=basic' >> \"$f\"; fi\necho \"The ChatGPT and Codex app is installed: it is in the application launcher\"\n)"
+  },
+  {
    "id": "statusline",
    "name": "Claude Code status line",
    "os": [

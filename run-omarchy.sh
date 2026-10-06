@@ -153,6 +153,8 @@ if [ -n "$SHARE_DIR" ] && [ "$DESKTOP" = omarchy ]; then
   # the window runs the helper directly with these as its first argument (no shell: paths with spaces or quotes are fine)
   export MYLINUX_SESSION_CMD="$REPO/tools/omarchy-session-mac.sh" MYLINUX_SESSION_SHARE="$SHARE_DIR" MYLINUX_SESSION_STATUS="$SHARE_DIR/mylinux-tools/control/status.json"
 fi
+# Arch: the ⌘ menu in the middle of the title bar (⌘P opens it) with the launcher's commands it has, without Omarchy's session
+[ "$DESKTOP" = omarchy ] || export MYLINUX_COMMANDS_MENU="snippets cloud share"
 export MYLINUX_SIZE_BUTTONS=1     # the window's −10% / +10% / full screen buttons (Omarchy's desktop follows the window)
 # Hyprland's mode: the window starts fixed (the first-boot screen needs that) and becomes resizable once it is reached
 export MYLINUX_DESKTOP_MODE="${GX}x${GY}"
