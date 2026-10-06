@@ -604,9 +604,32 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     // ---- the myLinux menu: Snippets… ----
     @objc func openSnippets() {
-        if !profile.launcherMachine { SnippetsWindow.show(remote: profile, over: window); return }
+        if !profile.launcherMachine {
+            SnippetsWindow.show(remote: profile, over: window) { [weak self] text in await self?.pasteIntoRemote(text) ?? "The desktop's window is closed." }
+            return
+        }
         guard let machine = ProfileStore.shared.profiles.first(where: { $0.id == (profile.machineID ?? profile.id) }) else { return }
-        SnippetsWindow.show(machine, over: window)
+        SnippetsWindow.show(machine, over: window) { [weak self] text in
+            guard let self, let t = self.ssh else { return "The terminal is closed." }
+            t.type(text)                        // a paste: it waits at the prompt for Return
+            self.window?.makeKeyAndOrderFront(nil); self.window?.makeFirstResponder(t.keyView)
+            return nil
+        }
+    }
+
+    /// Snippets' Paste on a VNC desktop: the text to the remote's clipboard, then Ctrl+Shift+V (a terminal in front
+    /// inside pastes it), and this window in front.
+    private func pasteIntoRemote(_ text: String) async -> String? {
+        guard let c = vnc, c.width > 0 else { return "The desktop is not connected." }
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+        pasteboardCount = NSPasteboard.general.changeCount     // sent here, not again when the window comes forward
+        c.send(text: text)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        for (k, down) in [(KeyMap.controlL, true), (KeyMap.shiftL, true), (UInt32(0x76), true), (UInt32(0x76), false), (KeyMap.shiftL, false), (KeyMap.controlL, false)] {
+            c.send(key: k, down: down)
+        }
+        window?.makeKeyAndOrderFront(nil)
+        return nil
     }
 
     // ---- the myLinux menu: Mount a Share… ----

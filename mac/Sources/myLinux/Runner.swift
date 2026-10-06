@@ -40,6 +40,8 @@ final class Runner: ObservableObject {
 
     let profileID: UUID
     private var process: Process?
+    /// QEMU's process while this launcher runs the machine (its window is that app's)
+    var qemuPID: pid_t? { process.flatMap { $0.isRunning ? $0.processIdentifier : nil } }
     private var profile: Profile?
     private var serialFD: Int32 = -1
     private var logHandle: FileHandle?
@@ -457,7 +459,9 @@ final class Runner: ObservableObject {
     }
 
     /// One QMP command on QEMU's control socket: read the greeting, negotiate, send, and wait for the reply.
-    static func qmp(_ path: String, execute command: String) -> Bool {
+    static func qmp(_ path: String, execute command: String) -> Bool { qmp(path, json: "{\"execute\":\"\(command)\"}") }
+    /// One QMP command given as its JSON (one with arguments).
+    static func qmp(_ path: String, json: String) -> Bool {
         let fd = connectUnix(path)
         guard fd >= 0 else { return false }
         defer { close(fd) }
@@ -475,7 +479,7 @@ final class Runner: ObservableObject {
             return false
         }
         guard readLine() != nil, send("{\"execute\":\"qmp_capabilities\"}\n"), reply() else { return false }
-        return send("{\"execute\":\"\(command)\"}\n") && reply()
+        return send(json + "\n") && reply()
     }
 
     static func readLoop(fd: Int32, _ deliver: (String) -> Void) {

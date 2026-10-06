@@ -14,7 +14,7 @@ enum KeyMap {
         65: 0xffae, 67: 0xffaa, 69: 0xffab, 75: 0xffaf, 78: 0xffad, 81: 0xffbd,
     ]
     static let modifierKeysyms: [(NSEvent.ModifierFlags, UInt32)] = [(.shift, 0xffe1), (.control, 0xffe3), (.option, 0xffe9), (.command, 0xffeb)]
-    static let superL: UInt32 = 0xffeb, altL: UInt32 = 0xffe9
+    static let superL: UInt32 = 0xffeb, altL: UInt32 = 0xffe9, controlL: UInt32 = 0xffe3, shiftL: UInt32 = 0xffe1
 
     /// keysym for a key event; nil for keys the remote cannot use
     static func keysym(keyCode: UInt16, characters: String?, charactersIgnoringModifiers: String?, shift: Bool) -> UInt32? {

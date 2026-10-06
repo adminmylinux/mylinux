@@ -106,6 +106,9 @@ final class SnippetsModel: ObservableObject {
 struct SnippetsView: View {
     let machine: String
     @StateObject var model: SnippetsModel
+    /// Paste: the text into the machine (its terminal when one is in front), nil when done or what went wrong
+    var paste: ((String) async -> String?)? = nil
+    @State private var pasted: String?
     @State private var viewing: Snippet?
     @State private var editing: Snippet?
     @State private var copied: String?
@@ -115,7 +118,7 @@ struct SnippetsView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Snippets for \(machine)").font(.title3.weight(.semibold))
-                    Text("Copy one, then \(model.set.pasteHint).")
+                    Text(paste != nil ? "Paste puts one into the terminal in front in \(machine), waiting for Return; or Copy, then \(model.set.pasteHint)." : "Copy one, then \(model.set.pasteHint).")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -143,9 +146,13 @@ struct SnippetsView: View {
                         HStack(spacing: 8) {
                             Button { viewing = s } label: { Image(systemName: "eye") }.help("View")
                             Button { copy(s) } label: { Image(systemName: copied == s.id ? "checkmark" : "doc.on.doc") }.help("Copy")
+                            if paste != nil {
+                                Button { doPaste(s) } label: { Image(systemName: pasted == s.id ? "checkmark" : "text.insert") }
+                                    .help("Paste into \(machine): into its terminal when one is in front (Return runs it)")
+                            }
                         }
                         .buttonStyle(.borderless)
-                    }.width(56)
+                    }.width(paste == nil ? 56 : 84)
                 }
             }
             if !model.error.isEmpty { Text(model.error).font(.caption).foregroundStyle(.red) }
@@ -161,6 +168,17 @@ struct SnippetsView: View {
         }
         .sheet(item: $editing) { s in
             SnippetEditor(snippet: s, system: machine, save: { model.save($0); editing = nil }, cancel: { editing = nil })
+        }
+    }
+
+    private func doPaste(_ s: Snippet) {
+        guard let paste else { return }
+        // without the last newline: the command waits at the prompt for Return
+        var text = s.text; while text.hasSuffix("\n") { text.removeLast() }
+        Task {
+            if let problem = await paste(text) { model.error = problem; return }
+            model.error = ""; pasted = s.id
+            try? await Task.sleep(nanoseconds: 1_500_000_000); if pasted == s.id { pasted = nil }
         }
     }
 
@@ -241,18 +259,38 @@ private struct SnippetEditor: View {
 enum SnippetsWindow {
     private static var open: [UUID: NSWindow] = [:]
 
-    static func show(_ machine: Profile, over parent: NSWindow? = nil) {
-        show(id: machine.id, name: machine.name, set: .machine(machine.kind), over: parent, machine: machine)
+    /// `paste` types a snippet into the machine; without one, a desktop's (Omarchy's window, run by the launcher) is
+    /// pasted through QEMU: the clipboard, then Ctrl+Shift+V.
+    static func show(_ machine: Profile, over parent: NSWindow? = nil, paste: ((String) async -> String?)? = nil) {
+        show(id: machine.id, name: machine.name, set: .machine(machine.kind), over: parent, machine: machine,
+             paste: paste ?? (machine.kind == .omarchy && !MachineApp.active ? { await pasteIntoDesktop($0, machine) } : nil))
     }
     /// A VNC desktop's snippets (its CMD menu), over its window.
-    static func show(remote: RemoteProfile, over parent: NSWindow?) {
-        show(id: remote.id, name: remote.title, set: .vnc, over: parent, machine: nil)
+    static func show(remote: RemoteProfile, over parent: NSWindow?, paste: ((String) async -> String?)?) {
+        show(id: remote.id, name: remote.title, set: .vnc, over: parent, machine: nil, paste: paste)
     }
 
-    private static func show(id: UUID, name: String, set: SnippetSet, over parent: NSWindow?, machine: Profile?) {
+    /// Omarchy's window: the text on the clipboard (QEMU hands it to Omarchy), then Ctrl+Shift+V into the window in
+    /// front inside (a terminal pastes it), and Omarchy's window in front.
+    static func pasteIntoDesktop(_ text: String, _ machine: Profile) async -> String? {
+        let r = RunManager.shared.runner(for: machine.id)
+        guard r.isActive, FileManager.default.fileExists(atPath: r.qmpSocket) else { return "\(machine.name) is not running in this launcher." }
+        guard machine.clipboard else { return "Paste goes through the shared clipboard, which is off for \(machine.name) (its settings)." }
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
+        // QEMU looks at the Mac's clipboard as it redraws; give it a moment to offer the text inside
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        let path = r.qmpSocket
+        let keys = #"{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"ctrl"},{"type":"qcode","data":"shift"},{"type":"qcode","data":"v"}]}}"#
+        let ok = await Task.detached { Runner.qmp(path, json: keys) }.value
+        guard ok else { return "Could not reach \(machine.name)'s QEMU to paste; Copy, then Ctrl+Shift+V in its terminal." }
+        if let pid = r.qemuPID { NSRunningApplication(processIdentifier: pid)?.activate() }
+        return nil
+    }
+
+    private static func show(id: UUID, name: String, set: SnippetSet, over parent: NSWindow?, machine: Profile?, paste: ((String) async -> String?)?) {
         NSApp.activate()
         if let w = open[id] { w.makeKeyAndOrderFront(nil); return }
-        let hosting = NSHostingController(rootView: SnippetsView(machine: name, model: SnippetsModel(set)))
+        let hosting = NSHostingController(rootView: SnippetsView(machine: name, model: SnippetsModel(set), paste: paste))
         // the window's size is the user's (it resizes; the table fills it): sized by its content, a long line that
         // wraps kept SwiftUI and AppKit re-measuring it until AppKit gave up ("more Update Constraints passes than views")
         hosting.sizingOptions = []
