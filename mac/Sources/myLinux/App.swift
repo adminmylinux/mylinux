@@ -434,7 +434,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `myLinux --show-snippets <png>` (a scratch MYLINUX_SUPPORT_DIR): the Snippets window of a stand-in Omarchy
         if let i = args.firstIndex(of: "--show-snippets"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1]
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SnippetsWindow.show(ProfileStore.newProfile(named: "Omarchy", kind: .omarchy)) }
+            // MYLINUX_TEST_VNC=1: a VNC desktop's (its CMD menu's Snippets…, over its window)
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_VNC"] == "1" {
+                var p = RemoteProfile(kind: .vnc); p.name = "snippets test"; p.host = "127.0.0.1"; p.port = 59999
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    let c = RemoteWindowController.show(p)
+                    // the title as it changes when the keyboard goes back and forth (beside the centred CMD menu)
+                    for (n, t) in ["snippets test  —  ⌥⌘G releases the keyboard", "snippets test  —  ⌥⌘G or a click grabs the keyboard", "snippets test"].enumerated() {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 * Double(n + 1)) { c.window?.title = t }
+                    }
+                    if ProcessInfo.processInfo.environment["MYLINUX_TEST_NOSNIP"] == nil { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { c.perform(Selector(("openSnippets"))) } }
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SnippetsWindow.show(ProfileStore.newProfile(named: "Omarchy", kind: .omarchy)) }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
                 if let w = NSApp.windows.first(where: { $0.isVisible && $0.title.hasSuffix("Snippets") }) {
                     let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(w.windowNumber), path]

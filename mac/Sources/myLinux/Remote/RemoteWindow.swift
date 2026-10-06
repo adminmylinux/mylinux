@@ -343,10 +343,11 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         let item = NSToolbarItem(itemIdentifier: id); item.target = self
         switch kind {
         case .mylinux:
-            // a pull-down with the product name as its face; the first item is what the menu is for
-            let pop = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 80, height: 24), pullsDown: true)
+            // a pull-down with ⌘ as its face (as Omarchy's ⌘ menu); the first item is what the menu is for
+            let pop = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 52, height: 24), pullsDown: true)
             pop.bezelStyle = .texturedRounded
-            pop.addItem(withTitle: "CMD")
+            pop.addItem(withTitle: "")
+            pop.item(at: 0)?.image = NSImage(systemSymbolName: "command", accessibilityDescription: "Commands")
             pop.toolTip = "Commands for this machine (⌘P)"
             if !profile.launcherMachine {
                 // a VNC desktop: its own snippets (snippets-vnc.json)
@@ -397,7 +398,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         case .keyboard:
             let menu = NSMenu()
             for m in RemoteProfile.Keyboard.allCases { let mi = NSMenuItem(title: m.title, action: #selector(pickKeyboard(_:)), keyEquivalent: ""); mi.target = self; mi.representedObject = m.rawValue; menu.addItem(mi) }
-            let mi = NSMenuToolbarItem(itemIdentifier: id); mi.menu = menu; mi.label = "Keyboard"; mi.image = NSImage(systemSymbolName: "command", accessibilityDescription: nil)
+            let mi = NSMenuToolbarItem(itemIdentifier: id); mi.menu = menu; mi.label = "Keyboard"; mi.image = NSImage(systemSymbolName: "keyboard.badge.ellipsis", accessibilityDescription: nil)
             return mi
         }
         return item

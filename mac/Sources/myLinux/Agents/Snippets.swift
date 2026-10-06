@@ -253,12 +253,14 @@ enum SnippetsWindow {
         NSApp.activate()
         if let w = open[id] { w.makeKeyAndOrderFront(nil); return }
         let hosting = NSHostingController(rootView: SnippetsView(machine: name, model: SnippetsModel(set)))
-        hosting.sizingOptions = [.preferredContentSize]
+        // the window's size is the user's (it resizes; the table fills it): sized by its content, a long line that
+        // wraps kept SwiftUI and AppKit re-measuring it until AppKit gave up ("more Update Constraints passes than views")
+        hosting.sizingOptions = []
         let w = NSWindow(contentViewController: hosting)
         w.title = "\(name): Snippets"
         w.styleMask = [.titled, .closable, .resizable]
         w.isReleasedWhenClosed = false
-        w.setContentSize(NSSize(width: 720, height: 440))
+        w.setContentSize(NSSize(width: 760, height: 460)); w.contentMinSize = NSSize(width: 640, height: 380)
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in open[id] = nil }
         open[id] = w
         if let parent {
