@@ -51,7 +51,11 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         w.title = profile.title
         w.tabbingMode = .preferred; w.tabbingIdentifier = "myLinux Remote"
         w.collectionBehavior = [.fullScreenPrimary]
-        w.center(); w.setFrameAutosaveName("remote-\(profile.id.uuidString)")
+        // a remote desktop seen for the first time fills the screen (less the menu bar and Dock); after that the window
+        // comes back at the size it was left at
+        let firstTime = UserDefaults.standard.object(forKey: "NSWindow Frame remote-\(profile.id.uuidString)") == nil
+        if firstTime, profile.kind == .vnc, let screen = NSScreen.main { w.setFrame(screen.visibleFrame, display: false) } else { w.center() }
+        w.setFrameAutosaveName("remote-\(profile.id.uuidString)")
         super.init(window: w)
         w.delegate = self
         let root = NSView(frame: w.contentView!.bounds); root.autoresizingMask = [.width, .height]
@@ -310,10 +314,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     // ---- toolbar ----
-    private enum Item: String, CaseIterable { case fit, zoomOut, zoomIn, pixels, keyboard, grab, mylinux, flexibleSpace0 }
+    private enum Item: String, CaseIterable { case fill, fullScreen, fit, zoomOut, zoomIn, pixels, keyboard, grab, mylinux, flexibleSpace0 }
     func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(t) }
     func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] {
-        var items: [Item] = profile.kind == .vnc ? [.fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.keyboard]
+        var items: [Item] = profile.kind == .vnc ? [.fill, .fullScreen, .fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.fill, .fullScreen, .keyboard]
         // the launcher's own machines get the myLinux menu in the middle of the title bar
         if profile.launcherMachine { items = [.flexibleSpace0] + [.mylinux] + [.flexibleSpace0] + items }
         return items.map { $0 == .flexibleSpace0 ? .flexibleSpace : NSToolbarItem.Identifier($0.rawValue) } + [.flexibleSpace]
@@ -353,6 +357,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             item.view = pop; item.label = "CMD"; item.visibilityPriority = .high
             return item
         case .flexibleSpace0: return nil
+        case .fill: item.label = "Fill Screen"; item.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: "Fill Screen"); item.action = #selector(fillScreen)
+            item.toolTip = "The window as large as the screen (not full screen); again for the size before"
+        case .fullScreen: item.label = "Full Screen"; item.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Full Screen"); item.action = #selector(goFullScreen)
+            item.toolTip = "Full screen, in a space of its own (⌃⌘F)"
         case .fit: item.label = "Fit"; item.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: "Fit"); item.action = #selector(fit)
         case .zoomOut: item.label = "Zoom out"; item.image = NSImage(systemSymbolName: "minus.magnifyingglass", accessibilityDescription: nil); item.action = #selector(zoomOut)
         case .zoomIn: item.label = "Zoom in"; item.image = NSImage(systemSymbolName: "plus.magnifyingglass", accessibilityDescription: nil); item.action = #selector(zoomIn)
@@ -367,6 +375,21 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         return item
     }
     @objc private func fit() { vncView?.zoom = 1 }
+    /// the size before Fill Screen, for its second click
+    private var beforeFill: NSRect?
+    @objc private func fillScreen() {
+        guard let w = window, let screen = w.screen ?? NSScreen.main else { return }
+        if w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil); return }
+        let vis = screen.visibleFrame
+        if let before = beforeFill, abs(w.frame.width - vis.width) < 2, abs(w.frame.height - vis.height) < 2 {
+            w.setFrame(before, display: true, animate: true); beforeFill = nil
+        } else {
+            beforeFill = w.frame
+            w.setFrame(vis, display: true, animate: true)
+        }
+        vncView?.zoom = 1            // the picture fitted to the new size
+    }
+    @objc private func goFullScreen() { window?.toggleFullScreen(nil) }
     @objc private func zoomOut() { vncView?.zoomStep(-1) }
     @objc private func zoomIn() { vncView?.zoomStep(1) }
     @objc private func pixels() { vncView?.zoomToPixels() }

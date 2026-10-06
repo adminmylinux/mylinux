@@ -403,6 +403,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --test-fill <png>` (a scratch MYLINUX_SUPPORT_DIR): a new VNC desktop's window opens filling the screen;
+        // Fill Screen goes back to the size before, and fills again
+        if let i = args.firstIndex(of: "--test-fill"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1]
+            var p = RemoteProfile(kind: .vnc); p.name = "fill test"; p.host = "127.0.0.1"; p.port = 59999
+            UserDefaults.standard.removeObject(forKey: "NSWindow Frame remote-\(p.id.uuidString)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let c = RemoteWindowController.show(p)
+                let vis = (c.window?.screen ?? NSScreen.main)!.visibleFrame
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    print("visible: \(NSStringFromRect(vis))"); print("opened: \(NSStringFromRect(c.window!.frame))")
+                    c.window?.setFrame(NSRect(x: vis.minX + 100, y: vis.minY + 100, width: 900, height: 600), display: true)
+                    c.perform(Selector(("fillScreen")))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        print("filled: \(NSStringFromRect(c.window!.frame))")
+                        let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(c.window!.windowNumber), path]
+                        try? cap.run(); cap.waitUntilExit()
+                        c.perform(Selector(("fillScreen")))
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            print("back: \(NSStringFromRect(c.window!.frame))"); fflush(stdout)
+                            UserDefaults.standard.removeObject(forKey: "NSWindow Frame remote-\(p.id.uuidString)")
+                            exit(0)
+                        }
+                    }
+                }
+            }
+            return
+        }
         // `myLinux --show-snippets <png>` (a scratch MYLINUX_SUPPORT_DIR): the Snippets window of a stand-in Omarchy
         if let i = args.firstIndex(of: "--show-snippets"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1]
