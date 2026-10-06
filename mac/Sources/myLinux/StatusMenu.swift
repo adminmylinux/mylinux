@@ -71,7 +71,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     @objc private func quickConnect() { QuickConnect.shared.show() }
 
     /// Brings the machines window forward, reopening it when it was closed (as a click on the Dock icon would).
-    @objc private func showMachines() {
+    @objc private func showMachines() { StatusMenu.showMachines() }
+    /// The launcher's Machines window in front (from a machine's own app: the launcher, brought forward).
+    static func showMachines() {
+        if MachineApp.active {
+            NSRunningApplication.runningApplications(withBundleIdentifier: MachineApp.launcherBundleID).first?.activate()
+            return
+        }
         NSApp.activate(ignoringOtherApps: true)
         if let w = NSApp.windows.first(where: { $0.title == "myLinux Machines" && $0.canBecomeKey }) { w.makeKeyAndOrderFront(nil); return }
         _ = NSApp.delegate?.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)

@@ -321,10 +321,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     // ---- toolbar ----
-    private enum Item: String, CaseIterable { case fill, fullScreen, fit, zoomOut, zoomIn, pixels, keyboard, grab, mylinux, flexibleSpace0 }
+    private enum Item: String, CaseIterable { case launcher, fill, fullScreen, fit, zoomOut, zoomIn, pixels, keyboard, grab, mylinux, flexibleSpace0 }
     func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(t) }
     func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] {
-        var items: [Item] = profile.kind == .vnc ? [.fill, .fullScreen, .fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.fill, .fullScreen, .keyboard]
+        var items: [Item] = profile.kind == .vnc ? [.launcher, .fill, .fullScreen, .fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.fill, .fullScreen, .keyboard]
         // the launcher's own machines get the myLinux menu in the middle of the title bar
         if profile.launcherMachine { items = [.flexibleSpace0] + [.mylinux] + [.flexibleSpace0] + items }
         return items.map { $0 == .flexibleSpace0 ? .flexibleSpace : NSToolbarItem.Identifier($0.rawValue) } + [.flexibleSpace]
@@ -364,6 +364,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             item.view = pop; item.label = "CMD"; item.visibilityPriority = .high
             return item
         case .flexibleSpace0: return nil
+        case .launcher: item.label = "Launcher"; item.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Launcher"); item.action = #selector(showLauncher)
+            item.toolTip = "The myLinux launcher in front (a desktop filling the screen hides it)"
         case .fill: item.label = "Fill Screen"; item.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: "Fill Screen"); item.action = #selector(fillScreen)
             item.toolTip = "The window as large as the screen (not full screen); again for the size before"
         case .fullScreen: item.label = "Full Screen"; item.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Full Screen"); item.action = #selector(goFullScreen)
@@ -396,6 +398,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
         vncView?.zoom = 1            // the picture fitted to the new size
     }
+    @objc private func showLauncher() { StatusMenu.showMachines() }
     @objc private func goFullScreen() { window?.toggleFullScreen(nil) }
     @objc private func zoomOut() { vncView?.zoomStep(-1) }
     @objc private func zoomIn() { vncView?.zoomStep(1) }
