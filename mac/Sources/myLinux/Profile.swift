@@ -8,12 +8,15 @@ struct Profile: Codable, Identifiable, Hashable {
     /// disk (its kernel and initramfs sit in boot/ beside it) and `appsSizeGB` the size that disk is created with.
     /// Debian and Alpine are servers (run-debian.sh, run-alpine.sh, both run-server.sh): terminal-only machines from
     /// the distribution's cloud image, `appsDisk` their root disk, no window; the launcher reaches them through the
-    /// serial console and an SSH terminal on `sshPort`.
+    /// serial console and an SSH terminal on `sshPort`. Arch is a desktop like Omarchy (run-omarchy.sh with
+    /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh.
     enum Kind: String, Codable {
-        case mylinux, omarchy, debian, alpine
+        case mylinux, omarchy, debian, alpine, arch
         var isServer: Bool { self == .debian || self == .alpine }
+        /// A desktop on the QEMU runtime started by run-omarchy.sh: Omarchy, or Arch with Plasma.
+        var runsDesktop: Bool { self == .omarchy || self == .arch }
         var title: String {
-            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine" }
+            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux" }
         }
         /// A server's account inside: "debian" (bash, sudo) or Alpine's own "alpine" (ash until the install script, doas).
         var serverUser: String { rawValue }
@@ -77,7 +80,7 @@ struct Profile: Codable, Identifiable, Hashable {
         let tier = macGB < 12 ? 0 : macGB < 24 ? 1 : 2       // 8 GB · 16 GB · 24 GB and more
         switch kind {
         case .mylinux: return [3, 4, 6][tier]
-        case .omarchy: return [4, 6, 8][tier]
+        case .omarchy, .arch: return [4, 6, 8][tier]
         case .debian: return [2, 2, 4][tier]
         case .alpine: return [2, 2, 4][tier]      // idles in 60 MB; Claude Code and Codex's server need the room
         }
@@ -98,7 +101,7 @@ struct Profile: Codable, Identifiable, Hashable {
         return name == "myLinux" ? "myLinux" : "myLinux (\(name))"
     }
     /// The script that starts this kind of machine, relative to the scripts folder.
-    var script: String { kind == .omarchy ? "run-omarchy.sh" : kind.isServer ? "run-\(kind.rawValue).sh" : "run.sh" }
+    var script: String { kind.runsDesktop ? "run-omarchy.sh" : kind.isServer ? "run-\(kind.rawValue).sh" : "run.sh" }
     /// A server's folder (its disk, SSH key, console password and seed live there).
     var machineFolder: URL { URL(fileURLWithPath: appsDisk).deletingLastPathComponent() }
     /// The SSH terminal to a server: keyed by the machine's id, so a second request brings the same window
@@ -131,7 +134,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if cpus < 0 || cpus > ProcessInfo.processInfo.processorCount { p.append("This Mac has \(ProcessInfo.processInfo.processorCount) processor cores.") }
             return p
         }
-        if kind == .omarchy {
+        if kind.runsDesktop {
             if appsDisk.isEmpty { p.append("Choose where the machine's disk lives.") }
             if !(8...2000).contains(appsSizeGB) { p.append("Disk size must be 8–2000 GB.") }
             if shareDir.contains(",") { p.append("The share folder's path must not contain a comma.") }
@@ -164,7 +167,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             return env
         }
-        if kind == .omarchy {
+        if kind.runsDesktop {
             var env: [String: String] = [
                 "MYLINUX_OUT": outDir.path,
                 "DISK": appsDisk,
@@ -181,6 +184,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
+            if kind == .arch { env["DESKTOP"] = "arch" }
             let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             env.merge(appBundleEnvironment) { $1 }
@@ -209,7 +213,7 @@ struct Profile: Codable, Identifiable, Hashable {
     /// machine is an app of its own in the Dock and ⌘Tab. The icon path is relative to the scripts folder.
     var appBundleEnvironment: [String: String] {
         var env = ["APP_ID": id.uuidString.lowercased(), "APP_NAME": name]
-        if kind == .omarchy { env["APP_ICON"] = "tools/icons/machine-omarchy.icns" }
+        if kind.runsDesktop { env["APP_ICON"] = "tools/icons/machine-\(kind.rawValue).icns" }
         return env
     }
 }
@@ -255,12 +259,14 @@ final class ProfileStore: ObservableObject {
             p.kind = kind; p.memoryGB = Profile.recommendedMemoryGB(kind); p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
             return p
         }
-        if kind == .omarchy {
-            // the share's own name is what Omarchy shows in the home folder (~/Mac)
-            var p = Profile(name: name, appsDisk: dir.appendingPathComponent("omarchy.ext4").path,
+        if kind.runsDesktop {
+            // the share's own name is what Omarchy shows in the home folder (~/Mac); Arch mounts it at ~/Mac too
+            var p = Profile(name: name, appsDisk: dir.appendingPathComponent("\(kind.rawValue).ext4").path,
                             shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
-            p.kind = .omarchy; p.memoryGB = Profile.recommendedMemoryGB(.omarchy); p.appsSizeGB = 32
-            p.grab = "full"      // every key to Omarchy, Command as Super: Omarchy's shortcuts as they are meant
+            p.kind = kind; p.memoryGB = Profile.recommendedMemoryGB(kind); p.appsSizeGB = 32
+            // Omarchy: every key to it, Command as Super, its shortcuts as they are meant. Plasma is a Ctrl desktop:
+            // ⌘ stays with the Mac, Option is its Meta key
+            p.grab = kind == .omarchy ? "full" : "opt"
             return p
         }
         var p = Profile(name: name, appsDisk: dir.appendingPathComponent("apps.img").path,

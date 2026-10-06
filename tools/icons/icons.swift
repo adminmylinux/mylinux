@@ -215,6 +215,15 @@ render("machine-alpine", to: out) { ctx in
     }
 }
 
+render("machine-arch", to: out) { ctx in
+    // Arch's blue, with a plain peak (not Arch Linux's own logo, a trademark)
+    body(ctx, gradient: [0x2AA3DE, 0x1793D1, 0x0E5F8A], glow: 0xA8E1FF)
+    let cfg = NSImage.SymbolConfiguration(pointSize: 400, weight: .bold)
+    if let i = NSImage(systemSymbolName: "triangle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
+        mark(ctx, i, size: 520, tint: .white)
+    }
+}
+
 // ---- the machines' apps as the Dock and ⌘Tab show them: each with myLinux's own icon in the bottom-right corner,
 // so they read as myLinux machines and not apps of their own (machine-<kind>-app.png → machine-<kind>.icns) ----
 func badged(_ name: String) {
@@ -237,4 +246,4 @@ func badged(_ name: String) {
         ctx.restoreGState()
     }
 }
-for kind in ["omarchy", "debian", "alpine"] { badged("machine-" + kind) }
+for kind in ["omarchy", "debian", "alpine", "arch"] { badged("machine-" + kind) }

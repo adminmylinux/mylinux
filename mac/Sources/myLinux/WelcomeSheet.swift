@@ -8,7 +8,8 @@ struct WelcomeSheet: View {
     static let showNotification = Notification.Name("mylinux.showWelcome")
     @EnvironmentObject var settings: AppSettings
     @ObservedObject var images: ImageManager
-    @ObservedObject var omarchy: OmarchyManager
+    @ObservedObject var omarchy: DesktopImageManager
+    @ObservedObject var arch: DesktopImageManager
     @ObservedObject var debian: ServerImageManager
     @ObservedObject var alpine: ServerImageManager
     @ObservedObject var runtime: RuntimeManager
@@ -33,6 +34,8 @@ struct WelcomeSheet: View {
               text: "A small Linux desktop with a Mac feel that starts in seconds and runs from memory, so every start is clean. Your home folder, browsers and coding agents live on their own disk."),
         Offer(kind: .omarchy, name: "Omarchy", size: "1.4 GB", bytes: 1.4e9,
               text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. Your Command key works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
+        Offer(kind: .arch, name: "Arch Linux", size: "2 GB", bytes: 2.0e9,
+              text: "Arch Linux with the KDE Plasma desktop: a taskbar, a start menu, Dolphin, Konsole and Firefox. The window resizes the desktop, the clipboard is shared with the Mac, and pacman keeps it current."),
         Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
               text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
         Offer(kind: .alpine, name: "Alpine Server", size: "100 MB", bytes: 100e6,
@@ -139,6 +142,8 @@ struct WelcomeSheet: View {
                 } else { tile(.red, "terminal") }
             case .alpine:
                 tile(Color(red: 0.05, green: 0.35, blue: 0.50), "mountain.2")
+            case .arch:
+                tile(Color(red: 0.09, green: 0.58, blue: 0.82), "triangle.fill")
             }
         }
         .frame(width: 52, height: 52)
@@ -203,14 +208,14 @@ struct WelcomeSheet: View {
 
     // ---- state ----------------------------------------------------------------------------------------------------
     private func manager(_ kind: Profile.Kind) -> ScriptDownloader {
-        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine }
+        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch }
     }
     private func present(_ kind: Profile.Kind) -> Bool {
-        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present }
+        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present }
     }
     /// Ticked and not downloaded yet.
     private var pending: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && !present($0) } }
-    private var anyBusy: Bool { images.busy || omarchy.busy || debian.busy || alpine.busy || runtime.busy }
+    private var anyBusy: Bool { images.busy || omarchy.busy || arch.busy || debian.busy || alpine.busy || runtime.busy }
     private var readyKinds: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && present($0) } }
     private var summary: String {
         if started && anyBusy { return "Downloading…" }
@@ -225,10 +230,10 @@ struct WelcomeSheet: View {
         for kind in pending {
             switch kind {
             case .mylinux: images.download(settings)
-            case .omarchy:
-                // Omarchy runs only on the accelerated runtime; a release carries it, a local build fetches it
+            case .omarchy, .arch:
+                // the desktops run only on the accelerated runtime; a release carries it, a local build fetches it
                 if !runtime.present && !runtime.busy && RuntimeManager.bundledTarball == nil { runtime.download(settings) }
-                omarchy.download(settings)
+                (kind == .arch ? arch : omarchy).download(settings)
             case .debian: debian.download(settings)
             case .alpine: alpine.download(settings)
             }

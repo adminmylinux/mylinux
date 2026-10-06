@@ -4,6 +4,8 @@
 # A machine is a folder: its root disk (a raw ext4 image unpacked from the downloaded factory disk on first start,
 # grown to DISK_SIZE_GB; the guest enlarges its filesystem on boot) and boot/, the kernel and initramfs that disk
 # was created with (they must match the modules on the disk, so a newer download never replaces them).
+# DESKTOP=arch boots the Arch Linux (KDE Plasma) image instead (tools/build-arch-image.sh, tools/get-arch.sh), laid out
+# the same way: out/arch, its own disk, no Omarchy session agent; the Mac share is mounted by its fstab (tag mac).
 # Environment: RES=WxH window size in points (default: fits the display the window opens on, the frontmost app's; a
 #              Retina display gives the guest twice that in pixels, SCALE=1|2 overrides), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
 #              NAME=window title, MEM=8G, CPUS=6, SHARE_DIR=folder shown inside Omarchy as ~/<its name> (optional),
@@ -35,9 +37,15 @@ grow_file() {
 }
 OUT="${MYLINUX_OUT:+$(abs "$MYLINUX_OUT")}"; OUT="${OUT:-$REPO/out}"
 export MYLINUX_OUT="$OUT"
-G="$OUT/omarchy"
+DESKTOP="${DESKTOP:-omarchy}"
+case "$DESKTOP" in
+  omarchy) TITLE_NAME=Omarchy; REVFILE=OMARCHY-REVISION; GET=tools/get-omarchy.sh ;;
+  arch)    TITLE_NAME="Arch Linux"; REVFILE=ARCH-REVISION; GET=tools/get-arch.sh ;;
+  *) die "DESKTOP must be omarchy or arch" ;;
+esac
+G="$OUT/$DESKTOP"
 
-[ "$(MYLINUX_QEMU=auto sh tools/qemu-flavour.sh "$OUT")" = runtime ] || die "Omarchy needs the accelerated QEMU runtime: run tools/get-qemu-runtime.sh"
+[ "$(MYLINUX_QEMU=auto sh tools/qemu-flavour.sh "$OUT")" = runtime ] || die "$TITLE_NAME needs the accelerated QEMU runtime: run tools/get-qemu-runtime.sh"
 export MYLINUX_QEMU=runtime
 # ---- window size and guest resolution -----------------------------------------------------------------------
 # RES is the window's size in points (default: the display where the window will open, minus margins: Cocoa puts a
@@ -90,13 +98,13 @@ fi
 GX=$(( XRES * SCALE )); GY=$(( YRES * SCALE ))
 [ "$GX" -le 8192 ] && [ "$GY" -le 8192 ] || die "RES $RES is too large for a Retina display (the guest would need ${GX}x${GY})"
 
-NAME="${NAME:-Omarchy}"
+NAME="${NAME:-$TITLE_NAME}"
 MEM="${MEM:-8G}"
 NCPU=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 CPUS="${CPUS:-$(( NCPU > 8 ? 6 : (NCPU > 4 ? 4 : 2) ))}"
 case "$CPUS" in ''|*[!0-9]*) die "CPUS must be a number" ;; esac
 [ "$CPUS" -ge 1 ] && [ "$CPUS" -le "$NCPU" ] || die "CPUS out of range: $CPUS (this Mac has $NCPU)"
-DISK=$(abs "${DISK:-$OUT/omarchy-machine/omarchy.ext4}")
+DISK=$(abs "${DISK:-$OUT/$DESKTOP-machine/$DESKTOP.ext4}")
 MACHINE=$(dirname "$DISK")
 DISK_SIZE_GB="${DISK_SIZE_GB:-32}"
 case "$DISK_SIZE_GB" in ''|*[!0-9]*) die "DISK_SIZE_GB must be a whole number of GB" ;; esac
@@ -114,8 +122,14 @@ NETDEV="user,id=n0"
 for fw in $(printf '%s' "${FORWARD:-}" | tr ',' ' '); do
   case "$fw" in [0-9]*:[0-9]*) NETDEV="$NETDEV,hostfwd=tcp:127.0.0.1:${fw%%:*}-:${fw##*:}" ;; *) die "FORWARD entries look like hostport:guestport (got '$fw')" ;; esac
 done
-APPEND="root=/dev/vda rw rootwait console=tty0 console=hvc0 loglevel=4 systemd.show_status=false rd.systemd.show_status=false mitigations=off nowatchdog omarchy.qemu_virgl=1"
-[ "${SSH:-0}" = 1 ] && APPEND="$APPEND tryomarchy.ssh_access=1"
+APPEND="root=/dev/vda rw rootwait console=tty0 console=hvc0 loglevel=4 systemd.show_status=false rd.systemd.show_status=false mitigations=off nowatchdog"
+if [ "$DESKTOP" = omarchy ]; then
+  APPEND="$APPEND omarchy.qemu_virgl=1"
+  [ "${SSH:-0}" = 1 ] && APPEND="$APPEND tryomarchy.ssh_access=1"
+else
+  # Plasma's scale: the guest has SCALE pixels per point of the window (arch/mylinux-scale sets it at sign-in)
+  APPEND="$APPEND quiet mylinux.scale=$SCALE"
+fi
 
 # ---- the shared folder: shown in Omarchy as ~/<its name>; the runtime's 9p reports the Mac user's files as uid 1000
 SHARE_DIR="${SHARE_DIR:+$(abs "$SHARE_DIR")}"
@@ -129,7 +143,9 @@ if [ -n "$SHARE_DIR" ]; then
     /|/Users|/private|/tmp|/private/tmp|/System|/Library|/Applications|/Volumes|"$HOME"|"$HOME/Library"|"$HOME/Library"/*) die "refusing to share $SHARE_DIR (a system folder, the home folder or the Library)" ;;
   esac
   SHARE_NAME=$(printf '%s' "$(basename "$SHARE_DIR")" | base64 | tr '+/' '-_' | tr -d '=\n')
-  APPEND="$APPEND omarchy.shared_folder_name=$SHARE_NAME"
+  [ "$DESKTOP" != omarchy ] || APPEND="$APPEND omarchy.shared_folder_name=$SHARE_NAME"
+fi
+if [ -n "$SHARE_DIR" ] && [ "$DESKTOP" = omarchy ]; then
   # tools for inside Omarchy travel in the share, in a folder named so it cannot collide with what is shared:
   # session save/restore (sh ~/<share>/mylinux-tools/install-session.sh once)
   if [ "${DRYRUN:-0}" != 1 ]; then mkdir -p "$SHARE_DIR/mylinux-tools/control" && cp -f omarchy/session/* "$SHARE_DIR/mylinux-tools/" 2>/dev/null || true; fi
@@ -143,17 +159,19 @@ export MYLINUX_DESKTOP_MODE="${GX}x${GY}"
 
 # ---- first start of this machine: unpack the factory disk, grow it, keep the matching kernel beside it ----------
 if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then
-  [ -s "$G/rootfs.ext4.zst" ] && [ -s "$G/vmlinuz-linux" ] && [ -s "$G/initramfs-linux.img" ] || die "the Omarchy guest is not downloaded: run tools/get-omarchy.sh"
+  [ -s "$G/rootfs.ext4.zst" ] && [ -s "$G/vmlinuz-linux" ] && [ -s "$G/initramfs-linux.img" ] || die "the $TITLE_NAME guest is not downloaded: run $GET"
   [ ! -f "$DISK" ] || die "$DISK exists but $MACHINE/boot (its kernel and initramfs) is missing; restore it or move the disk away"
   mkdir -p "$MACHINE/boot"
-  echo "creating $DISK ($DISK_SIZE_GB GB, sparse) from Omarchy $(cat "$G/OMARCHY-REVISION" 2>/dev/null) ..."
+  echo "creating $DISK ($DISK_SIZE_GB GB, sparse) from $TITLE_NAME $(cat "$G/$REVFILE" 2>/dev/null) ..."
   "$OUT/qemu-runtime/bin/zstd" -d -q -f --sparse -o "$DISK.new" "$G/rootfs.ext4.zst" || { rm -f "$DISK.new"; die "could not unpack the root disk"; }
   grow_file "$DISK.new" "$DISK_SIZE_GB" || { rm -f "$DISK.new"; die "could not grow the root disk"; }
   # the session tool goes into the disk now (system-wide, enabled), so the Session menu works from the first login
-  tools/omarchy-bake-session.sh "$DISK.new" omarchy/session || echo "run-omarchy.sh: the session tool is not in the disk; inside Omarchy, sh ~/<share>/mylinux-tools/install-session.sh installs it" >&2
-  cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/OMARCHY-REVISION" "$MACHINE/boot/OMARCHY-REVISION" 2>/dev/null || true
+  if [ "$DESKTOP" = omarchy ]; then
+    tools/omarchy-bake-session.sh "$DISK.new" omarchy/session || echo "run-omarchy.sh: the session tool is not in the disk; inside Omarchy, sh ~/<share>/mylinux-tools/install-session.sh installs it" >&2
+  fi
+  cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/$REVFILE" "$MACHINE/boot/$REVFILE" 2>/dev/null || true
   mv "$DISK.new" "$DISK"
-elif [ "${DRYRUN:-0}" != 1 ]; then
+elif [ "${DRYRUN:-0}" != 1 ] && [ "$DESKTOP" = omarchy ]; then
   # a machine made earlier: its session tool brought up to date (Apps… needs the agent's "apps"), if it was shut down cleanly
   tools/omarchy-update-session.sh "$DISK" omarchy/session || true
 fi
@@ -168,7 +186,7 @@ QEMU="$OUT/myLinux-omarchy.app/Contents/MacOS/qemu-myLinux"
 set -- \
   -name "$NAME" -M virt,gic-version=3 -accel hvf -cpu host,pmu=off -smp "$CPUS" -m "$MEM" \
   -kernel "$MACHINE/boot/vmlinuz-linux" -initrd "$MACHINE/boot/initramfs-linux.img" -append "$APPEND" \
-  -drive "if=none,id=root,file=$DISK,format=raw,media=disk,cache=writeback" -device "virtio-blk-pci,drive=root,serial=omarchy-root,romfile=" \
+  -drive "if=none,id=root,file=$DISK,format=raw,media=disk,cache=writeback" -device "virtio-blk-pci,drive=root,serial=$DESKTOP-root,romfile=" \
   -device "virtio-gpu-gl-pci,max_outputs=1,xres=$GX,yres=$GY,romfile=" \
   -device virtio-keyboard-pci,romfile= -device virtio-tablet-pci,romfile= \
   -netdev "$NETDEV" -device virtio-net-pci,netdev=n0,romfile= \

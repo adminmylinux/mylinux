@@ -7,7 +7,8 @@
    "os": [
     "omarchy",
     "debian",
-    "alpine"
+    "alpine",
+    "arch"
    ],
    "description": "cc starts Claude Code, updated first, without permission prompts",
    "text": "(\nf=\"$HOME/.config/mylinux/my-aliases.sh\"; mkdir -p \"${f%/*}\"; touch \"$f\"\nsed -i '/^alias cc=/d' \"$f\"\necho \"alias cc='claude update && claude --dangerously-skip-permissions'\" >> \"$f\"\nfor rc in \"$HOME/.bashrc\" \"$HOME/.profile\"; do [ -f \"$rc\" ] && ! grep -qF .config/mylinux/my-aliases.sh \"$rc\" && echo '[ -f \"$HOME/.config/mylinux/my-aliases.sh\" ] && . \"$HOME/.config/mylinux/my-aliases.sh\"' >> \"$rc\"; done\necho \"cc is ready in new terminals (or now: . ~/.config/mylinux/my-aliases.sh)\"\n)"
@@ -18,7 +19,8 @@
    "os": [
     "omarchy",
     "debian",
-    "alpine"
+    "alpine",
+    "arch"
    ],
    "description": "An alias (ccwork, …) that starts Claude Code with that subscription's token; the status line shows its name",
    "text": "(\nprintf 'Alias for this subscription (one word, e.g. ccwork): '; read -r name </dev/tty\nprintf 'Its name in the status line (e.g. viktor_gmail): '; read -r account </dev/tty\nprintf 'Its Claude Code token, from claude setup-token (hidden): '; stty -echo </dev/tty; read -r token </dev/tty; stty echo </dev/tty; echo\ncase \"$name\" in ''|*[!A-Za-z0-9_-]*) echo \"The alias is one word: letters, digits, _ -\"; exit 1 ;; esac\ncase \"$token\" in ''|*[!A-Za-z0-9_-]*) echo \"That is not a token (sk-ant-oat01-...)\"; exit 1 ;; esac\naccount=$(printf %s \"$account\" | tr -cd 'A-Za-z0-9._@-')\nd=\"$HOME/.config/mylinux/claude-accounts\"; mkdir -p \"$d\"; chmod 700 \"$d\"\n( umask 077; printf \"# Claude Code as %s (the alias %s)\\nexport CLAUDE_CODE_OAUTH_TOKEN='%s'\\nexport MYLINUX_CLAUDE_ACCOUNT='%s'\\n\" \"$account\" \"$name\" \"$token\" \"$account\" > \"$d/$name.env\" )\nf=\"$HOME/.config/mylinux/my-aliases.sh\"; touch \"$f\"; sed -i \"/^alias $name=/d\" \"$f\"\nprintf \"alias %s='( . \\\"\\$HOME/.config/mylinux/claude-accounts/%s.env\\\" && unset ANTHROPIC_API_KEY && claude update && claude --dangerously-skip-permissions )'\\n\" \"$name\" \"$name\" >> \"$f\"\nfor rc in \"$HOME/.bashrc\" \"$HOME/.profile\"; do [ -f \"$rc\" ] && ! grep -qF .config/mylinux/my-aliases.sh \"$rc\" && echo '[ -f \"$HOME/.config/mylinux/my-aliases.sh\" ] && . \"$HOME/.config/mylinux/my-aliases.sh\"' >> \"$rc\"; done\necho \"$name starts Claude Code as $account, in new terminals (or now: . ~/.config/mylinux/my-aliases.sh); myLinux Apps lists it under Claude Code\"\n)"
@@ -29,7 +31,8 @@
    "os": [
     "omarchy",
     "debian",
-    "alpine"
+    "alpine",
+    "arch"
    ],
    "description": "cx starts Codex without approvals or sandbox",
    "text": "(\nf=\"$HOME/.config/mylinux/my-aliases.sh\"; mkdir -p \"${f%/*}\"; touch \"$f\"\nsed -i '/^alias cx=/d' \"$f\"\necho \"alias cx='codex --dangerously-bypass-approvals-and-sandbox'\" >> \"$f\"\nfor rc in \"$HOME/.bashrc\" \"$HOME/.profile\"; do [ -f \"$rc\" ] && ! grep -qF .config/mylinux/my-aliases.sh \"$rc\" && echo '[ -f \"$HOME/.config/mylinux/my-aliases.sh\" ] && . \"$HOME/.config/mylinux/my-aliases.sh\"' >> \"$rc\"; done\necho \"cx is ready in new terminals (or now: . ~/.config/mylinux/my-aliases.sh)\"\n)"
@@ -40,7 +43,8 @@
    "os": [
     "omarchy",
     "debian",
-    "alpine"
+    "alpine",
+    "arch"
    ],
    "description": "An alias (cxwork, …) that starts Codex signed in to its own ChatGPT account (a CODEX_HOME of its own)",
    "text": "(\nprintf 'Alias for this Codex account (one word, e.g. cxwork): '; read -r name </dev/tty\ncase \"$name\" in ''|*[!A-Za-z0-9_-]*) echo \"The alias is one word: letters, digits, _ -\"; exit 1 ;; esac\nhome=\"$HOME/.codex-$name\"; mkdir -p \"$home\"; chmod 700 \"$home\"\n[ -f \"$HOME/.codex/config.toml\" ] && [ ! -f \"$home/config.toml\" ] && cp \"$HOME/.codex/config.toml\" \"$home/\"\nf=\"$HOME/.config/mylinux/my-aliases.sh\"; mkdir -p \"${f%/*}\"; touch \"$f\"; sed -i \"/^alias $name=/d\" \"$f\"\nprintf \"alias %s='CODEX_HOME=\\\"\\$HOME/.codex-%s\\\" codex --dangerously-bypass-approvals-and-sandbox'\\n\" \"$name\" \"$name\" >> \"$f\"\nfor rc in \"$HOME/.bashrc\" \"$HOME/.profile\"; do [ -f \"$rc\" ] && ! grep -qF .config/mylinux/my-aliases.sh \"$rc\" && echo '[ -f \"$HOME/.config/mylinux/my-aliases.sh\" ] && . \"$HOME/.config/mylinux/my-aliases.sh\"' >> \"$rc\"; done\necho \"$name starts Codex with its own sign-in (~/.codex-$name): the first start asks you to sign in with that ChatGPT subscription\"\n)"
@@ -51,7 +55,8 @@
    "os": [
     "omarchy",
     "debian",
-    "alpine"
+    "alpine",
+    "arch"
    ],
    "description": "Claude Code with the key saved at mylinux.app, no login screens (asks for your myLinux API key)",
    "text": "curl -fsSL https://mylinux.app/install/claude | sh"
@@ -62,7 +67,8 @@
    "os": [
     "omarchy",
     "debian",
-    "alpine"
+    "alpine",
+    "arch"
    ],
    "description": "Folder, git branch, context, limits, cost and model under the prompt; no account needed",
    "text": "curl -fsSL https://mylinux.app/install/statusline | sh"
@@ -73,7 +79,8 @@
    "os": [
     "omarchy",
     "debian",
-    "alpine"
+    "alpine",
+    "arch"
    ],
    "description": "The Claude tab at mylinux.app into ~/.claude, and /mylinux for your prompts",
    "text": "curl -fsSL https://mylinux.app/install/skills | sh"
@@ -104,6 +111,15 @@
    ],
    "description": "All packages up to date",
    "text": "doas apk update && doas apk upgrade"
+  },
+  {
+   "id": "update-system-arch",
+   "name": "Update the system",
+   "os": [
+    "arch"
+   ],
+   "description": "Arch Linux's packages, the desktop and the kernel, brought up to date with pacman",
+   "text": "sudo pacman -Syu --noconfirm"
   }
  ]
 }

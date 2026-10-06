@@ -66,6 +66,7 @@ enum Snippets {
     static func pasteHint(_ kind: Profile.Kind) -> String {
         switch kind {
         case .omarchy: return "paste it into a terminal in Omarchy with Ctrl+Shift+V"
+        case .arch: return "paste it into Konsole with Ctrl+Shift+V"
         case .mylinux: return "paste it into a terminal in myLinux"
         case .debian, .alpine: return "paste it into the terminal with ⌘V"
         }
@@ -263,7 +264,7 @@ enum SnippetsWindow {
     /// pasted through QEMU: the clipboard, then Ctrl+Shift+V.
     static func show(_ machine: Profile, over parent: NSWindow? = nil, paste: ((String) async -> String?)? = nil) {
         show(id: machine.id, name: machine.name, set: .machine(machine.kind), over: parent, machine: machine,
-             paste: paste ?? (machine.kind == .omarchy && !MachineApp.active ? { await pasteIntoDesktop($0, machine) } : nil))
+             paste: paste ?? (machine.kind.runsDesktop && !MachineApp.active ? { await pasteIntoDesktop($0, machine) } : nil))
     }
     /// A VNC desktop's snippets (its CMD menu), over its window.
     static func show(remote: RemoteProfile, over parent: NSWindow?, paste: ((String) async -> String?)?) {

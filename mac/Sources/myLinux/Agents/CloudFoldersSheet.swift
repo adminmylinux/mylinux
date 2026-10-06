@@ -49,7 +49,7 @@ struct CloudTab: View {
             Text(running ? "Folders are attached when the machine starts: saving a change restarts \(machine)\(desktop ? "" : ", and its terminals reconnect")."
                          : "Folders are attached when the machine starts, so a change takes effect at the next Start.")
                 .font(.caption).foregroundStyle(.secondary)
-            if kind == .omarchy { omarchyCommands }
+            if kind?.runsDesktop == true { omarchyCommands }
             if kind == .mylinux {
                 Label("myLinux mounts them itself at every start: ~/Dropbox and the others are there, also for the apps.", systemImage: "checkmark.circle")
                     .font(.callout).foregroundStyle(.secondary)
@@ -75,10 +75,15 @@ struct CloudTab: View {
         let script = CloudFolder.pasteScript(CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) }, mac: macDraft)
         VStack(alignment: .leading, spacing: 8) {
             Text("Once, inside \(machine)").font(.headline)
+            if kind == .arch {
+                Text("After saving (and the restart), copy these commands, paste them into Konsole in \(machine) (Ctrl+Shift+V) and press Return. From then on the folders are there at every start; paste again after changing them here.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
             Text("After the restart, Apps… (⇧⌘A in its window) › Cloud drives mounts it with your password. Or by hand:")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text("After saving (and the restart), copy these commands, paste them into a terminal in \(machine) (Super+Return opens one, ⌘Return when Command is Super; Ctrl+Shift+V pastes) and press Return. sudo asks for your \(machine) password. From then on the folders are there at every start; paste again after changing them here.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             ScrollView {
                 Text(script).font(.system(size: 10.5, design: .monospaced)).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(8)

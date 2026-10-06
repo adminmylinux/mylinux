@@ -106,17 +106,18 @@ final class AppSettings: ObservableObject {
         return (try? String(contentsOf: outDir.appendingPathComponent("qemu-runtime/RUNTIME-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    /// The Omarchy guest (tools/get-omarchy.sh): kernel, initramfs and the compressed factory disk.
-    var omarchyPresent: Bool {
-        let dir = outDir.appendingPathComponent("omarchy", isDirectory: true)
+    /// A desktop guest (tools/get-omarchy.sh, tools/get-arch.sh): kernel, initramfs and the compressed factory disk.
+    func desktopPresent(_ kind: Profile.Kind) -> Bool {
+        let dir = outDir.appendingPathComponent(kind.rawValue, isDirectory: true)
         return ["vmlinuz-linux", "initramfs-linux.img", "rootfs.ext4.zst"].allSatisfy {
             ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
         }
     }
-    var omarchyRevision: String? {
-        (try? String(contentsOf: outDir.appendingPathComponent("omarchy/OMARCHY-REVISION"), encoding: .utf8))?
+    func desktopRevision(_ kind: Profile.Kind) -> String? {
+        (try? String(contentsOf: outDir.appendingPathComponent("\(kind.rawValue)/\(kind.rawValue.uppercased())-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    var omarchyPresent: Bool { desktopPresent(.omarchy) }
     /// A server's cloud image and UEFI firmware (tools/get-debian.sh, tools/get-alpine.sh), in <out>/<distro>.
     func serverImagePresent(_ kind: Profile.Kind) -> Bool {
         let dir = outDir.appendingPathComponent(kind.rawValue, isDirectory: true)

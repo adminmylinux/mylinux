@@ -626,6 +626,19 @@ final class OmarchyProfileTests: XCTestCase {
         p.sshPort = 80
         XCTAssertFalse(p.problems.isEmpty, "privileged ports cannot be forwarded by a user process")
     }
+    func testArchIsADesktopStartedLikeOmarchy() {
+        let p = ProfileStore.newProfile(named: "A", kind: .arch, folder: URL(fileURLWithPath: "/tmp/m/a"))
+        XCTAssertTrue(p.kind.runsDesktop); XCTAssertFalse(p.isServer)
+        XCTAssertEqual(p.script, "run-omarchy.sh")
+        XCTAssertEqual(p.appsDisk, "/tmp/m/a/arch.ext4"); XCTAssertEqual(p.shareDir, "/tmp/m/a/Mac")
+        XCTAssertEqual(p.grab, "opt", "Plasma is a Ctrl desktop: ⌘ stays with the Mac")
+        let env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s", qmpSocket: "/tmp/q")
+        XCTAssertEqual(env["DESKTOP"], "arch"); XCTAssertEqual(env["QMP"], "/tmp/q"); XCTAssertEqual(env["DISK"], "/tmp/m/a/arch.ext4")
+        XCTAssertEqual(env["APP_ICON"], "tools/icons/machine-arch.icns")
+        XCTAssertNil(ProfileStore.newProfile(named: "O", kind: .omarchy).environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s")["DESKTOP"])
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the same QEMU wrapper as Omarchy's")
+    }
     func testProfilesFromBeforeKindsAreMyLinux() throws {
         let old = #"{"name":"Work","appsDisk":"/x/apps.img","shareDir":"/x/share"}"#
         let p = try JSONDecoder().decode(Profile.self, from: Data(old.utf8))

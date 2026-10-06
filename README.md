@@ -81,6 +81,22 @@ off. New Omarchy machines in the launcher send every key to Omarchy with Command
 machine page switches to Option. Neither a machine's first start nor a download needs python3. Not there
 (they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output.
 
+### Arch Linux machines (KDE Plasma)
+
+A third desktop: Arch Linux ARM with KDE Plasma (Wayland), signed in automatically as `arch` (sudo without a
+password), with Konsole, Dolphin, Kate, Firefox and PipeWire sound. There is no ready-made Arch desktop image for Apple
+silicon, so myLinux builds one: `tools/build-arch-image.sh` runs as root on an arm64 Linux (the OrbStack `debian`
+machine: `orb -m debian sudo bash tools/build-arch-image.sh`), checks Arch Linux ARM's root filesystem against its
+build key, installs the packages with pacman, and leaves the kernel, initramfs (virtio drivers, not fitted to the
+build machine) and a zstd-compressed raw ext4 root in `out/arch-build`, laid out as Omarchy's guest is. Releases go to
+mylinux-releases as `arch-<date>`; `tools/get-arch.sh` downloads the pinned one (its SHA256SUMS checked against a
+pinned SHA-256, the files against SHA256SUMS). `DESKTOP=arch ./run-omarchy.sh` starts it on the same runtime and
+window as Omarchy (size buttons, keyboard modes, QMP, sound), without Omarchy's session agent. The Mac share is
+mounted by the guest's fstab at `/mnt/mac` (`~/Mac`); `mylinux.scale=2` on the kernel command line sets Plasma's scale
+on a Retina display (`arch/mylinux-scale`, at sign-in). The clipboard goes through `arch/mylinux-clipboard`, an agent
+inside that speaks Try Omarchy's protocol on the same virtio port, so the launcher's bridge serves both desktops. In
+the launcher it is **Arch Linux Machine**; new ones keep ⌘ with the Mac and use Option as Meta (`GRAB=opt`).
+
 ### Debian server machines
 
 The third kind of machine is a plain Debian server with no window at all: the latest stable Debian (trixie) from

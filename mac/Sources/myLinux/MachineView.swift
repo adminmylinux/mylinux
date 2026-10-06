@@ -9,11 +9,16 @@ struct MachineView: View {
     @ObservedObject var runner: Runner
     @State private var draft: Profile
     @StateObject private var runtime = RuntimeManager.shared
-    @StateObject private var omarchy = OmarchyManager.shared
+    @StateObject private var omarchyImage = DesktopImageManager.omarchy
+    @StateObject private var archImage = DesktopImageManager.arch
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
     @StateObject private var images = ImageManager.shared
     private var isOmarchy: Bool { draft.kind == .omarchy }
+    /// Omarchy or Arch: a desktop on the QEMU runtime (run-omarchy.sh)
+    private var isDesktop: Bool { draft.kind.runsDesktop }
+    /// A desktop's download: Omarchy's guest or Arch's.
+    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : omarchyImage }
     private var isServer: Bool { draft.isServer }
     private var guestName: String { draft.kind.title }
     /// A server's download: Debian's image or Alpine's.
@@ -32,10 +37,10 @@ struct MachineView: View {
         switch draft.kind {
         case .mylinux:
             return images.present ? nil : (settings.developerMode ? "Build the image first (./build.sh)" : "Download myLinux first")
-        case .omarchy:
+        case .omarchy, .arch:
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             if !runtime.present { return "Download the accelerated QEMU first" }
-            return created || omarchy.present ? nil : "Download Omarchy first"
+            return created || desktopImage.present ? nil : "Download \(guestName) first"
         case .debian, .alpine:
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
             if !settings.qemuAvailable { return "Download the accelerated QEMU first" }
@@ -51,10 +56,11 @@ struct MachineView: View {
         case .mylinux:
             guard !images.present, !settings.developerMode else { return nil }
             return ("myLinux", images, { images.download(settings) })
-        case .omarchy:
+        case .omarchy, .arch:
             if !runtime.present { return ("QEMU", runtime, { runtime.download(settings) }) }
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
-            return created || omarchy.present ? nil : ("Omarchy", omarchy, { omarchy.download(settings) })
+            let image = desktopImage
+            return created || image.present ? nil : (guestName, image, { image.download(settings) })
         case .debian, .alpine:
             if !settings.qemuAvailable { return ("QEMU", runtime, { runtime.download(settings) }) }
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
@@ -75,7 +81,7 @@ struct MachineView: View {
                 if MachineStatus.running(runner) {
                     Section {} header: { live }
                 }
-                if isServer { serverDownloads } else if isOmarchy { omarchyDownloads }
+                if isServer { serverDownloads } else if isDesktop { desktopDownloads }
                 Section {} header: { fold("Machine configuration", "slider.horizontal.3", configSummary, $openConfig) }
                 if openConfig {
                     Group { if isServer { serverConfiguration } else { desktopConfiguration } }.disabled(!editable)
@@ -92,7 +98,7 @@ struct MachineView: View {
         .onChange(of: store.profiles.first { $0.id == draft.id }?.cloudFolders) { _, saved in
             if let saved, saved != draft.cloudFolders { draft.cloudFolders = saved }
         }
-        .onAppear { runtime.refresh(settings); images.refresh(settings); if isOmarchy { omarchy.refresh(settings) }; if isServer { server.refresh(settings) } }
+        .onAppear { runtime.refresh(settings); images.refresh(settings); if isDesktop { desktopImage.refresh(settings) }; if isServer { server.refresh(settings) } }
         .toolbar { HeaderToolbar() }
     }
 
@@ -225,7 +231,7 @@ struct MachineView: View {
     /// A desktop's window: its own app (MachineApp), or any myLinux desktop from before 0.6.
     private func showWindow() {
         if let app = MachineApp.running(draft) { app.activate(); return }
-        let prefix = isOmarchy ? "dev.mylinux.vm.omarchy" : "dev.mylinux.vm"
+        let prefix = isDesktop ? "dev.mylinux.vm.omarchy" : "dev.mylinux.vm"      // Arch's window is the same wrapper as Omarchy's
         NSWorkspace.shared.runningApplications.first { ($0.bundleIdentifier ?? "").hasPrefix(prefix) }?.activate()
     }
 
@@ -366,11 +372,12 @@ struct MachineView: View {
                         help: "The whole \(guestName) install. Its SSH key, console password and cloud-init seed live in the same folder.")
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
                         help: "Mounted inside as /mnt/mac and linked from the home folder under its own name. Leave empty for none.")
-            } else if isOmarchy {
+            } else if isDesktop {
                 PathRow(title: "Disk", path: $draft.appsDisk, isDirectory: false,
-                        help: "The whole Omarchy install. Its kernel lives in the boot folder beside it, so keep the two together.")
+                        help: "The whole \(guestName) install. Its kernel lives in the boot folder beside it, so keep the two together.")
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
-                        help: "Shows up inside Omarchy as a folder of the same name in your home folder. Leave empty for none.")
+                        help: isOmarchy ? "Shows up inside Omarchy as a folder of the same name in your home folder. Leave empty for none."
+                                        : "Mounted inside at /mnt/mac, and ~/Mac in your home folder points to it. Leave empty for none.")
             } else {
                 PathRow(title: "Apps disk", path: $draft.appsDisk, isDirectory: false,
                         help: "Everything you install inside myLinux. A separate disk is a separate install.")
@@ -451,27 +458,28 @@ struct MachineView: View {
     }
 
     @ViewBuilder private var desktopConfiguration: some View {
-        Section(isOmarchy ? "Keyboard" : "Keyboard and mouse") {
-            Picker(isOmarchy ? "Super key" : "Mac keys", selection: $draft.grab) {
-                Text(isOmarchy ? "Option (macOS keeps its ⌘ shortcuts)" : "Option is ⌘ inside myLinux").tag("opt")
-                Text(isOmarchy ? "Command (every key goes to Omarchy)" : "Send every key to myLinux").tag("full")
-                Text(isOmarchy ? "None (Mac shortcuts untouched)" : "Leave Mac shortcuts alone").tag("none")
+        Section(isDesktop ? "Keyboard" : "Keyboard and mouse") {
+            Picker(isOmarchy ? "Super key" : isDesktop ? "Meta key" : "Mac keys", selection: $draft.grab) {
+                Text(isDesktop ? "Option (macOS keeps its ⌘ shortcuts)" : "Option is ⌘ inside myLinux").tag("opt")
+                Text(isDesktop ? "Command (every key goes to \(guestName))" : "Send every key to myLinux").tag("full")
+                Text(isDesktop ? "None (Mac shortcuts untouched)" : "Leave Mac shortcuts alone").tag("none")
             }
             Text(grabHelp).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if !isOmarchy {
+            if !isDesktop {
                 Picker("Pointer", selection: $draft.mouse) {
                     Text("Follows the Mac pointer").tag("tablet")
                     Text("Captured on click (Ctrl+Option+G frees it)").tag("relative")
                 }
             }
             Toggle("Share the Mac clipboard", isOn: $draft.clipboard)
-            if isOmarchy {
-                Text("Text and images, both ways, through Omarchy's own clipboard agent.").font(.caption).foregroundStyle(.secondary)
+            if isDesktop {
+                Text(isOmarchy ? "Text and images, both ways, through Omarchy's own clipboard agent." : "Text and images, both ways, through myLinux's clipboard agent inside.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         Section("Machine") {
             memoryPicker
-            if isOmarchy {
+            if isDesktop {
                 Picker("Processor cores", selection: $draft.cpus) {
                     Text("Automatic").tag(0)
                     ForEach(coreChoices, id: \.self) { Text("\($0)").tag($0) }
@@ -490,23 +498,30 @@ struct MachineView: View {
                     }
                 }
             }
-            if isOmarchy {
+            if isDesktop {
                 Text("The window opens at exactly this size and is not resizable; the green button gives full screen. Sizes are in points: a Retina MacBook screen is about 1728 × 1084, not its pixel count.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            LabeledContent(isOmarchy ? "Disk size" : "Apps disk size") {
+            LabeledContent(isDesktop ? "Disk size" : "Apps disk size") {
                 HStack {
                     Picker("", selection: $draft.appsSizeGB) {
-                        ForEach(isOmarchy ? [16, 32, 64, 128, 256, 512] : [8, 16, 32, 64, 128, 256], id: \.self) { Text("\($0) GB").tag($0) }
+                        ForEach(isDesktop ? [16, 32, 64, 128, 256, 512] : [8, 16, 32, 64, 128, 256], id: \.self) { Text("\($0) GB").tag($0) }
                     }
                     .labelsHidden().frame(width: 110)
                     Text(diskNote).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
-        if isOmarchy {
-            Section("Sound and network") {
+        if isDesktop {
+            Section(isOmarchy ? "Sound and network" : "Sound") {
                 Toggle("Sound through the Mac", isOn: $draft.sound)
+                if isOmarchy { sshToggle }
+            }
+        }
+    }
+
+    /// Omarchy's SSH server for this boot, reached on a port of this Mac (Arch's account has no password to log in with).
+    @ViewBuilder private var sshToggle: some View {
                 Toggle("SSH from the Mac", isOn: Binding(get: { draft.sshPort != 0 }, set: { draft.sshPort = $0 ? 2222 : 0 }))
                 if draft.sshPort != 0 {
                     LabeledContent("Port on this Mac") {
@@ -518,25 +533,24 @@ struct MachineView: View {
                     Text("Reachable from this Mac only. Omarchy starts its SSH server for this boot; log in with the account you made in Omarchy.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-            }
-        }
     }
 
-    /// What an Omarchy machine needs before its first start, each with its own download.
-    @ViewBuilder private var omarchyDownloads: some View {
-        let needRuntime = !runtime.present, needGuest = !omarchy.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
-        if needRuntime || needGuest || runtime.busy || omarchy.busy || runtime.lastError != nil || omarchy.lastError != nil {
+    /// What a desktop machine (Omarchy, Arch) needs before its first start, each with its own download.
+    @ViewBuilder private var desktopDownloads: some View {
+        let image = desktopImage
+        let needRuntime = !runtime.present, needGuest = !image.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
+        if needRuntime || needGuest || runtime.busy || image.busy || runtime.lastError != nil || image.lastError != nil {
             Section("Before the first start") {
                 if needRuntime || runtime.busy {
                     downloadRow(title: "Accelerated QEMU", detail: "about 10 MB", busy: runtime.busy, progress: runtime.progress,
                                 start: { runtime.download(settings) }, cancel: { runtime.cancel() })
                 }
                 if let e = runtime.lastError { Banner(text: e, kind: .error) }
-                if needGuest || omarchy.busy {
-                    downloadRow(title: "Omarchy", detail: "1.4 GB, from the Try Omarchy project's signed release", busy: omarchy.busy, progress: omarchy.progress,
-                                start: { omarchy.download(settings) }, cancel: { omarchy.cancel() })
+                if needGuest || image.busy {
+                    downloadRow(title: guestName, detail: image.detail, busy: image.busy, progress: image.progress,
+                                start: { image.download(settings) }, cancel: { image.cancel() })
                 }
-                if let e = omarchy.lastError { Banner(text: e, kind: .error) }
+                if let e = image.lastError { Banner(text: e, kind: .error) }
             }
         }
     }
@@ -557,6 +571,13 @@ struct MachineView: View {
     }
 
     private var grabHelp: String {
+        if draft.kind == .arch {
+            switch draft.grab {
+            case "full": return "Plasma receives every key, ⌘ as Meta, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives Plasma every key again."
+            case "none": return "macOS keeps all its shortcuts; Plasma only sees combinations macOS does not claim."
+            default: return "The Option key acts as Meta (the Windows key) inside Plasma: Option alone opens the application launcher. macOS keeps its ⌘ shortcuts; Plasma's own are Ctrl ones (Ctrl+C and Ctrl+V, Ctrl+Shift+C and Ctrl+Shift+V in Konsole)."
+            }
+        }
         if isOmarchy {
             switch draft.grab {
             case "full": return "Omarchy receives every key, ⌘ as Super, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac (⌘Tab and Spotlight work, typing still goes to Omarchy); a click in the window, or Ctrl+Option+G again, gives Omarchy every key again."
@@ -603,7 +624,7 @@ struct MachineView: View {
             let gb = size.int64Value / (1024 * 1024 * 1024)
             return "the disk already exists (\(gb) GB); the size applies to new disks"
         }
-        return isOmarchy ? "unpacked from the download on first start, growing as it fills" : "created on first start, growing as it fills"
+        return isDesktop ? "unpacked from the download on first start, growing as it fills" : "created on first start, growing as it fills"
     }
 }
 

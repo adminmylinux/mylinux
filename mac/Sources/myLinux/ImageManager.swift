@@ -144,6 +144,7 @@ enum SavedDownloads {
     static let kinds: [(folder: String, name: String, revisionFile: String)] = [
         ("mylinux", "myLinux image", "IMAGE-REVISION"), ("omarchy", "Omarchy", "OMARCHY-REVISION"),
         ("debian", "Debian", "DEBIAN-REVISION"), ("alpine", "Alpine", "ALPINE-REVISION"),
+        ("arch", "Arch Linux", "ARCH-REVISION"),
     ]
 
     /// At launch: Linuxes installed before saving existed are saved too (APFS clones: no time, no extra space).
@@ -248,21 +249,35 @@ final class RuntimeManager: ScriptDownloader {
     override func finished() { refresh() }
 }
 
-/// The Omarchy guest (tools/get-omarchy.sh): downloaded once (1.4 GB) from the Try Omarchy project's signed release,
-/// checked, and kept in <out>/omarchy; every Omarchy machine's disk is unpacked from it on its first start.
-final class OmarchyManager: ScriptDownloader {
-    static let shared = OmarchyManager()
+/// A desktop guest, kept in <out>/<kind>; every machine of that kind has its disk unpacked from it on its first start.
+/// Omarchy (tools/get-omarchy.sh): downloaded once (1.4 GB) from the Try Omarchy project's signed release. Arch Linux
+/// with Plasma (tools/get-arch.sh): about 2 GB, our build (tools/build-arch-image.sh) from mylinux-releases.
+final class DesktopImageManager: ScriptDownloader {
+    static let omarchy = DesktopImageManager(.omarchy)
+    static let arch = DesktopImageManager(.arch)
+    static func shared(_ kind: Profile.Kind) -> DesktopImageManager { kind == .arch ? arch : omarchy }
 
+    let kind: Profile.Kind
     @Published private(set) var revision: String?
     @Published private(set) var present = false
 
+    init(_ kind: Profile.Kind) { self.kind = kind; super.init() }
+
+    /// For the download rows: the size and where it comes from.
+    var size: String { kind == .arch ? "about 2 GB" : "1.4 GB" }
+    var detail: String {
+        kind == .arch ? "about 2 GB, Arch Linux ARM with KDE Plasma, built by myLinux"
+                      : "1.4 GB, from the Try Omarchy project's signed release"
+    }
+
     func refresh(_ settings: AppSettings = .shared) {
-        present = settings.omarchyPresent
-        revision = settings.omarchyRevision
+        present = settings.desktopPresent(kind)
+        revision = settings.desktopRevision(kind)
     }
 
     func download(_ settings: AppSettings = .shared) {
-        install("tools/get-omarchy.sh", name: "Omarchy", size: "1.4 GB", installed: present, starting: "Downloading Omarchy (1.4 GB)…", settings: settings)
+        install("tools/get-\(kind.rawValue).sh", name: kind.title, size: size, installed: present,
+                starting: "Downloading \(kind.title) (\(size))…", settings: settings)
     }
 
     override func finished() { refresh() }

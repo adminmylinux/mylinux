@@ -22,7 +22,7 @@ enum MachineApp {
         let id = p.id.uuidString.lowercased()
         switch p.kind {
         case .mylinux: return "dev.mylinux.vm.\(id)"
-        case .omarchy: return "dev.mylinux.vm.omarchy.\(id)"
+        case .omarchy, .arch: return "dev.mylinux.vm.omarchy.\(id)"      // run-omarchy.sh's wrapper, for both
         case .debian, .alpine: return "dev.mylinux.machine.\(id)"
         }
     }
@@ -270,12 +270,15 @@ enum MachineLink {
                 else {
                     NSApp.activate()
                     let alert = NSAlert(); alert.messageText = "Mount a Share in \(p.name)"
-                    alert.informativeText = "Mounting shares is there in Omarchy, Debian and Alpine; myLinux does not have it yet."
+                    alert.informativeText = p.kind == .arch
+                        ? "In Arch Linux, Dolphin mounts shares: type smb://<server>/<share> in its address bar (Ctrl+L), for example smb://10.0.2.2/Public for this Mac's."
+                        : "Mounting shares is there in Omarchy, Debian and Alpine; myLinux does not have it yet."
                     alert.runModal()
                 }
             case "apps":                                          // ⇧⌘A or Machine › Apps… in a desktop's window
                 Task { @MainActor in
                     let problem: String? = p.kind == .omarchy ? await ServerApps.openInOmarchy(p)
+                        : p.kind == .arch ? "Arch Linux installs apps with pacman: in Konsole, sudo pacman -S <name> (pacman -Ss <word> searches)."
                         : "myLinux has its own: Super+Space (⌥Space) finds, runs and installs apps."
                     guard let problem else { return }
                     NSApp.activate()

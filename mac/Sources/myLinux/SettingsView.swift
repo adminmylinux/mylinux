@@ -178,7 +178,8 @@ private struct TerminalSettingsPage: View {
 private struct ImagesSettingsPage: View {
     @EnvironmentObject var settings: AppSettings
     @StateObject private var images = ImageManager.shared
-    @StateObject private var omarchy = OmarchyManager.shared
+    @StateObject private var omarchy = DesktopImageManager.omarchy
+    @StateObject private var arch = DesktopImageManager.arch
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
     @StateObject private var runtime = RuntimeManager.shared
@@ -194,6 +195,10 @@ private struct ImagesSettingsPage: View {
             row(icon: MachineIcon.image(.omarchy), name: "Omarchy", size: "1.4 GB", loader: omarchy,
                 status: omarchy.present ? "Installed · \(omarchy.revision ?? "")" : nil,
                 action: omarchy.present ? "Update" : "Download", start: { omarchy.download(settings) })
+            Divider()
+            row(icon: MachineIcon.image(.arch), name: "Arch Linux", size: "2 GB", loader: arch,
+                status: arch.present ? "Installed · \(arch.revision ?? "")" : nil,
+                action: arch.present ? "Update" : "Download", start: { arch.download(settings) })
             Divider()
             row(icon: MachineIcon.image(.debian), name: "Debian", size: "300 MB", loader: debian,
                 status: debian.present ? "Installed · \(debian.revision ?? "")" : nil,
@@ -226,7 +231,7 @@ private struct ImagesSettingsPage: View {
             }
             .padding(.top, 6)
         }
-        .onAppear { images.refresh(settings); omarchy.refresh(settings); debian.refresh(settings); alpine.refresh(settings); runtime.refresh(settings) }
+        .onAppear { images.refresh(settings); omarchy.refresh(settings); arch.refresh(settings); debian.refresh(settings); alpine.refresh(settings); runtime.refresh(settings) }
     }
 
     private func row(icon: NSImage?, symbol: String = "shippingbox", name: String, size: String, loader: ScriptDownloader,
@@ -584,7 +589,7 @@ struct StorageUsage {
             }
             var downloads = 0.0
             if !dev {
-                for (name, paths) in [("myLinux image", ["Image", "rootfs.cpio.gz"]), ("Omarchy", ["omarchy"]), ("Debian", ["debian"]),
+                for (name, paths) in [("myLinux image", ["Image", "rootfs.cpio.gz"]), ("Omarchy", ["omarchy"]), ("Arch Linux", ["arch"]), ("Debian", ["debian"]),
                                       ("Alpine", ["alpine"]), ("QEMU runtime", ["qemu-runtime", "qemu-runtime.prev"])] {
                     let b = paths.reduce(0.0) { $0 + allocated(out.appendingPathComponent($1)) }
                     if b > 0 { downloads += b; items.append(Item(name: name, bytes: b, color: .purple)) }

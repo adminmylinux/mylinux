@@ -81,12 +81,12 @@ final class Runner: ObservableObject {
             guard downloaded || FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("\(p.kind.rawValue)/edk2-aarch64-code.fd").path) else {
                 state = .failed("The UEFI firmware is missing (Download \(p.kind.title) on this page)."); return
             }
-        } else if p.kind == .omarchy {
-            guard settings.runtimePresent else { state = .failed("Omarchy needs the accelerated QEMU (Settings › QEMU › Download)."); return }
+        } else if p.kind.runsDesktop {
+            guard settings.runtimePresent else { state = .failed("\(p.kind.title) needs the accelerated QEMU (Settings › QEMU › Download)."); return }
             // an existing machine has its own disk and boot files; only a new one needs the downloaded guest
             let machine = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
             let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: machine.appendingPathComponent("boot/vmlinuz-linux").path)
-            guard created || settings.omarchyPresent else { state = .failed("Omarchy is not downloaded yet (Download on this page)."); return }
+            guard created || settings.desktopPresent(p.kind) else { state = .failed("\(p.kind.title) is not downloaded yet (Download on this page)."); return }
         } else {
             guard settings.imagePresent else {
                 state = .failed(settings.developerMode ? "No image in \(settings.outDir.path): run ./build.sh or tools/get-image.sh in the checkout."
@@ -340,7 +340,7 @@ final class Runner: ObservableObject {
     func stop() {
         // a server started by an earlier launcher is still reachable: its QMP socket is named after the machine
         guard state == .running || state == .starting || canStopElsewhere else { return }
-        if profile?.kind == .omarchy || profile?.isServer == true {
+        if profile?.kind.runsDesktop == true || profile?.isServer == true {
             state = .stopping; stoppingSince = Date()
             let path = qmpSocket
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -359,7 +359,7 @@ final class Runner: ObservableObject {
     /// its console, or a server's or Omarchy's QMP socket (named after the machine).
     var canStopElsewhere: Bool {
         guard state == .inUseElsewhere else { return false }
-        let qmp = profile?.isServer == true || profile?.kind == .omarchy
+        let qmp = profile?.isServer == true || profile?.kind.runsDesktop == true
         return consoleConnected || (qmp && FileManager.default.fileExists(atPath: qmpSocket))
     }
 
@@ -586,7 +586,7 @@ final class RunManager: ObservableObject {
                 // pgrep in the background: on the main thread, every machine every 4 s, it stalled the window
                 DispatchQueue.global(qos: .utility).async {
                     let inUse = Runner.diskInUse(p.appsDisk)
-                    let cloudAsked = (p.isServer || p.kind == .omarchy) && !p.shareDir.isEmpty
+                    let cloudAsked = (p.isServer || p.kind.runsDesktop) && !p.shareDir.isEmpty
                         && FileManager.default.fileExists(atPath: ServerApps.cloudRequestFile(p.shareDir).path)
                     DispatchQueue.main.async {
                         r.refreshExternal(inUse: inUse)

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=myLinux display scale
+Exec=/usr/local/bin/mylinux-scale
+NoDisplay=true
+X-KDE-autostart-phase=1
