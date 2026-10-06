@@ -9,7 +9,7 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     enum Keyboard: String, Codable, CaseIterable {
         case mac            // ⌘ combinations stay with macOS, the rest goes to the remote
         case optionSuper    // Option acts as the remote's Super key, ⌘ stays with the Mac
-        case all            // everything, ⌘Tab and ⌘Space included (event tap, Accessibility); Ctrl+Option+G releases
+        case all            // everything, ⌘Tab and ⌘Space included (event tap, Accessibility); ⌥⌘G switches to the Mac and back
         var title: String {
             switch self {
             case .mac: return "Mac keeps its shortcuts"
@@ -28,7 +28,7 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     var quality = "balanced"        // vnc: fast | balanced | best
     var keyFile = ""                // ssh
     var tmux = ""                   // ssh: attach to this tmux session
-    var keyboard = Keyboard.optionSuper
+    var keyboard = Keyboard.all
     var keepForMac: [String] = []   // shortcuts the Mac keeps even in "all" mode, e.g. ["cmd+c", "cmd+v"]
     var hasPassword = false         // a password is stored in the Keychain
     /// Extra `-o` options for ssh, set by the launcher for its own machines (a per-machine known_hosts file);
@@ -59,7 +59,7 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
     var shareMacPath = ""
     var shareGuestPath = ""
 
-    init(kind: Kind = .vnc) { self.kind = kind; port = kind == .ssh ? 22 : 5900; keyboard = kind == .ssh ? .mac : .optionSuper }
+    init(kind: Kind = .vnc) { self.kind = kind; port = kind == .ssh ? 22 : 5900; keyboard = kind == .ssh ? .mac : .all }
 
     enum CodingKeys: String, CodingKey { case id, name, kind, host, port, username, quality, keyFile, tmux, keyboard, keepForMac, hasPassword }
 
@@ -74,7 +74,7 @@ struct RemoteProfile: Codable, Identifiable, Hashable {
         quality = try c.decodeIfPresent(String.self, forKey: .quality) ?? "balanced"
         keyFile = try c.decodeIfPresent(String.self, forKey: .keyFile) ?? ""
         tmux = try c.decodeIfPresent(String.self, forKey: .tmux) ?? ""
-        keyboard = try c.decodeIfPresent(Keyboard.self, forKey: .keyboard) ?? (kind == .ssh ? .mac : .optionSuper)
+        keyboard = try c.decodeIfPresent(Keyboard.self, forKey: .keyboard) ?? (kind == .ssh ? .mac : .all)
         keepForMac = try c.decodeIfPresent([String].self, forKey: .keepForMac) ?? []
         hasPassword = try c.decodeIfPresent(Bool.self, forKey: .hasPassword) ?? false
     }
@@ -130,6 +130,16 @@ final class RemoteStore: ObservableObject {
         self.file = file
         if let data = try? Data(contentsOf: file), let list = try? JSONDecoder().decode([RemoteProfile].self, from: data) { profiles = list }
         loaded = true
+        // once: VNC desktops on the old default (Option is Super) send every key to the remote, the new default
+        // (a mark beside the file, so a test's folder has its own)
+        let moved = file.deletingLastPathComponent().appendingPathComponent(".remote-keyboard-all")
+        if !FileManager.default.fileExists(atPath: moved.path) {
+            try? FileManager.default.createDirectory(at: moved.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? Data().write(to: moved)
+            if profiles.contains(where: { $0.kind == .vnc && $0.keyboard == .optionSuper }) {
+                profiles = profiles.map { var p = $0; if p.kind == .vnc && p.keyboard == .optionSuper { p.keyboard = .all }; return p }
+            }
+        }
     }
     @discardableResult
     func add(_ kind: RemoteProfile.Kind) -> RemoteProfile {

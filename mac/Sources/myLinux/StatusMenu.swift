@@ -28,7 +28,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let grab = KeyboardGrab.shared
         let release = NSMenuItem(title: StatusMenu.releaseTitle, action: #selector(releaseKeyboard), keyEquivalent: "")
         release.target = self; release.isEnabled = grab.isActive
-        release.toolTip = grab.isActive ? "Every key goes to \(grab.window?.title ?? "the remote") right now; Ctrl+Option+G does the same." : "No remote window holds the keyboard."
+        release.toolTip = grab.isActive ? "Every key goes to \(grab.window?.title ?? "the remote") right now; ⌥⌘G does the same." : "No remote window holds the keyboard."
         menu.addItem(release)
         menu.addItem(.separator())
         let machines = NSMenuItem(title: "Machines…", action: #selector(showMachines), keyEquivalent: ""); machines.target = self

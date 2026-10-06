@@ -280,7 +280,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         guard let c = vnc, let v = vncView else { return }
         let u = c.updates - lastUpdates, d = Double(c.decodeNs - lastDecode) / 1e6
         lastUpdates = c.updates; lastDecode = c.decodeNs
-        let mode = v.grabbing ? "all keys → remote (Ctrl+Option+G returns them)" : keyboardMode.title
+        let mode = v.grabbing ? "all keys → remote (⌥⌘G: to the Mac)" : keyboardMode == .all ? (KeyboardGrab.permitted ? "keys with the Mac (⌥⌘G or a click: to the remote)" : "every key needs Accessibility permission") : keyboardMode.title
         let lat = v.latencySamples > 0 ? String(format: "  key→picture %.0f ms", v.latencySum / Double(v.latencySamples)) : ""
         status.stringValue = c.width > 0 ? String(format: "%d×%d  %d%%  %d upd/s  decode %.0f ms/s%@  ·  %@", c.width, c.height, Int(v.displayScale * (window?.backingScaleFactor ?? 1) * 100), u, d, lat, mode) : mode
     }

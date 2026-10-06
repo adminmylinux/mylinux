@@ -562,7 +562,7 @@ final class RemoteTests: XCTestCase {
         XCTAssertFalse(p.problems.isEmpty, "the port must be valid")
         p.port = 5900
         XCTAssertTrue(p.problems.isEmpty)
-        XCTAssertEqual(p.keyboard, .optionSuper, "VNC desktops default to Option as Super")
+        XCTAssertEqual(p.keyboard, .all, "VNC desktops send every key to the remote by default")
     }
     /// A self-signed certificate for the tests (CN mylinux-test), made once with the system openssl.
     static func testCertificate() throws -> String {
@@ -810,7 +810,7 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(list.map(\.name), ["imac", "build box", "old"], "an entry without a host is skipped")
         XCTAssertEqual(list[0].kind, .vnc); XCTAssertEqual(list[0].quality, "best"); XCTAssertEqual(list[0].username, "viktor")
         XCTAssertEqual(list[1].kind, .ssh); XCTAssertEqual(list[1].port, 2222, "a port written as text"); XCTAssertEqual(list[1].tmux, "main"); XCTAssertEqual(list[1].keyboard, .mac)
-        XCTAssertEqual(list[2].kind, .vnc, "older files have no type"); XCTAssertEqual(list[2].keyboard, .optionSuper)
+        XCTAssertEqual(list[2].kind, .vnc, "older files have no type"); XCTAssertEqual(list[2].keyboard, .all)
         XCTAssertEqual(RemoteImport.secretKey(name: "build box", kind: .ssh), "SSH_BUILD_BOX_PASSWORD")
         XCTAssertEqual(RemoteImport.secretKey(name: "--Omarchy iMac!", kind: .vnc), "VNC_OMARCHY_IMAC_PASSWORD")
         XCTAssertEqual(RemoteImport.secretKey(name: "", kind: .vnc), "VNC_DEFAULT_PASSWORD")
@@ -822,6 +822,19 @@ final class RemoteSessionTests: XCTestCase {
         try "VNC_IMAC_PASSWORD=secret\n".write(to: dir.appendingPathComponent("secrets.env"), atomically: true, encoding: .utf8)
         let entries = try RemoteImport.load(dir.appendingPathComponent("vnc/machines.json"))
         XCTAssertEqual(entries.map(\.password), ["secret", nil, nil])
+    }
+    func testVncDesktopsSendEveryKeyByDefaultOnceMoved() throws {
+        XCTAssertEqual(RemoteProfile(kind: .vnc).keyboard, .all)
+        XCTAssertEqual(RemoteProfile(kind: .ssh).keyboard, .mac)
+        let file = try tempDir().appendingPathComponent("remote.json")
+        var old = RemoteProfile(kind: .vnc); old.name = "msi"; old.keyboard = .optionSuper
+        var mac = RemoteProfile(kind: .vnc); mac.name = "imac"; mac.keyboard = .mac
+        let ssh = RemoteProfile(kind: .ssh)
+        try JSONEncoder().encode([old, mac, ssh]).write(to: file)
+        let store = RemoteStore(file: file)
+        XCTAssertEqual(store.profiles.map(\.keyboard), [.all, .mac, .mac], "the old default moves; a choice of its own stays")
+        var again = store.profiles[0]; again.keyboard = .optionSuper; store.update(again)
+        XCTAssertEqual(RemoteStore(file: file).profiles[0].keyboard, .optionSuper, "only once: a later choice stays")
     }
     func testMergingKeepsExistingProfilesAndTheirIds() throws {
         let store = RemoteStore(file: try tempDir().appendingPathComponent("remote.json"))

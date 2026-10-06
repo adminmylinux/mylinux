@@ -102,7 +102,11 @@ final class VncView: NSView {
     override func mouseDragged(with e: NSEvent) { pointer(e) }
     override func rightMouseDragged(with e: NSEvent) { pointer(e) }
     override func otherMouseDragged(with e: NSEvent) { pointer(e) }
-    override func mouseDown(with e: NSEvent) { window?.makeFirstResponder(self); mask |= 1; pointer(e) }
+    override func mouseDown(with e: NSEvent) {
+        window?.makeFirstResponder(self)
+        if keyboard == .all && !grabbing && KeyboardGrab.permitted { setGrab(true, keep: keep) }      // a click: every key to the remote again, as in Omarchy's window
+        mask |= 1; pointer(e)
+    }
     override func mouseUp(with e: NSEvent) { mask &= ~1; pointer(e) }
     override func rightMouseDown(with e: NSEvent) { mask |= 4; pointer(e) }
     override func rightMouseUp(with e: NSEvent) { mask &= ~4; pointer(e) }
@@ -139,6 +143,8 @@ final class VncView: NSView {
     }
     static let trace = ProcessInfo.processInfo.environment["MYLINUX_TRACE"] != nil
     override func keyDown(with e: NSEvent) {
+        // the keys back with the Mac (⌥⌘G): the same combination sends every key to the remote again
+        if keyboard == .all && !grabbing && KeyboardGrab.isSwitch(e) { if !e.isARepeat { setGrab(true, keep: keep) }; return }
         if VncView.trace { FileHandle.standardError.write("vnc keyDown code=\(e.keyCode) chars=\(e.characters ?? "") keysym=\(KeyMap.keysym(e).map { String($0, radix: 16) } ?? "nil") firstResponder=\(window?.firstResponder === self)\n".data(using: .utf8)!) }
         if !handle(e) { super.keyDown(with: e) }
     }
@@ -157,16 +163,28 @@ final class VncView: NSView {
     }
     override func resignFirstResponder() -> Bool {
         // keys held while focus leaves must not stay pressed on the remote
-        for (flag, sym) in KeyMap.modifierKeysyms where lastFlags.contains(flag) { conn.send(key: flag == .option && keyboard == .optionSuper ? KeyMap.superL : sym, down: false) }
-        lastFlags = []; mask = 0
+        releaseHeld(); mask = 0
         return super.resignFirstResponder()
+    }
+    /// the modifiers the remote has down, up (the keyboard leaves it: focus goes, or ⌥⌘G gives the keys to the Mac,
+    /// whose ⌘ up would not be sent)
+    private func releaseHeld() {
+        for (flag, sym) in KeyMap.modifierKeysyms where lastFlags.contains(flag) {
+            let s = flag == .option ? (keyboard == .optionSuper ? KeyMap.superL : KeyMap.altL) : flag == .command ? (keyboard == .optionSuper ? KeyMap.altL : KeyMap.superL) : sym
+            conn.send(key: s, down: false)
+        }
+        // keys still held count as sent: letting go of them sends nothing more down (a stray Alt)
+        lastFlags = NSEvent.modifierFlags.intersection([.shift, .control, .option, .command])
     }
 
     // ---- the full grab ----
+    /// the shortcuts the Mac keeps while grabbing (the profile's)
+    private var keep: [String] = []
     func setGrab(_ on: Bool, keep: [String]) {
-        if !on { KeyboardGrab.shared.stop(); grabbing = false; onGrabChanged?(); return }
+        self.keep = keep
+        if !on { KeyboardGrab.shared.stop(); grabbing = false; releaseHeld(); onGrabChanged?(); return }
         guard let w = window else { return }
-        KeyboardGrab.shared.onRelease = { [weak self] in self?.grabbing = false; self?.onGrabChanged?() }
+        KeyboardGrab.shared.onRelease = { [weak self] in self?.grabbing = false; self?.releaseHeld(); self?.onGrabChanged?() }
         grabbing = KeyboardGrab.shared.start(window: w, keep: keep) { [weak self] e in self?.handle(e) }
         onGrabChanged?()
     }

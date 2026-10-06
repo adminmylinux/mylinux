@@ -70,7 +70,7 @@ struct RemoteEditor: View {
         switch draft.keyboard {
         case .mac: return "⌘ combinations stay with macOS; the remote gets the other keys. Option is sent as Alt."
         case .optionSuper: return "The Option key acts as the remote's Super/⌘ key (Option+Space opens an Omarchy launcher); ⌘ stays with the Mac."
-        case .all: return "Every key goes to the remote while its window is in front, ⌘Tab and ⌘Space included. Ctrl+Option+G gives the keyboard back; so does switching to another app."
+        case .all: return "Every key goes to the remote while its window is in front, ⌘Tab and ⌘Space included. ⌥⌘G switches the keyboard to the Mac and back (Ctrl+Option+G too, as in Omarchy's window); a click in the picture sends every key to the remote again."
         }
     }
 

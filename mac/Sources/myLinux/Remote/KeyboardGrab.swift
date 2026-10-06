@@ -3,7 +3,7 @@ import AppKit
 /// The "everything to the remote" keyboard mode: an HID-level event tap that swallows every key event while a
 /// grabbing window is key and forwards it to that window's handler — so ⌘Tab, ⌘Space and the rest reach the remote.
 /// Safety: the tap only forwards while `window` is key; it is removed when the window resigns key, the app
-/// deactivates, the window closes, or the release combination (Ctrl+Option+G) is pressed; a watchdog checks every
+/// deactivates, the window closes, or the switch combination (⌥⌘G, or Ctrl+Option+G as in Omarchy's window) is pressed; a watchdog checks every
 /// second that the owning window is still key and alive, and macOS re-enables a tap it disabled for being slow.
 /// The menu bar item (StatusMenu) is the way out with the mouse: its "Release Keyboard" calls `release()`, and while
 /// its menu is open `passThrough` lets keys reach the menu instead of the remote.
@@ -22,7 +22,18 @@ final class KeyboardGrab {
     var passThrough = false
 
     static var permitted: Bool { AXIsProcessTrusted() }
-    static func askPermission() { _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
+    private static var asked = false
+    /// macOS's Accessibility prompt, once per launch (a remote window grabs each time it comes to the front)
+    static func askPermission() {
+        guard !asked else { return }; asked = true
+        _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+    }
+    /// ⌥⌘G, or Ctrl+Option+G (Omarchy's window): every key to the remote, or back to the Mac
+    static func isSwitch(_ e: NSEvent) -> Bool {
+        guard e.keyCode == 5 else { return false }      // G
+        let m = e.modifierFlags.intersection([.command, .option, .control, .shift])
+        return m == [.option, .command] || m == [.control, .option]
+    }
 
     /// Starts grabbing for `window`. `keep` lists shortcuts ("cmd+c") that stay with the Mac.
     func start(window: NSWindow, keep: [String], handler: @escaping (NSEvent) -> Void) -> Bool {
@@ -36,7 +47,7 @@ final class KeyboardGrab {
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput { if let t = grab.tap { CGEvent.tapEnable(tap: t, enable: true) }; return Unmanaged.passUnretained(event) }
             guard !grab.passThrough, let win = grab.window, win.isKeyWindow, NSApp.isActive, let ns = NSEvent(cgEvent: event) else { return Unmanaged.passUnretained(event) }
             // the release combination, and shortcuts the Mac keeps
-            if type == .keyDown && ns.keyCode == 5 && ns.modifierFlags.contains(.control) && ns.modifierFlags.contains(.option) {
+            if type == .keyDown && KeyboardGrab.isSwitch(ns) {
                 DispatchQueue.main.async { grab.release() }; return nil
             }
             if type != .flagsChanged, let name = KeyMap.shortcutName(ns), grab.keep.contains(name) { return Unmanaged.passUnretained(event) }

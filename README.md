@@ -277,8 +277,9 @@ opened straight from the Mac, so only one keyboard owner sits between you and th
 `docs/MAC-REMOTE-PLAN.md`). VNC uses libvncclient (Homebrew `libvncserver`) decoding into an IOSurface, with
 Tight/ZRLE, VeNCrypt TLS and a trust-on-first-use certificate sheet like the myLinux viewer's; zoom (Fit, −/+,
 1:1) follows the pointer; ⌘+trackpad and pinch zoom too. Each connection gets a keyboard mode — *Mac keeps its
-shortcuts*, *Option is Super*, or *Everything to the remote* (⌘Tab and ⌘Space included, Ctrl+Option+G gives the
-keyboard back; needs Accessibility permission once) — plus a list of shortcuts the Mac always keeps. SSH tabs run
+shortcuts*, *Option is Super*, or *Everything to the remote*, a VNC desktop's default (⌘Tab and ⌘Space included; ⌥⌘G, or Ctrl+Option+G as
+in Omarchy's window, switches the keyboard to the Mac and back, and a click in the picture gives it to the remote
+again; needs Accessibility permission once) — plus a list of shortcuts the Mac always keeps. SSH tabs run
 the Mac's `ssh` in a SwiftTerm view: your keys and agent work as in Terminal, a saved password is handed to ssh
 through an askpass helper that reads the Keychain, and a tmux session name attaches on login. **Settings ›
 Terminal** chooses the terminal for every new SSH tab and Debian or Alpine server: **Ghostty**, the default since
