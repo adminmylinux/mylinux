@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,6 +117,36 @@
+@@ -117,7 +117,37 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
@@ -11,10 +11,10 @@
 + * the keyboard stayed captured while the window was in front.)
 + */
 +static bool mylinux_keys_released;
-+/* the launcher that started this machine, asked through a distributed notification (Restart, Cloud Folders…, Mount a Share…) */
++/* the launcher that started this machine, asked through a distributed notification (Restart, Cloud Folders…, Mount a Share…, Snippets…) */
 +static bool mylinux_restart_available(void);
 +static void mylinux_ask_launcher(NSString *action);
-+
+ 
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
 + * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
@@ -34,9 +34,10 @@
 +static bool mylinux_follows_mode(NSWindow *window);
 +static void mylinux_desktop_reached(NSWindow *window, int w, int h);
 +static void mylinux_center(NSWindow *window);
- 
++
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
+ static QemuEvent cbevent;
 @@ -696,12 +726,16 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
@@ -56,18 +57,18 @@
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -981,6 +1015,11 @@
+@@ -980,6 +1014,11 @@
+     InputButton button;
      unsigned int keycode;
      NSUInteger modifiers = [event modifierFlags];
- 
++
 +    /* a click in the window after Ctrl+Option+G: every key goes to the guest again */
 +    if (mylinux_keys_released && [event type] == NSEventTypeLeftMouseDown && [event window] == [self window]) {
 +        mylinux_keys_released = false;
 +    }
-+
+ 
      /*
       * Check -[NSEvent modifierFlags] here.
-      *
 @@ -1125,6 +1164,30 @@
              return true;
          case NSEventTypeKeyDown:
@@ -289,7 +290,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1826,408 @@
+@@ -1675,12 +1826,410 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -297,7 +298,7 @@
 + * myLinux: the window's own controls, in a toolbar. At the right: minus (10% smaller), plus (10% larger) and full
 + * screen; the first two turn Zoom To Fit on (the window becomes resizable and the picture scales to it: myLinux's
 + * desktop is zoomed, and a guest that follows the window's size, Omarchy, gets more or less room that way). Centred: a ⌘
-+ * menu (Apps…, Cloud Folders…, Mount a Share…, then the session), when MYLINUX_SESSION_CMD names a helper that hands "save", "restore" or "interval N" to the guest (run
++ * menu (Apps…, Snippets…, Cloud Folders…, Mount a Share…, then the session), when MYLINUX_SESSION_CMD names a helper that hands "save", "restore" or "interval N" to the guest (run
 + * without a shell, with the share folder from MYLINUX_SESSION_SHARE as its first argument; MYLINUX_SESSION_STATUS
 + * is the status file the guest keeps for the menu). The size buttons are
 + * only there with MYLINUX_SIZE_BUTTONS set (run.sh, run-omarchy.sh); a window without either keeps its plain title bar.
@@ -488,6 +489,8 @@
 +    if (mylinux_restart_available()) {
 +        item = [menu addItemWithTitle:@"Apps…" action:@selector(mylinuxApps:) keyEquivalent:@"A"];
 +        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
++        [item setTarget:self];
++        item = [menu addItemWithTitle:@"Snippets…" action:@selector(mylinuxSnippets:) keyEquivalent:@""];
 +        [item setTarget:self];
 +        item = [menu addItemWithTitle:@"Cloud Folders…" action:@selector(mylinuxCloudFolders:) keyEquivalent:@"P"];
 +        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
@@ -698,7 +701,7 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1756,6 +2303,72 @@
+@@ -1756,6 +2305,78 @@
      });
  }
  
@@ -762,6 +765,12 @@
 +    mylinux_ask_launcher(@"cloud");
 +}
 +
++/* myLinux: Machine › Snippets… : the launcher's commands for this system, to copy into a terminal inside */
++- (void)mylinuxSnippets:(id)sender
++{
++    mylinux_ask_launcher(@"snippets");
++}
++
 +/* myLinux: Machine › Mount a Share… : the launcher's dialog for an SMB share (this Mac's, a NAS's) inside */
 +- (void)mylinuxMountShare:(id)sender
 +{
@@ -771,7 +780,7 @@
  /* Ejects the media.
   * Uses sender's tag to figure out the device to eject.
   */
-@@ -1935,7 +2548,20 @@
+@@ -1935,7 +2556,21 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
@@ -784,6 +793,7 @@
 +        NSMenuItem *apps = [[[NSMenuItem alloc] initWithTitle: @"Apps…" action: @selector(mylinuxApps:) keyEquivalent: @"A"] autorelease];
 +        [apps setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
 +        [menu addItem:apps];
++        [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Snippets…" action: @selector(mylinuxSnippets:) keyEquivalent: @""] autorelease]];
 +        NSMenuItem *cloud = [[[NSMenuItem alloc] initWithTitle: @"Cloud Folders…" action: @selector(mylinuxCloudFolders:) keyEquivalent: @"P"] autorelease];
 +        [cloud setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
 +        [menu addItem:cloud];

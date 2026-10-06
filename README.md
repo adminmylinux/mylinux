@@ -306,6 +306,15 @@ tokens) in a window a little wider than a large phone (540 points), with back, h
 its cookies in a store of its own, so the sign-in lasts; a sign-in popup (Google's) opens as a real window, other
 new-window links go to the browser; a page's file field (the Claude tab's *Open file…*) opens the Mac's open panel.
 
+**Snippets…** (under Apps… in Omarchy's ⌘ menu and Machine menu, the CMD menu of a Debian or Alpine window; from 0.7.41
+with runtime 11.1.1-15): commands for the machine's system with a name and a line about each, View and Copy (the
+clipboard is shared, so they paste into a terminal inside). The built-in ones are `server-apps/snippets.json`, fetched
+from `main` (the app's copy without GitHub): the cc and cx aliases, an alias per Claude subscription (its token in
+`~/.config/mylinux/claude-accounts/<alias>.env`, as myLinux Apps keeps them) and per Codex account (its own
+`CODEX_HOME`), the installers and the system update. The aliases go into `~/.config/mylinux/my-aliases.sh`, which
+`~/.bashrc` and `~/.profile` load (myLinux Apps rewrites its own aliases.sh); snippets that ask read the terminal, so
+a pasted snippet does not answer itself. + adds the user's own for that system, kept in the launcher's snippets.json.
+
 **Mac folders** (Cloud Folders › Add Folder…, from 0.7.39): any folder on the Mac (a project, an external disk) shared
 into a machine as `~/<name>`, the same way as the cloud folders: a 9p share with the tag `mac-<name>` (EXTRA_SHARES,
 attached at the start, so saving restarts a running machine), mounted at `/mnt/mac-<name>` through `/etc/fstab` and

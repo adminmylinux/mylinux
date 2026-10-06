@@ -264,6 +264,7 @@ enum MachineLink {
             case "restart":
                 if r.isActive || r.canStopElsewhere { r.restart(p) }
             case "cloud": CloudFoldersWindow.show(p.id)       // ⇧⌘P or Machine › Cloud Folders… in a desktop's window
+            case "snippets": SnippetsWindow.show(p)               // Machine › Snippets… in a desktop's window
             case "share":                                         // Machine › Mount a Share… in a desktop's window
                 if p.kind == .omarchy { MountShareWindow.show(p) }
                 else {

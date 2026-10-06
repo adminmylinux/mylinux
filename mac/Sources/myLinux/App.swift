@@ -403,6 +403,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --show-snippets <png>` (a scratch MYLINUX_SUPPORT_DIR): the Snippets window of a stand-in Omarchy
+        if let i = args.firstIndex(of: "--show-snippets"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SnippetsWindow.show(ProfileStore.newProfile(named: "Omarchy", kind: .omarchy)) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
+                if let w = NSApp.windows.first(where: { $0.isVisible && $0.title.hasSuffix("Snippets") }) {
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture"); cap.arguments = ["-x", "-l", String(w.windowNumber), path]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --show-mount-share <png>` (a scratch MYLINUX_SUPPORT_DIR): the Mount a Share dialog for a stand-in Omarchy
         if let i = args.firstIndex(of: "--show-mount-share"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1]

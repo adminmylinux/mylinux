@@ -1126,3 +1126,16 @@ final class MacFolderTests: XCTestCase {
         }
     }
 }
+
+final class SnippetTests: XCTestCase {
+    func testTheBuiltInSnippetsReadAndFitTheirSystems() throws {
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../server-apps/snippets.json").standardized
+        let list = try XCTUnwrap(Snippets.decode(try Data(contentsOf: file)))
+        XCTAssertFalse(list.isEmpty)
+        let omarchy = list.filter { $0.os.contains(Profile.Kind.omarchy.rawValue) }.map(\.id)
+        for id in ["cc-alias", "claude-subscription", "cx-alias", "codex-subscription", "statusline"] { XCTAssertTrue(omarchy.contains(id), id) }
+        XCTAssertTrue(list.allSatisfy { s in s.os.allSatisfy { Profile.Kind(rawValue: $0) != nil } })
+        XCTAssertTrue(list.allSatisfy { !$0.isOwn }, "built in, not the user's")
+        XCTAssertTrue(Snippets.pasteHint(.omarchy).contains("Ctrl+Shift+V"))
+    }
+}

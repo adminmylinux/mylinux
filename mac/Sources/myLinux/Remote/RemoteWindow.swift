@@ -333,6 +333,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             let apps = NSMenuItem(title: "Apps…", action: #selector(openApps), keyEquivalent: "a"); apps.keyEquivalentModifierMask = [.command, .shift]; apps.target = self
             apps.toolTip = "myLinux Apps: find, run and install programs in the terminal"
             pop.menu?.addItem(apps)
+            let snippets = NSMenuItem(title: "Snippets…", action: #selector(openSnippets), keyEquivalent: ""); snippets.target = self
+            snippets.toolTip = "Commands for this machine's system to copy into the terminal: aliases, installers, updates"
+            pop.menu?.addItem(snippets)
             let share = NSMenuItem(title: "Mount a Share…", action: #selector(mountShare), keyEquivalent: ""); share.target = self
             share.toolTip = "An SMB share from this Mac, a NAS or another computer, as a folder in your home inside"
             pop.menu?.addItem(share)
@@ -538,6 +541,12 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             t.type(ServerApps.command + "\n")
             self.window?.makeFirstResponder(t.keyView)
         }
+    }
+
+    // ---- the myLinux menu: Snippets… ----
+    @objc func openSnippets() {
+        guard let machine = ProfileStore.shared.profiles.first(where: { $0.id == (profile.machineID ?? profile.id) }) else { return }
+        SnippetsWindow.show(machine, over: window)
     }
 
     // ---- the myLinux menu: Mount a Share… ----
