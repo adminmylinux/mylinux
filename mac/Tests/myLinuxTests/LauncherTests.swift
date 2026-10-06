@@ -1151,4 +1151,12 @@ final class SnippetTests: XCTestCase {
         XCTAssertTrue(list.allSatisfy { !$0.isOwn }, "built in, not the user's")
         XCTAssertTrue(Snippets.pasteHint(.omarchy).contains("Ctrl+Shift+V"))
     }
+    func testVncDesktopsHaveSnippetsOfTheirOwn() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../server-apps").standardized
+        let vnc = try XCTUnwrap(Snippets.decode(try Data(contentsOf: dir.appendingPathComponent("snippets-vnc.json"))))
+        XCTAssertTrue(vnc.allSatisfy { $0.os == ["vnc"] }, "a file of their own, for VNC desktops only")
+        let omarchy = try XCTUnwrap(Snippets.decode(try Data(contentsOf: dir.appendingPathComponent("snippets.json")))).filter { $0.os.contains("omarchy") }
+        XCTAssertEqual(Set(vnc.map(\.id)), Set(omarchy.map(\.id)), "begun as a copy of Omarchy's")
+        XCTAssertEqual(SnippetSet.vnc.file, "snippets-vnc.json"); XCTAssertEqual(SnippetSet.machine(.omarchy).file, "snippets.json")
+    }
 }

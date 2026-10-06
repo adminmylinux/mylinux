@@ -107,8 +107,16 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                 return e
             }
         }
+        if profile.kind == .vnc && !profile.launcherMachine {
+            // ⌘P opens the CMD menu (with every key going to the remote too: ⌘P is one the Mac keeps, grabKeep)
+            keyMonitorP = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+                guard let self, e.window === self.window, e.charactersIgnoringModifiers?.lowercased() == "p",
+                      e.modifierFlags.intersection([.command, .shift, .option, .control]) == [.command] else { return e }
+                self.cmdMenu?.performClick(nil); return nil
+            }
+        }
         let toolbar = NSToolbar(identifier: "remote-\(profile.kind.rawValue)\(profile.launcherMachine ? "-machine" : "")"); toolbar.delegate = self; toolbar.displayMode = .iconOnly
-        if profile.launcherMachine { toolbar.centeredItemIdentifiers = [NSToolbarItem.Identifier(Item.mylinux.rawValue)] }
+        if profile.launcherMachine || profile.kind == .vnc { toolbar.centeredItemIdentifiers = [NSToolbarItem.Identifier(Item.mylinux.rawValue)] }
         w.toolbar = toolbar
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -297,7 +305,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         if let v = vncView { window?.makeFirstResponder(v) } else if let t = ssh { window?.makeFirstResponder(t.keyView) }
         let pb = NSPasteboard.general
         if pb.changeCount != pasteboardCount, let s = pb.string(forType: .string) { pasteboardCount = pb.changeCount; vnc?.send(text: s) }
-        if let v = vncView, keyboardMode == .all, !v.grabbing { v.setGrab(true, keep: profile.keepForMac) }
+        if let v = vncView, keyboardMode == .all, !v.grabbing { v.setGrab(true, keep: grabKeep) }
     }
     func windowDidResignKey(_ n: Notification) { pasteboardCount = NSPasteboard.general.changeCount }
     /// The ssh line under a terminal; a launcher machine adds how long it took from Start to ready (in a machine's
@@ -326,7 +334,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] {
         var items: [Item] = profile.kind == .vnc ? [.launcher, .fill, .fullScreen, .fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.fill, .fullScreen, .keyboard]
         // the launcher's own machines get the myLinux menu in the middle of the title bar
-        if profile.launcherMachine { items = [.flexibleSpace0] + [.mylinux] + [.flexibleSpace0] + items }
+        // the launcher's own machines and VNC desktops get the CMD menu in the middle of the title bar
+        if profile.launcherMachine || profile.kind == .vnc { items = [.flexibleSpace0] + [.mylinux] + [.flexibleSpace0] + items }
         return items.map { $0 == .flexibleSpace0 ? .flexibleSpace : NSToolbarItem.Identifier($0.rawValue) } + [.flexibleSpace]
     }
     func toolbar(_ t: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar: Bool) -> NSToolbarItem? {
@@ -339,6 +348,16 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             pop.bezelStyle = .texturedRounded
             pop.addItem(withTitle: "CMD")
             pop.toolTip = "Commands for this machine (⌘P)"
+            if !profile.launcherMachine {
+                // a VNC desktop: its own snippets (snippets-vnc.json)
+                let snippets = NSMenuItem(title: "Snippets…", action: #selector(openSnippets), keyEquivalent: ""); snippets.target = self
+                snippets.toolTip = "Commands to copy and paste into a terminal on the remote: aliases, installers, updates"
+                pop.menu?.addItem(snippets)
+                pop.menu?.delegate = self
+                cmdMenu = pop
+                item.view = pop; item.label = "CMD"; item.visibilityPriority = .high
+                return item
+            }
             let find = NSMenuItem(title: "Find and Run…", action: #selector(showPalette), keyEquivalent: " "); find.keyEquivalentModifierMask = [.option]; find.target = self
             pop.menu?.addItem(find)
             let apps = NSMenuItem(title: "Apps…", action: #selector(openApps), keyEquivalent: "a"); apps.keyEquivalentModifierMask = [.command, .shift]; apps.target = self
@@ -403,17 +422,23 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     @objc private func zoomOut() { vncView?.zoomStep(-1) }
     @objc private func zoomIn() { vncView?.zoomStep(1) }
     @objc private func pixels() { vncView?.zoomToPixels() }
-    @objc private func toggleGrab() { guard let v = vncView else { return }; v.setGrab(!v.grabbing, keep: profile.keepForMac); if !v.grabbing && !KeyboardGrab.permitted { showOverlay("Grabbing every key needs Accessibility permission for myLinux Launcher (System Settings › Privacy & Security). Click to dismiss.") } }
+    /// the shortcuts the Mac keeps with every key going to the remote: the profile's, and ⌘P (the CMD menu)
+    private var grabKeep: [String] { profile.kind == .vnc && !profile.launcherMachine ? profile.keepForMac + ["cmd+p"] : profile.keepForMac }
+    @objc private func toggleGrab() { guard let v = vncView else { return }; v.setGrab(!v.grabbing, keep: grabKeep); if !v.grabbing && !KeyboardGrab.permitted { showOverlay("Grabbing every key needs Accessibility permission for myLinux Launcher (System Settings › Privacy & Security). Click to dismiss.") } }
     @objc private func pickKeyboard(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let m = RemoteProfile.Keyboard(rawValue: raw) else { return }
         keyboardMode = m; vncView?.keyboard = m
         var p = profile; p.keyboard = m; RemoteStore.shared.update(p)
-        if m == .all { vncView?.setGrab(true, keep: profile.keepForMac) }
+        if m == .all { vncView?.setGrab(true, keep: grabKeep) }
         updateStatus()
     }
     @objc func validateToolbarItem(_ item: NSToolbarItem) -> Bool { true }
 
     // ---- the myLinux menu: the browser pane ----
+    // while the CMD menu is open its keys go to the menu, not to a remote that has every key
+    // (and the ⌘ of ⌘P, down on the remote, is let go there)
+    func menuWillOpen(_ menu: NSMenu) { KeyboardGrab.shared.passThrough = true; vncView?.releaseHeld() }
+    func menuDidClose(_ menu: NSMenu) { KeyboardGrab.shared.passThrough = false }
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.item(withTitle: "Show Browser")?.title = browser == nil ? "Show Browser" : "Hide Browser"
         menu.item(withTitle: "Hide Browser")?.title = browser == nil ? "Show Browser" : "Hide Browser"
@@ -578,6 +603,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     // ---- the myLinux menu: Snippets… ----
     @objc func openSnippets() {
+        if !profile.launcherMachine { SnippetsWindow.show(remote: profile, over: window); return }
         guard let machine = ProfileStore.shared.profiles.first(where: { $0.id == (profile.machineID ?? profile.id) }) else { return }
         SnippetsWindow.show(machine, over: window)
     }

@@ -168,7 +168,7 @@ final class VncView: NSView {
     }
     /// the modifiers the remote has down, up (the keyboard leaves it: focus goes, or ⌥⌘G gives the keys to the Mac,
     /// whose ⌘ up would not be sent)
-    private func releaseHeld() {
+    func releaseHeld() {
         for (flag, sym) in KeyMap.modifierKeysyms where lastFlags.contains(flag) {
             let s = flag == .option ? (keyboard == .optionSuper ? KeyMap.superL : KeyMap.altL) : flag == .command ? (keyboard == .optionSuper ? KeyMap.altL : KeyMap.superL) : sym
             conn.send(key: s, down: false)
