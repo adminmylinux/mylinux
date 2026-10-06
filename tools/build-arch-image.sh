@@ -140,6 +140,9 @@ inside "
   install -d -o 1000 -g 1000 /home/$USER_NAME/.config
   printf '[Daemon]\nAutolock=false\nLockOnResume=false\n' > /home/$USER_NAME/.config/kscreenlockerrc
   printf '[General]\nShouldShow=false\n' > /home/$USER_NAME/.config/plasma-welcomerc
+  # no KDE wallet: with no password to open it, it asks to be set up when an app first wants it, and apps (the
+  # ChatGPT app) wait on that; Chromium-based apps keep their logins themselves without it
+  printf '[Wallet]\nEnabled=false\nFirst Use=false\n' > /home/$USER_NAME/.config/kwalletrc
   # the power button (QMP system_powerdown: the launcher's Stop) shuts down; Plasma's own default asks first, and
   # nobody answers that inside a machine being stopped
   printf '[AC][SuspendAndShutdown]\nAutoSuspendAction=0\nPowerButtonAction=8\n[AC][Display]\nTurnOffDisplayWhenIdle=false\nDimDisplayWhenIdle=false\n' > /home/$USER_NAME/.config/powerdevilrc
@@ -153,6 +156,7 @@ for f in etc/sudoers.d/10-wheel etc/sddm.conf.d/mylinux.conf etc/systemd/system/
 done
 grep -q '^mac /mnt/mac 9p' "$MNT/etc/fstab" || die "the image's fstab lacks the Mac share"
 grep -q '^KWIN_COMPOSE=O2ES' "$MNT/etc/environment" || die "the image's /etc/environment lacks KWin's settings"
+grep -q '^Enabled=false' "$MNT/home/$USER_NAME/.config/kwalletrc" || die "the image's KDE wallet is not switched off"
 say "Kernel and initramfs out"
 cp "$MNT/boot/Image" "$OUT/vmlinuz-linux"
 cp "$MNT/boot/initramfs-linux.img" "$OUT/initramfs-linux.img"

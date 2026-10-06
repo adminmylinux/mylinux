@@ -10,8 +10,8 @@ set -eu
 cd "$(dirname "$0")/.."
 . tools/download-cache.sh
 REPO=adminmylinux/mylinux-releases
-TAG=arch-2026.10.06
-SUMS_SHA256=7703ae3bc5649036aa4a63b6b4f4f0bd0e250254e3055ab137b1601f68fb0f36
+TAG=arch-2026.10.06.2
+SUMS_SHA256=3776f3b39d60b5291436d82af30089a414f4661d9528be4c41b95fefa7753a32
 PINNED=$TAG
 FILES="vmlinuz-linux initramfs-linux.img rootfs.ext4.zst"
 OUT="${MYLINUX_OUT:-out}"
