@@ -23,6 +23,7 @@ enum MachineApp {
         switch p.kind {
         case .mylinux: return "dev.mylinux.vm.\(id)"
         case .omarchy, .arch: return "dev.mylinux.vm.omarchy.\(id)"      // run-omarchy.sh's wrapper, for both
+        case .puppy: return "dev.mylinux.vm.puppy.\(id)"                 // its wrapper around the PC emulator
         case .debian, .alpine: return "dev.mylinux.machine.\(id)"
         }
     }
@@ -272,6 +273,7 @@ enum MachineLink {
                     let alert = NSAlert(); alert.messageText = "Mount a Share in \(p.name)"
                     alert.informativeText = p.kind == .arch
                         ? "In Arch Linux, Dolphin mounts shares: type smb://<server>/<share> in its address bar (Ctrl+L), for example smb://10.0.2.2/Public for this Mac's."
+                        : p.kind == .puppy ? "In Puppy Linux, Menu › Network has the tools for network shares (Samba)."
                         : "Mounting shares is there in Omarchy, Debian and Alpine; myLinux does not have it yet."
                     alert.runModal()
                 }
@@ -279,6 +281,7 @@ enum MachineLink {
                 Task { @MainActor in
                     let problem: String? = p.kind == .omarchy ? await ServerApps.openInOmarchy(p)
                         : p.kind == .arch ? "Arch Linux installs apps with pacman: in Konsole, sudo pacman -S <name> (pacman -Ss <word> searches)."
+                        : p.kind == .puppy ? "Puppy Linux installs apps with its Package Manager: Menu › Setup › Puppy Package Manager."
                         : "myLinux has its own: Super+Space (⌥Space) finds, runs and installs apps."
                     guard let problem else { return }
                     NSApp.activate()

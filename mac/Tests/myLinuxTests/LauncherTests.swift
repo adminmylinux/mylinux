@@ -639,6 +639,19 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
         XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the same QEMU wrapper as Omarchy's")
     }
+    func testPuppyIsAnEmulatedDesktopWithItsOwnWrapper() {
+        let p = ProfileStore.newProfile(named: "P", kind: .puppy, folder: URL(fileURLWithPath: "/tmp/m/p"))
+        XCTAssertTrue(p.kind.runsDesktop); XCTAssertTrue(p.kind.isEmulated); XCTAssertFalse(Profile.Kind.arch.isEmulated)
+        XCTAssertEqual(p.script, "run-omarchy.sh")
+        XCTAssertEqual(p.appsDisk, "/tmp/m/p/puppy.ext4"); XCTAssertEqual(p.shareDir, "/tmp/m/p/Mac")
+        XCTAssertEqual(p.grab, "opt"); XCTAssertEqual(p.appsSizeGB, 16)
+        let env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s", qmpSocket: "/tmp/q")
+        XCTAssertEqual(env["DESKTOP"], "puppy"); XCTAssertEqual(env["QMP"], "/tmp/q"); XCTAssertEqual(env["DISK"], "/tmp/m/p/puppy.ext4")
+        XCTAssertEqual(env["APP_ICON"], "tools/icons/machine-puppy.icns")
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.puppy.\(p.id.uuidString.lowercased())", "the PC emulator's wrapper, not Omarchy's")
+        XCTAssertEqual([8, 16, 36].map { Profile.recommendedMemoryGB(.puppy, macGB: $0) }, [2, 4, 4])
+    }
     func testProfilesFromBeforeKindsAreMyLinux() throws {
         let old = #"{"name":"Work","appsDisk":"/x/apps.img","shareDir":"/x/share"}"#
         let p = try JSONDecoder().decode(Profile.self, from: Data(old.utf8))

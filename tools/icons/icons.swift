@@ -224,6 +224,15 @@ render("machine-arch", to: out) { ctx in
     }
 }
 
+render("machine-puppy", to: out) { ctx in
+    // a warm amber with a paw print (not Puppy Linux's own logo)
+    body(ctx, gradient: [0xF2B24A, 0xE0902A, 0xA85F12], glow: 0xFFE3B0)
+    let cfg = NSImage.SymbolConfiguration(pointSize: 400, weight: .bold)
+    if let i = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
+        mark(ctx, i, size: 520, tint: .white)
+    }
+}
+
 // ---- the machines' apps as the Dock and ⌘Tab show them: each with myLinux's own icon in the bottom-right corner,
 // so they read as myLinux machines and not apps of their own (machine-<kind>-app.png → machine-<kind>.icns) ----
 func badged(_ name: String) {
@@ -246,4 +255,4 @@ func badged(_ name: String) {
         ctx.restoreGState()
     }
 }
-for kind in ["omarchy", "debian", "alpine", "arch"] { badged("machine-" + kind) }
+for kind in ["omarchy", "debian", "alpine", "arch", "puppy"] { badged("machine-" + kind) }

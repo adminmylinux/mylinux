@@ -49,7 +49,10 @@ struct CloudTab: View {
             Text(running ? "Folders are attached when the machine starts: saving a change restarts \(machine)\(desktop ? "" : ", and its terminals reconnect")."
                          : "Folders are attached when the machine starts, so a change takes effect at the next Start.")
                 .font(.caption).foregroundStyle(.secondary)
-            if kind?.runsDesktop == true { omarchyCommands }
+            if kind == .puppy {
+                Label("Puppy mounts them itself at every start, at /mnt/dropbox, /mnt/onedrive and so on (File › the up arrow › mnt).", systemImage: "checkmark.circle")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else if kind?.runsDesktop == true { omarchyCommands }
             if kind == .mylinux {
                 Label("myLinux mounts them itself at every start: ~/Dropbox and the others are there, also for the apps.", systemImage: "checkmark.circle")
                     .font(.callout).foregroundStyle(.secondary)

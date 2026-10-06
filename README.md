@@ -42,7 +42,7 @@ tools/get-image.sh      # downloads Image + rootfs.cpio.gz of the latest release
 ```
 
 Homebrew's QEMU is optional: `tools/get-qemu-runtime.sh` installs myLinux's own QEMU into `out/qemu-runtime`
-(about 10 MB), and `run.sh` uses it whenever it is there. That runtime is QEMU 11.1 with VirGL, so a guest whose
+(about 15 MB), and `run.sh` uses it whenever it is there. That runtime is QEMU 11.1 with VirGL, so a guest whose
 Mesa has the `virgl` driver renders on the Mac's GPU (virtio-gpu-gl, virglrenderer, ANGLE, Metal): images built
 after 2026-09-19 do, and the desktop's compositor then costs a few percent of a core where software rendering took two
 and a half cores for a repainting terminal. `RENDER=soft ./run.sh` keeps the guest on software GL. `MYLINUX_QEMU=brew ./run.sh` insists on Homebrew's, `tools/get-qemu-runtime.sh --remove`
@@ -96,6 +96,26 @@ mounted by the guest's fstab at `/mnt/mac` (`~/Mac`); `mylinux.scale=2` on the k
 on a Retina display (`arch/mylinux-scale`, at sign-in). The clipboard goes through `arch/mylinux-clipboard`, an agent
 inside that speaks Try Omarchy's protocol on the same virtio port, so the launcher's bridge serves both desktops. In
 the launcher it is **Arch Linux Machine**; new ones keep ⌘ with the Mac and use Option as Meta (`GRAB=opt`).
+
+### Puppy Linux machines (emulated)
+
+A fourth desktop, and the only one that is not ARM: [Puppy Linux](https://puppylinux-woof-ce.github.io/) (TrixiePup64,
+its own JWM desktop, running as root as Puppy does) exists for PCs only, so it runs on an emulated x86-64 processor:
+from runtime 11.1.1-17 the runtime also holds `qemu-system-x86_64` (the same patched QEMU source built a second time,
+with TCG instead of HVF), SeaBIOS and its VGA BIOS in `share/qemu`, and `mke2fs`. It starts in about a minute and a
+half and is several times slower than the other machines; fine for its small tools, slow for the browser.
+`tools/get-puppy.sh` downloads the official ISO from the Puppy project's server (about 1 GB, checked against a
+pinned SHA-256) and unpacks the kernel, the initrd and Puppy's `.sfs` layers into `out/puppy`; the ISO is not kept.
+`DESKTOP=puppy ./run-omarchy.sh` makes the machine's disk on first start: an ext4 filesystem (`mke2fs -d`) holding
+the layers and an empty save folder (`trixiepup64save`), so Puppy keeps every change from the first boot and never
+asks where to save. `puppy/save` goes into that folder and so becomes part of the system: `/etc/init.d/mylinux-share`
+mounts the Mac share at `/mnt/mac` (`~/Mac`) and the cloud folders at `/mnt/<name>`, `/etc/profile.d/mylinux-res`
+gives X the window's size (`mylinux.res=` on the kernel line; X would otherwise take the boot screen's 720 × 400),
+and `mylinux-clipboard` (started from `~/Startup`) is the clipboard agent for X11, speaking the same protocol as the
+other desktops'. The Mac's time zone is set in the new disk. The desktop is drawn at one pixel per point in a window
+that is not Retina (`myLinux-puppy.app`, as myLinux's own), which the size buttons zoom. The disk is SATA (Puppy's
+boot script has no virtio disk driver); the power button shuts it down, so Stop works. In the launcher it is
+**Puppy Linux Machine**.
 
 ### Debian server machines
 

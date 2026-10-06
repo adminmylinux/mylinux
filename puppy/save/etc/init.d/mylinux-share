@@ -1,0 +1,17 @@
+#!/bin/sh
+# myLinux: the Mac folders this machine was started with (9p devices; the share folder's tag is mac, the cloud
+# folders have their own) are mounted at /mnt/<tag>, and ~/Mac points to the share folder.
+# Put into Puppy's save folder when the machine's disk is made (run-omarchy.sh, DESKTOP=puppy).
+case "$1" in
+  start)
+    modprobe 9pnet_virtio 2>/dev/null
+    for f in /sys/bus/virtio/drivers/9pnet_virtio/virtio*/mount_tag; do
+      [ -r "$f" ] || continue
+      tag=$(tr -d '\000' < "$f")
+      case "$tag" in ''|*[!a-z0-9-]*) continue ;; esac
+      mkdir -p "/mnt/$tag"
+      mountpoint -q "/mnt/$tag" || mount -t 9p -o trans=virtio,version=9p2000.L,msize=262144 "$tag" "/mnt/$tag"
+    done
+    if mountpoint -q /mnt/mac && [ ! -e /root/Mac ]; then ln -s /mnt/mac /root/Mac; fi
+    ;;
+esac
