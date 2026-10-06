@@ -151,7 +151,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             c.onState = { [weak self] st in self?.stateChanged(st) }
             c.onServerText = { text in NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
             v.onZoomChanged = { [weak self] in self?.window?.toolbar?.validateVisibleItems() }
-            v.onGrabChanged = { [weak self] in self?.window?.toolbar?.validateVisibleItems(); self?.updateStatus() }
+            v.onGrabChanged = { [weak self] in self?.window?.toolbar?.validateVisibleItems(); self?.updateStatus(); self?.updateTitle() }
             window?.makeFirstResponder(v)
             // a saved password connects at once; otherwise ask (leave it empty for servers without a password)
             if !c.password.isEmpty || RemoteWindowController.noPasswordHosts.contains(profile.host) { c.start() }
@@ -274,6 +274,13 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     override func mouseDown(with e: NSEvent) {
         if !overlay.isHidden, overlay.frame.contains(window!.contentView!.convert(e.locationInWindow, from: nil)) { hideOverlay(); connect() }
         else { super.mouseDown(with: e) }
+    }
+
+    /// The title says where the keys are, as QEMU's window does: "⌥⌘G releases" while every key goes to the remote.
+    private func updateTitle() {
+        guard let v = vncView else { return }
+        window?.title = v.grabbing ? "\(profile.title)  —  ⌥⌘G releases the keyboard"
+            : keyboardMode == .all && KeyboardGrab.permitted ? "\(profile.title)  —  ⌥⌘G or a click grabs the keyboard" : profile.title
     }
 
     private func updateStatus() {
