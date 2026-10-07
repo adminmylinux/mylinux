@@ -11,6 +11,7 @@ struct MachineView: View {
     @StateObject private var runtime = RuntimeManager.shared
     @StateObject private var omarchyImage = DesktopImageManager.omarchy
     @StateObject private var archImage = DesktopImageManager.arch
+    @StateObject private var kaliImage = DesktopImageManager.kali
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
     @StateObject private var tiny = ServerImageManager.tiny
@@ -19,7 +20,7 @@ struct MachineView: View {
     /// Omarchy or Arch: a desktop on the QEMU runtime (run-omarchy.sh)
     private var isDesktop: Bool { draft.kind.runsDesktop }
     /// A desktop's download: Omarchy's guest or Arch's.
-    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : omarchyImage }
+    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : draft.kind == .kali ? kaliImage : omarchyImage }
     private var isServer: Bool { draft.isServer }
     private var guestName: String { draft.kind.title }
     /// A server's download: Debian's image or Alpine's.
@@ -40,7 +41,7 @@ struct MachineView: View {
         switch draft.kind {
         case .mylinux:
             return images.present ? nil : (settings.developerMode ? "Build the image first (./build.sh)" : "Download myLinux first")
-        case .omarchy, .arch:
+        case .omarchy, .arch, .kali:
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             if !runtime.present { return "Download the accelerated QEMU first" }
             return created || desktopImage.present ? nil : "Download \(guestName) first"
@@ -59,7 +60,7 @@ struct MachineView: View {
         case .mylinux:
             guard !images.present, !settings.developerMode else { return nil }
             return ("myLinux", images, { images.download(settings) })
-        case .omarchy, .arch:
+        case .omarchy, .arch, .kali:
             if !runtime.present { return ("QEMU", runtime, { runtime.download(settings) }) }
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             let image = desktopImage
@@ -576,6 +577,13 @@ struct MachineView: View {
     }
 
     private var grabHelp: String {
+        if draft.kind == .kali {
+            switch draft.grab {
+            case "full": return "Kali receives every key, ⌘ as Super, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives Kali every key again."
+            case "none": return "macOS keeps all its shortcuts; Kali only sees combinations macOS does not claim."
+            default: return "The Option key acts as Super (the Windows key) inside Kali: Option alone opens the application menu. macOS keeps its ⌘ shortcuts; Kali's own are Ctrl ones (Ctrl+C and Ctrl+V, Ctrl+Shift+C and Ctrl+Shift+V in the terminal)."
+            }
+        }
         if draft.kind == .arch {
             switch draft.grab {
             case "full": return "Plasma receives every key, ⌘ as Meta, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives Plasma every key again."

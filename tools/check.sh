@@ -40,7 +40,7 @@ for a in json.load(open("server-apps/catalog.json"))["apps"]:
     if a.get("icon") and not all(c in "0123456789abcdef" for c in a["icon"].lower()): miss.append("a hex icon")
     if miss: print("CATALOG:", a.get("id"), "has no", ", ".join(miss)); bad += 1
 # Snippets…: each with an id, a name, a line about it, systems the launcher knows, and text
-for sf, systems in (("snippets.json", ("mylinux", "omarchy", "debian", "alpine", "arch")), ("snippets-vnc.json", ("vnc",))):
+for sf, systems in (("snippets.json", ("mylinux", "omarchy", "debian", "alpine", "arch", "kali")), ("snippets-vnc.json", ("vnc",))):
   seen = set()
   for sn in json.load(open("server-apps/" + sf))["snippets"]:
     miss = [k for k in ("id", "name", "description", "os", "text") if not sn.get(k)]

@@ -67,6 +67,7 @@ enum Snippets {
         switch kind {
         case .omarchy: return "paste it into a terminal in Omarchy with Ctrl+Shift+V"
         case .arch: return "paste it into Konsole with Ctrl+Shift+V"
+        case .kali: return "paste it into a terminal in Kali with Ctrl+Shift+V"
         case .mylinux: return "paste it into a terminal in myLinux"
         case .debian, .alpine, .tiny: return "paste it into the terminal with ⌘V"
         }

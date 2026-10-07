@@ -1,0 +1,42 @@
+#!/bin/sh
+# myLinux: what the Kali (Xfce) desktop needs to behave as the launcher's other desktops do, started at sign-in
+# (/etc/xdg/autostart/mylinux-desktop.desktop):
+#  - the scale: Xfce draws everything twice the size when the window has two guest pixels per point (a Retina
+#    display, mylinux.scale=2 on the kernel line). Set once per value, so a scale chosen in Xfce's settings stays
+#    until the machine starts on a display with another scale.
+#  - the desktop follows the window: when the window is resized (its − + and Fill Screen buttons, a drag) QEMU offers
+#    a new preferred mode; Xfce does not take it by itself, so it is taken here at every change of the display.
+#  - the clipboard agent (mylinux-clipboard), kept running.
+s=$(sed -n 's/.*mylinux\.scale=\([0-9]\).*/\1/p' /proc/cmdline)
+mark="${XDG_CONFIG_HOME:-$HOME/.config}/mylinux-scale"
+if [ -n "$s" ] && [ "$(cat "$mark" 2>/dev/null)" != "$s" ]; then
+  # xfsettingsd must be there to hand the setting on
+  for i in 1 2 3 4 5 6 7 8 9 10; do xfconf-query -c xsettings -l >/dev/null 2>&1 && break; sleep 1; done
+  xfconf-query -c xsettings -p /Gdk/WindowScalingFactor -n -t int -s "$s" 2>/dev/null
+  xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s $((24 * s)) 2>/dev/null
+  # the window frames have a theme of their own for the double size
+  theme=$(xfconf-query -c xfwm4 -p /general/theme 2>/dev/null)
+  case "$s:$theme" in
+    2:*-xHiDPI) ;;
+    2:*) [ -d "/usr/share/themes/$theme-xHiDPI/xfwm4" ] && xfconf-query -c xfwm4 -p /general/theme -s "$theme-xHiDPI" ;;
+    1:*-xHiDPI) xfconf-query -c xfwm4 -p /general/theme -s "${theme%-xHiDPI}" ;;
+  esac
+  echo "$s" > "$mark"
+fi
+
+follow() {
+  for o in $(xrandr --query 2>/dev/null | awk '$2 == "connected" { print $1 }'); do xrandr --output "$o" --preferred 2>/dev/null; done
+}
+(
+  follow
+  # one line per change of the display (the new mode arrives as a hotplug event of the DRM device)
+  # (stdbuf: into a pipe udevadm would hold its lines back until it has a buffer full of them)
+  stdbuf -oL udevadm monitor --udev --subsystem-match=drm 2>/dev/null | while read -r line; do
+    case "$line" in *change*) sleep 0.3; follow ;; esac
+  done
+) &
+
+while :; do
+  /usr/local/bin/mylinux-clipboard 2>>"${XDG_RUNTIME_DIR:-/tmp}/mylinux-clipboard.log"
+  sleep 3
+done

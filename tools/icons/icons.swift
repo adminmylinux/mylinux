@@ -224,6 +224,15 @@ render("machine-arch", to: out) { ctx in
     }
 }
 
+render("machine-kali", to: out) { ctx in
+    // a dark blue as Kali's desktop has, with a shield (not Kali's own dragon, a trademark)
+    body(ctx, gradient: [0x34507E, 0x243A5E, 0x121E36], glow: 0x9CC3FF)
+    let cfg = NSImage.SymbolConfiguration(pointSize: 400, weight: .bold)
+    if let i = NSImage(systemSymbolName: "shield.lefthalf.filled", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
+        mark(ctx, i, size: 500, tint: .white)
+    }
+}
+
 render("machine-tiny", to: out) { ctx in
     // Alpine's peaks again, filled and on a green of its own: the small one of the two
     body(ctx, gradient: [0x2FB3A0, 0x1A8F80, 0x0E5A52], glow: 0xA8F0E2)
@@ -255,4 +264,4 @@ func badged(_ name: String) {
         ctx.restoreGState()
     }
 }
-for kind in ["omarchy", "debian", "alpine", "arch", "tiny"] { badged("machine-" + kind) }
+for kind in ["omarchy", "debian", "alpine", "arch", "tiny", "kali"] { badged("machine-" + kind) }

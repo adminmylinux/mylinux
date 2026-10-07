@@ -6,6 +6,8 @@
 # was created with (they must match the modules on the disk, so a newer download never replaces them).
 # DESKTOP=arch boots the Arch Linux (KDE Plasma) image instead (tools/build-arch-image.sh, tools/get-arch.sh), laid out
 # the same way: out/arch, its own disk, no Omarchy session agent; the Mac share is mounted by its fstab (tag mac).
+# DESKTOP=kali boots the Kali Linux (Xfce) image (tools/build-kali-image.sh, tools/get-kali.sh), in every way as Arch's:
+# out/kali, the same window and devices; kali/ holds what the image has to follow the window, scale and share the clipboard.
 # Environment: RES=WxH window size in points (default: fills the display the window opens on, the frontmost app's; a
 #              Retina display gives the guest twice that in pixels, SCALE=1|2 overrides), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
 #              NAME=window title, MEM=8G, CPUS=6, SHARE_DIR=folder shown inside Omarchy as ~/<its name> (optional),
@@ -41,7 +43,8 @@ DESKTOP="${DESKTOP:-omarchy}"
 case "$DESKTOP" in
   omarchy) TITLE_NAME=Omarchy; REVFILE=OMARCHY-REVISION; GET=tools/get-omarchy.sh ;;
   arch)    TITLE_NAME="Arch Linux"; REVFILE=ARCH-REVISION; GET=tools/get-arch.sh ;;
-  *) die "DESKTOP must be omarchy or arch" ;;
+  kali)    TITLE_NAME="Kali Linux"; REVFILE=KALI-REVISION; GET=tools/get-kali.sh ;;
+  *) die "DESKTOP must be omarchy, arch or kali" ;;
 esac
 G="$OUT/$DESKTOP"
 
@@ -140,7 +143,8 @@ if [ "$DESKTOP" = omarchy ]; then
   APPEND="$APPEND omarchy.qemu_virgl=1"
   [ "${SSH:-0}" = 1 ] && APPEND="$APPEND tryomarchy.ssh_access=1"
 else
-  # Plasma's scale: the guest has SCALE pixels per point of the window (arch/mylinux-scale sets it at sign-in)
+  # the desktop's scale: the guest has SCALE pixels per point of the window (arch/mylinux-scale and kali/mylinux-desktop
+  # set it at sign-in)
   APPEND="$APPEND quiet mylinux.scale=$SCALE"
 fi
 
@@ -166,7 +170,7 @@ if [ -n "$SHARE_DIR" ] && [ "$DESKTOP" = omarchy ]; then
   # the window runs the helper directly with these as its first argument (no shell: paths with spaces or quotes are fine)
   export MYLINUX_SESSION_CMD="$REPO/tools/omarchy-session-mac.sh" MYLINUX_SESSION_SHARE="$SHARE_DIR" MYLINUX_SESSION_STATUS="$SHARE_DIR/mylinux-tools/control/status.json"
 fi
-# Arch: the ⌘ menu in the middle of the title bar (⌘P opens it) with the launcher's commands it has, without Omarchy's session
+# Arch and Kali: the ⌘ menu in the middle of the title bar (⌘P opens it) with the launcher's commands it has, without Omarchy's session
 [ "$DESKTOP" = omarchy ] || export MYLINUX_COMMANDS_MENU="snippets cloud share"
 export MYLINUX_SIZE_BUTTONS=1     # the window's −10% / +10% / full screen buttons (Omarchy's desktop follows the window)
 # Hyprland's mode: the window starts fixed (the first-boot screen needs that) and becomes resizable once it is reached

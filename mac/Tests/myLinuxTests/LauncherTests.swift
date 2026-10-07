@@ -670,6 +670,21 @@ final class OmarchyProfileTests: XCTestCase {
         CodexLogin.decline(share, "you chose Don't Copy on the Mac.")
         XCTAssertEqual(try String(contentsOf: CodexLogin.declinedFile(share), encoding: .utf8), "you chose Don't Copy on the Mac.\n")
     }
+    func testKaliIsADesktopStartedLikeArch() {
+        let p = ProfileStore.newProfile(named: "K", kind: .kali, folder: URL(fileURLWithPath: "/tmp/m/k"))
+        XCTAssertTrue(p.kind.runsDesktop); XCTAssertFalse(p.isServer); XCTAssertEqual(p.kind.title, "Kali Linux")
+        XCTAssertEqual(p.script, "run-omarchy.sh")
+        XCTAssertEqual(p.appsDisk, "/tmp/m/k/kali.ext4"); XCTAssertEqual(p.shareDir, "/tmp/m/k/Mac")
+        XCTAssertEqual(p.grab, "opt", "Xfce is a Ctrl desktop: ⌘ stays with the Mac"); XCTAssertTrue(p.clipboard)
+        let env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s", qmpSocket: "/tmp/q")
+        XCTAssertEqual(env["DESKTOP"], "kali"); XCTAssertEqual(env["QMP"], "/tmp/q"); XCTAssertEqual(env["DISK"], "/tmp/m/k/kali.ext4")
+        XCTAssertEqual(env["APP_ICON"], "tools/icons/machine-kali.icns")
+        XCTAssertEqual(ProfileStore.newProfile(named: "A", kind: .arch).environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s")["DESKTOP"], "arch")
+        XCTAssertNil(ProfileStore.newProfile(named: "O", kind: .omarchy).environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s")["DESKTOP"])
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the same QEMU wrapper as Omarchy's and Arch's")
+        XCTAssertEqual(p.kind.snippetOS, "kali"); XCTAssertEqual(Profile.recommendedMemoryGB(.kali, macGB: 36), 8)
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

@@ -43,6 +43,7 @@ struct MyLinuxApp: App {
                 Button("New myLinux Machine") { _ = store.add(kind: .mylinux) }.keyboardShortcut("n")
                 Button("New Omarchy Machine") { _ = store.add(kind: .omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Arch Linux Machine") { _ = store.add(kind: .arch) }
+                Button("New Kali Linux Machine") { _ = store.add(kind: .kali) }
                 Button("New Debian Server") { _ = store.add(kind: .debian) }.keyboardShortcut("n", modifiers: [.command, .option])
                 Button("New Alpine Server") { _ = store.add(kind: .alpine) }
                 Button("New Tiny Alpine Server") { _ = store.add(kind: .tiny) }
@@ -130,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `myLinux --render-welcome <png>`: draw the welcome sheet to a file
         if let i = args.firstIndex(of: "--render-welcome"), i + 1 < args.count {
             if let ago = ProcessInfo.processInfo.environment["MYLINUX_RENDER_STARTED_AGO"].flatMap(Double.init) { WelcomeSheet.renderStartedAt = Date().addingTimeInterval(-ago) }
-            let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), omarchy: DesktopImageManager(.omarchy), arch: DesktopImageManager(.arch), debian: ServerImageManager(.debian), alpine: ServerImageManager(.alpine), tiny: ServerImageManager(.tiny), runtime: RuntimeManager(), done: { _ in })
+            let view = NSHostingView(rootView: WelcomeSheet(images: ImageManager(), omarchy: DesktopImageManager(.omarchy), arch: DesktopImageManager(.arch), kali: DesktopImageManager(.kali), debian: ServerImageManager(.debian), alpine: ServerImageManager(.alpine), tiny: ServerImageManager(.tiny), runtime: RuntimeManager(), done: { _ in })
                 .environmentObject(AppSettings.shared))
             view.frame = NSRect(origin: .zero, size: view.fittingSize); view.appearance = NSAppearance(named: .darkAqua)
             if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {

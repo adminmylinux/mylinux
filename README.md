@@ -104,6 +104,29 @@ on a Retina display (`arch/mylinux-scale`, at sign-in). The clipboard goes throu
 inside that speaks Try Omarchy's protocol on the same virtio port, so the launcher's bridge serves both desktops. In
 the launcher it is **Arch Linux Machine**; new ones keep ⌘ with the Mac and use Option as Meta (`GRAB=opt`).
 
+### Kali Linux machines (Xfce)
+
+A fourth desktop: [Kali Linux](https://www.kali.org) with its own default desktop, Xfce, signed in automatically as
+`kali` (password `kali`, sudo without one), with QTerminal, Thunar, Firefox and Kali's top tools
+(`kali-tools-top10`: nmap, Metasploit, Wireshark, John, Hydra, sqlmap, aircrack-ng, NetExec and Responder; Burp
+Suite, the tenth, is not built for arm64); the
+snippet **Kali's default tools** installs the full set a Kali installation has. Kali publishes an installer for arm64
+but no ready-made virtual machine, so myLinux builds the image, as it does Arch's: `tools/build-kali-image.sh` runs
+as root on an arm64 Linux (`orb -m debian sudo bash tools/build-kali-image.sh`), bootstraps `kali-rolling` from
+Kali's own archive with `debootstrap` (the packages checked against Kali's archive signing key, whose keyring is
+checked against the fingerprint kali.org names), installs the packages and leaves a kernel, an initramfs and a
+zstd-compressed raw ext4 root in `out/kali-build`. Releases go to mylinux-releases as `kali-<date>`;
+`tools/get-kali.sh` downloads the pinned one, and `DESKTOP=kali ./run-omarchy.sh` starts it on the same runtime and
+window as Omarchy and Arch (the ⌘ menu, the size buttons, keyboard modes, QMP, sound, the Mac share at `~/Mac`).
+Xfce runs on X11, which draws in software here (`kali/20-mylinux-modesetting.conf`: X's own OpenGL acceleration on
+QEMU's virgl gave a black screen), and [`kali/`](kali/) holds what Plasma does by itself in Arch: `mylinux-desktop` (started at
+sign-in) makes the desktop follow the window's size (it takes the display's new preferred mode at every change),
+sets Xfce's scale on a Retina display and keeps the clipboard agent running (`mylinux-clipboard`, for X11 with
+`xclip`, speaking the same protocol as Omarchy's and Arch's). The power button shuts down without asking, nothing
+locks or blanks the screen, and the root file system grows to the machine's disk size at each start. In the
+launcher it is **Kali Linux Machine**. The image is myLinux's own build from Kali's packages, not an official Kali
+image.
+
 ### Debian server machines
 
 The third kind of machine is a plain Debian server with no window at all: the latest stable Debian (trixie) from

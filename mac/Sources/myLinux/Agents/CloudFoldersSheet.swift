@@ -75,8 +75,8 @@ struct CloudTab: View {
         let script = CloudFolder.pasteScript(CloudFolder.allCases.map(\.rawValue).filter { picked.contains($0) }, mac: macDraft)
         VStack(alignment: .leading, spacing: 8) {
             Text("Once, inside \(machine)").font(.headline)
-            if kind == .arch {
-                Text("After saving (and the restart), copy these commands, paste them into Konsole in \(machine) (Ctrl+Shift+V) and press Return. From then on the folders are there at every start; paste again after changing them here.")
+            if kind == .arch || kind == .kali {
+                Text("After saving (and the restart), copy these commands, paste them into \(kind == .kali ? "a terminal" : "Konsole") in \(machine) (Ctrl+Shift+V) and press Return. From then on the folders are there at every start; paste again after changing them here.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else {
             Text("After the restart, Apps… (⇧⌘A in its window) › Cloud drives mounts it with your password. Or by hand:")

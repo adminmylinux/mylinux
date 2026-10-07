@@ -144,7 +144,7 @@ enum SavedDownloads {
     static let kinds: [(folder: String, name: String, revisionFile: String)] = [
         ("mylinux", "myLinux image", "IMAGE-REVISION"), ("omarchy", "Omarchy", "OMARCHY-REVISION"),
         ("debian", "Debian", "DEBIAN-REVISION"), ("alpine", "Alpine", "ALPINE-REVISION"),
-        ("arch", "Arch Linux", "ARCH-REVISION"), ("tiny", "Tiny Alpine", "TINY-REVISION"),
+        ("arch", "Arch Linux", "ARCH-REVISION"), ("tiny", "Tiny Alpine", "TINY-REVISION"), ("kali", "Kali Linux", "KALI-REVISION"),
     ]
 
     /// At launch: Linuxes installed before saving existed are saved too (APFS clones: no time, no extra space).
@@ -251,11 +251,13 @@ final class RuntimeManager: ScriptDownloader {
 
 /// A desktop guest, kept in <out>/<kind>; every machine of that kind has its disk unpacked from it on its first start.
 /// Omarchy (tools/get-omarchy.sh): downloaded once (1.4 GB) from the Try Omarchy project's signed release. Arch Linux
-/// with Plasma (tools/get-arch.sh): about 2 GB, our build (tools/build-arch-image.sh) from mylinux-releases.
+/// with Plasma (tools/get-arch.sh): about 2 GB, our build (tools/build-arch-image.sh) from mylinux-releases. Kali
+/// Linux with Xfce (tools/get-kali.sh): about 2 GB, our build (tools/build-kali-image.sh) from Kali's packages.
 final class DesktopImageManager: ScriptDownloader {
     static let omarchy = DesktopImageManager(.omarchy)
     static let arch = DesktopImageManager(.arch)
-    static func shared(_ kind: Profile.Kind) -> DesktopImageManager { kind == .arch ? arch : omarchy }
+    static let kali = DesktopImageManager(.kali)
+    static func shared(_ kind: Profile.Kind) -> DesktopImageManager { kind == .arch ? arch : kind == .kali ? kali : omarchy }
 
     let kind: Profile.Kind
     @Published private(set) var revision: String?
@@ -264,9 +266,10 @@ final class DesktopImageManager: ScriptDownloader {
     init(_ kind: Profile.Kind) { self.kind = kind; super.init() }
 
     /// For the download rows: the size and where it comes from.
-    var size: String { kind == .arch ? "about 2 GB" : "1.4 GB" }
+    var size: String { kind == .arch || kind == .kali ? "about 2 GB" : "1.4 GB" }
     var detail: String {
-        kind == .arch ? "about 2 GB, Arch Linux ARM with KDE Plasma, built by myLinux"
+        kind == .kali ? "about 2 GB, Kali's Xfce desktop and its top tools, built by myLinux from Kali's packages"
+        : kind == .arch ? "about 2 GB, Arch Linux ARM with KDE Plasma, built by myLinux"
                       : "1.4 GB, from the Try Omarchy project's signed release"
     }
 

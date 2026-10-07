@@ -10,6 +10,7 @@ struct WelcomeSheet: View {
     @ObservedObject var images: ImageManager
     @ObservedObject var omarchy: DesktopImageManager
     @ObservedObject var arch: DesktopImageManager
+    @ObservedObject var kali: DesktopImageManager
     @ObservedObject var debian: ServerImageManager
     @ObservedObject var alpine: ServerImageManager
     @ObservedObject var tiny: ServerImageManager
@@ -37,6 +38,8 @@ struct WelcomeSheet: View {
               text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. Your Command key works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
         Offer(kind: .arch, name: "Arch Linux", size: "2 GB", bytes: 2.0e9,
               text: "Arch Linux with the KDE Plasma desktop: a taskbar, a start menu, Dolphin, Konsole and Firefox. The window resizes the desktop, the clipboard is shared with the Mac, and pacman keeps it current."),
+        Offer(kind: .kali, name: "Kali Linux", size: "2 GB", bytes: 2.0e9,
+              text: "The security distribution with its Xfce desktop: QTerminal, Firefox and Kali's top tools (nmap, Metasploit, Wireshark, John, Hydra, sqlmap and more), the rest an apt install away. The window resizes the desktop and the clipboard is shared with the Mac."),
         Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
               text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
         Offer(kind: .alpine, name: "Alpine Server", size: "100 MB", bytes: 100e6,
@@ -147,6 +150,8 @@ struct WelcomeSheet: View {
                 tile(Color(red: 0.05, green: 0.35, blue: 0.50), "mountain.2")
             case .arch:
                 tile(Color(red: 0.09, green: 0.58, blue: 0.82), "triangle.fill")
+            case .kali:
+                tile(Color(red: 0.14, green: 0.20, blue: 0.36), "shield.lefthalf.filled")
             case .tiny:
                 tile(Color(red: 0.10, green: 0.50, blue: 0.45), "mountain.2.fill")
             }
@@ -213,14 +218,14 @@ struct WelcomeSheet: View {
 
     // ---- state ----------------------------------------------------------------------------------------------------
     private func manager(_ kind: Profile.Kind) -> ScriptDownloader {
-        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch; case .tiny: return tiny }
+        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch; case .tiny: return tiny; case .kali: return kali }
     }
     private func present(_ kind: Profile.Kind) -> Bool {
-        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present; case .tiny: return tiny.present }
+        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present; case .tiny: return tiny.present; case .kali: return kali.present }
     }
     /// Ticked and not downloaded yet.
     private var pending: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && !present($0) } }
-    private var anyBusy: Bool { images.busy || omarchy.busy || arch.busy || debian.busy || alpine.busy || tiny.busy || runtime.busy }
+    private var anyBusy: Bool { images.busy || omarchy.busy || arch.busy || kali.busy || debian.busy || alpine.busy || tiny.busy || runtime.busy }
     private var readyKinds: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && present($0) } }
     private var summary: String {
         if started && anyBusy { return "Downloading…" }
@@ -235,10 +240,10 @@ struct WelcomeSheet: View {
         for kind in pending {
             switch kind {
             case .mylinux: images.download(settings)
-            case .omarchy, .arch:
+            case .omarchy, .arch, .kali:
                 // the desktops run only on the accelerated runtime; a release carries it, a local build fetches it
                 if !runtime.present && !runtime.busy && RuntimeManager.bundledTarball == nil { runtime.download(settings) }
-                (kind == .arch ? arch : omarchy).download(settings)
+                (kind == .arch ? arch : kind == .kali ? kali : omarchy).download(settings)
             case .debian: debian.download(settings)
             case .alpine: alpine.download(settings)
             case .tiny:

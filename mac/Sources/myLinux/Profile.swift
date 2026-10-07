@@ -9,15 +9,16 @@ struct Profile: Codable, Identifiable, Hashable {
     /// Debian and Alpine are servers (run-debian.sh, run-alpine.sh, both run-server.sh): terminal-only machines from
     /// the distribution's cloud image, `appsDisk` their root disk, no window; the launcher reaches them through the
     /// serial console and an SSH terminal on `sshPort`. Arch is a desktop like Omarchy (run-omarchy.sh with
-    /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh. Tiny is a third server
+    /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh. Kali is the third desktop
+    /// there (DESKTOP=kali): Kali Linux with its Xfce desktop, built by tools/build-kali-image.sh from Kali's packages. Tiny is a third server
     /// (run-tiny.sh): Tiny Alpine, Alpine's mini root filesystem on myLinux's kernel, no cloud image and no firmware.
     enum Kind: String, Codable {
-        case mylinux, omarchy, debian, alpine, arch, tiny
+        case mylinux, omarchy, debian, alpine, arch, tiny, kali
         var isServer: Bool { self == .debian || self == .alpine || self == .tiny }
         /// A desktop on the QEMU runtime started by run-omarchy.sh: Omarchy, or Arch with Plasma.
-        var runsDesktop: Bool { self == .omarchy || self == .arch }
+        var runsDesktop: Bool { self == .omarchy || self == .arch || self == .kali }
         var title: String {
-            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .tiny: return "Tiny Alpine" }
+            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .tiny: return "Tiny Alpine"; case .kali: return "Kali Linux" }
         }
         /// A server's account inside: "debian" (bash, sudo) or Alpine's own "alpine" (ash until the install script, doas).
         /// Tiny Alpine is Alpine: the same account, install script and snippets.
@@ -86,7 +87,7 @@ struct Profile: Codable, Identifiable, Hashable {
         let tier = macGB < 12 ? 0 : macGB < 24 ? 1 : 2       // 8 GB · 16 GB · 24 GB and more
         switch kind {
         case .mylinux: return [3, 4, 6][tier]
-        case .omarchy, .arch: return [4, 6, 8][tier]
+        case .omarchy, .arch, .kali: return [4, 6, 8][tier]
         case .debian: return [2, 2, 4][tier]
         case .alpine, .tiny: return [2, 2, 4][tier]      // idles in 60 MB (Tiny in 40); Claude Code and Codex's server need the room
         }
@@ -190,7 +191,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
-            if kind == .arch { env["DESKTOP"] = "arch" }
+            if kind != .omarchy { env["DESKTOP"] = kind.rawValue }      // arch, kali
             let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             env.merge(appBundleEnvironment) { $1 }

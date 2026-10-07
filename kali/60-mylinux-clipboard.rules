@@ -1,0 +1,2 @@
+# myLinux: the clipboard port (the launcher's bridge on the Mac side) for the signed-in user's agent
+SUBSYSTEM=="virtio-ports", ATTR{name}=="dev.tryomarchy.clipboard", MODE="0666"

@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""myLinux: the guest side of the clipboard bridge in the Kali Linux (Xfce, X11) image.
+
+The launcher's bridge on the Mac (OmarchyClipboard.swift) speaks Try Omarchy's protocol on the virtio serial port
+dev.tryomarchy.clipboard: one JSON object per line each way,
+    {"type": "clipboard", "format": "text/plain;charset=utf-8" | "image/png", "data": "<base64>"}
+and {"type": "sync"} from here asks for the Mac's clipboard. This agent sets X's clipboard with xclip and looks at it
+twice a second (xclip has no way to wait for a change). What it was just given from the Mac is not sent back (a
+fingerprint, as the Mac side does it). The Arch image's agent (arch/mylinux-clipboard) is the same for Wayland.
+Started with the desktop (/etc/xdg/autostart/mylinux-desktop.desktop runs kali/mylinux-desktop, which keeps it running).
+"""
+import base64, glob, hashlib, json, os, subprocess, sys, threading, time
+
+NAME = "dev.tryomarchy.clipboard"
+TEXT, PNG = "text/plain;charset=utf-8", "image/png"
+MAX = 16 * 1024 * 1024
+ECHO_WINDOW = 2.0
+
+lock = threading.Lock()
+last_in = {"fp": None, "at": 0.0}       # what the Mac last gave us
+last_out = {"fp": None}                  # what we last sent, or last saw
+
+
+def log(m):
+    print(f"mylinux-clipboard: {m}", file=sys.stderr, flush=True)
+
+
+def port():
+    """The port's device: udev's name for it, or the vport whose name it is."""
+    p = "/dev/virtio-ports/" + NAME
+    if os.path.exists(p):
+        return p
+    for n in glob.glob("/sys/class/virtio-ports/*/name"):
+        try:
+            if open(n).read().strip() == NAME:
+                return "/dev/" + n.split("/")[-2]
+        except OSError:
+            pass
+    return None
+
+
+def fingerprint(mime, payload):
+    h = hashlib.sha256(); h.update(mime.encode()); h.update(b"\0"); h.update(payload)
+    return h.hexdigest()
+
+
+def send(fd, mime, payload):
+    line = json.dumps({"type": "clipboard", "format": mime, "data": base64.b64encode(payload).decode()}, sort_keys=True)
+    os.write(fd, line.encode() + b"\n")
+
+
+def xclip(*args, data=None, timeout=5):
+    try:
+        if data is not None:
+            # xclip stays behind to serve the selection (-l 0 would end it at once); it is replaced by the next copy
+            p = subprocess.Popen(["xclip", "-selection", "clipboard", *args], stdin=subprocess.PIPE,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            p.stdin.write(data); p.stdin.close()
+            return b""
+        return subprocess.run(["xclip", "-selection", "clipboard", "-o", *args], capture_output=True, timeout=timeout).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return b""
+
+
+def from_mac(fd):
+    buf = b""
+    while True:
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            time.sleep(0.2); continue
+        buf += chunk
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            try:
+                m = json.loads(line)
+            except ValueError:
+                continue
+            if m.get("type") != "clipboard" or m.get("format") not in (TEXT, PNG):
+                continue
+            try:
+                payload = base64.b64decode(m["data"])
+            except (ValueError, KeyError, TypeError):
+                continue
+            if not payload or len(payload) > MAX:
+                continue
+            mime = m["format"]
+            with lock:
+                last_in["fp"], last_in["at"] = fingerprint(mime, payload), time.monotonic()
+                last_out["fp"] = last_in["fp"]
+            xclip("-t", PNG if mime == PNG else "UTF8_STRING", "-i", data=payload)
+
+
+def current():
+    """X's clipboard now: (mime, payload) for text or a PNG, else None."""
+    types = xclip("-t", "TARGETS").decode(errors="replace").split()
+    if PNG in types:
+        mime, out = PNG, xclip("-t", PNG)
+    elif any(t in ("UTF8_STRING", "STRING", "TEXT") or t.startswith("text/plain") for t in types):
+        mime, out = TEXT, xclip("-t", "UTF8_STRING")
+    else:
+        return None
+    return (mime, out) if out and len(out) <= MAX else None
+
+
+def to_mac(fd):
+    while True:
+        time.sleep(0.5)
+        got = current()
+        if not got:
+            continue
+        mime, payload = got
+        fp = fingerprint(mime, payload)
+        with lock:
+            echo = fp == last_in["fp"] and time.monotonic() - last_in["at"] < ECHO_WINDOW
+            if echo or fp == last_out["fp"]:
+                continue
+            last_out["fp"] = fp
+        send(fd, mime, payload)
+
+
+def main():
+    if not os.environ.get("DISPLAY"):
+        sys.exit("no DISPLAY: start with the desktop")
+    for _ in range(30):
+        if port():
+            break
+        time.sleep(1)
+    else:
+        sys.exit(f"{NAME} is not there: the machine was started without the clipboard")
+    fd = os.open(port(), os.O_RDWR)
+    os.write(fd, b'{"type": "sync"}\n')
+    threading.Thread(target=from_mac, args=(fd,), daemon=True).start()
+    to_mac(fd)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=myLinux desktop integration
+Comment=The scale, the window's size and the clipboard shared with the Mac
+Exec=/usr/local/bin/mylinux-desktop
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

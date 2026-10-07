@@ -1,0 +1,8 @@
+# myLinux (sourced by Xsession before the desktop starts): on a Retina display the machine's window has two guest
+# pixels per point (mylinux.scale=2 on the kernel line, from run-omarchy.sh). Qt programs (QTerminal) and the mouse
+# pointer take their size from the environment; Xfce's own scale is set by mylinux-desktop once the session runs.
+mylinux_scale=$(sed -n 's/.*mylinux\.scale=\([0-9]\).*/\1/p' /proc/cmdline 2>/dev/null)
+if [ "$mylinux_scale" = 2 ]; then
+  export QT_SCALE_FACTOR=2 XCURSOR_SIZE=48
+fi
+unset mylinux_scale
