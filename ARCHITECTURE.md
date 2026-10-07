@@ -108,7 +108,7 @@ and promotes the pair. The QEMU runtime is released separately under the tag in 
 (the header of `run.sh` lists them). It works from any directory, and paths may contain spaces and quotes: the QEMU
 command is built as an argument list, never as a string.
 
-1. **Size.** `RES` defaults to the display under the mouse pointer, in points, minus margins. The guest gets it on
+1. **Size.** `RES` defaults to the display under the mouse pointer, in points, less the window's title bar (measured, not assumed): the window fills the screen below the menu bar. The guest gets it on
    the kernel command line (`mylinux.res=`, `video=Virtual-1:`).
 2. **Disks.** The apps disk (`APPS_IMG`, default `out/apps.img`) is created as a sparse file of `APPS_SIZE_GB` if it
    is missing. It is attached as virtio-blk with the serial `mylinux-apps`, which is how the guest recognises it.

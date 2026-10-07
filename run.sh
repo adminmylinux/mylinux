@@ -22,7 +22,7 @@ die() { echo "run.sh: $*" >&2; exit 1; }
 OUT="${MYLINUX_OUT:+$(abs "$MYLINUX_OUT")}"; OUT="${OUT:-$REPO/out}"
 export MYLINUX_OUT="$OUT"
 
-# ---- guest resolution: the display under the mouse pointer, in points, minus window margins --------
+# ---- guest resolution: the display under the mouse pointer, in points, less the window's title bar --------
 # QEMU creates its (non-resizable) window at the guest size in device pixels and centres it; the app
 # bundle is marked non-Retina so one guest pixel is one point. View > Zoom To Fit makes the window
 # resizable again. If the window lands on another display, the placer below moves it (needs
@@ -34,19 +34,33 @@ SCREEN=$(osascript -l JavaScript -e '
   for (let i = 0; i < all.count; i++) { const f = all.objectAtIndex(i).frame;
     if (m.x >= f.origin.x && m.x < f.origin.x + f.size.width && m.y >= f.origin.y && m.y < f.origin.y + f.size.height) s = all.objectAtIndex(i); }
   const v = s.visibleFrame;   // points, Cocoa coordinates (y up); System Events wants y down from the top of the main screen
+  // the height of the window title bar, measured on windows that are never shown: with the runtime toolbar (40 points
+  // on macOS 26) and plain, as Homebrew QEMU has it (32 there); the desktop gets what is left of the screen below it
+  let chrome = 0, plain = 0;
+  try {
+    const w = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 800, 600), 15, 2, false);
+    plain = Math.ceil(w.frame.size.height - w.contentLayoutRect.size.height);
+    const t = $.NSToolbar.alloc.initWithIdentifier("mylinux-probe"); t.displayMode = 2;
+    w.toolbarStyle = 4; w.toolbar = t; w.layoutIfNeeded;
+    chrome = Math.ceil(w.frame.size.height - w.contentLayoutRect.size.height);
+  } catch (e) {}
   [Math.round(v.size.width), Math.round(v.size.height), Math.round(v.origin.x), Math.round(mainH - (v.origin.y + v.size.height)),
-   ObjC.unwrap(s.deviceDescription.objectForKey("NSScreenNumber")) || 0].join(" ")' 2>/dev/null || true)
-SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; SX=${REST%% *}; REST=${REST#* }; SY=${REST%% *}; DISPLAY_ID=${REST#* }
+   ObjC.unwrap(s.deviceDescription.objectForKey("NSScreenNumber")) || 0, chrome, plain].join(" ")' 2>/dev/null || true)
+SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; SX=${REST%% *}; REST=${REST#* }; SY=${REST%% *}; REST=${REST#* }; DISPLAY_ID=${REST%% *}; REST=${REST#* }; CHROME=${REST%% *}; PLAIN=${REST#* }
 case "$SW" in ''|*[!0-9]*) SW=""; SH=""; SX=0; SY=0; DISPLAY_ID="" ;; esac
 case "$DISPLAY_ID" in ''|*[!0-9]*|0) DISPLAY_ID="" ;; esac
 # the window opens on that display (the runtime's QEMU places it there); the placer below still centres it
 [ -z "$DISPLAY_ID" ] || export MYLINUX_WINDOW_DISPLAY="$DISPLAY_ID"
 # The accelerated runtime's window has a toolbar in its title bar (−10% / +10% / full screen): 52 points, not 28
 FLAVOUR=$(sh tools/qemu-flavour.sh "$OUT") || die "no usable QEMU"
-if [ "$FLAVOUR" = runtime ]; then TITLE=52; else TITLE=28; fi
+# as measured above; 52 and 32 (no less than they are on any macOS so far) when that did not work
+if [ "$FLAVOUR" = runtime ]; then TITLE=${CHROME:-}; FALLBACK=52; else TITLE=${PLAIN:-}; FALLBACK=32; fi
+case "$TITLE" in ''|*[!0-9]*) TITLE=$FALLBACK ;; *) [ "$TITLE" -ge 20 ] && [ "$TITLE" -le 120 ] || TITLE=$FALLBACK ;; esac
 if [ -z "${RES:-}" ]; then
   if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then
-    RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - TITLE) / 8 * 8 ))"
+    # the whole display below the menu bar and beside the Dock: the window fills it, as its Fill Screen button would.
+    # The width is a whole multiple of 8 pixels (the kernel rounds a mode's width to that), the height even.
+    RES="$(( SW / 8 * 8 ))x$(( (SH - TITLE) / 2 * 2 ))"
   else
     RES=1600x1000
   fi

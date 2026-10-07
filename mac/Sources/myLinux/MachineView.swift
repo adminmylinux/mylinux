@@ -491,7 +491,7 @@ struct MachineView: View {
                 }
             }
             Picker("Screen", selection: screenChoice) {
-                Text("Fit the Mac screen").tag("")
+                Text("Fill the Mac screen").tag("")
                 ForEach(MachineView.screenSizes, id: \.self) { Text($0.replacingOccurrences(of: "x", with: " × ")).tag($0) }
                 Text("Custom size").tag("custom")
             }
@@ -504,7 +504,7 @@ struct MachineView: View {
                 }
             }
             if isDesktop {
-                Text("The window opens at exactly this size and is not resizable; the green button gives full screen. Sizes are in points: a Retina MacBook screen is about 1728 × 1084, not its pixel count.")
+                Text("The window opens at this size; Fill the Mac screen is the whole screen below the menu bar. −, + and Fill Screen in its title bar change it, the green button gives full screen. Sizes are in points: a Retina MacBook screen is about 1728 × 1084, not its pixel count.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             LabeledContent(isDesktop ? "Disk size" : "Apps disk size") {

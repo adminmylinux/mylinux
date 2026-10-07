@@ -6,7 +6,7 @@
 # was created with (they must match the modules on the disk, so a newer download never replaces them).
 # DESKTOP=arch boots the Arch Linux (KDE Plasma) image instead (tools/build-arch-image.sh, tools/get-arch.sh), laid out
 # the same way: out/arch, its own disk, no Omarchy session agent; the Mac share is mounted by its fstab (tag mac).
-# Environment: RES=WxH window size in points (default: fits the display the window opens on, the frontmost app's; a
+# Environment: RES=WxH window size in points (default: fills the display the window opens on, the frontmost app's; a
 #              Retina display gives the guest twice that in pixels, SCALE=1|2 overrides), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
 #              NAME=window title, MEM=8G, CPUS=6, SHARE_DIR=folder shown inside Omarchy as ~/<its name> (optional),
 #              GRAB=opt|full|none (as run.sh: Option acts as Super / every key to the guest / neither),
@@ -48,7 +48,8 @@ G="$OUT/$DESKTOP"
 [ "$(MYLINUX_QEMU=auto sh tools/qemu-flavour.sh "$OUT")" = runtime ] || die "$TITLE_NAME needs the accelerated QEMU runtime: run tools/get-qemu-runtime.sh"
 export MYLINUX_QEMU=runtime
 # ---- window size and guest resolution -----------------------------------------------------------------------
-# RES is the window's size in points (default: the display where the window will open, minus margins: Cocoa puts a
+# RES is the window's size in points (default: the whole display where the window will open, below the menu bar and
+# beside the Dock, so the window fills it as its Fill Screen button would, from the first boot screen on: Cocoa puts a
 # new app's window on the display of the frontmost app's window, the launcher's or the terminal's). That display's
 # backing scale decides the guest's pixels:
 # the display maps guest pixels onto backing pixels, so on a Retina display (two per point) the guest gets twice RES
@@ -73,25 +74,37 @@ SCREEN=$(osascript -l JavaScript -e '
     }
   } catch (e) {}
   const v = s.visibleFrame;
+  // the height of the machine window title bar with its toolbar, measured on a window like it that is never shown
+  // (40 points on macOS 26, where a plain title bar has 32): the picture gets what is left of the screen below it
+  let chrome = 0;
+  try {
+    const w = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 800, 600), 15, 2, false);
+    const t = $.NSToolbar.alloc.initWithIdentifier("mylinux-probe"); t.displayMode = 2;
+    w.toolbarStyle = 4; w.toolbar = t; w.layoutIfNeeded;
+    chrome = Math.ceil(w.frame.size.height - w.contentLayoutRect.size.height);
+  } catch (e) {}
   [Math.round(v.size.width), Math.round(v.size.height), Math.round(s.backingScaleFactor),
-   ObjC.unwrap(s.deviceDescription.objectForKey("NSScreenNumber")) || 0].join(" ")' 2>/dev/null || true)
-SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; DETECTED=${REST%% *}; DISPLAY_ID=${REST#* }
+   ObjC.unwrap(s.deviceDescription.objectForKey("NSScreenNumber")) || 0, chrome].join(" ")' 2>/dev/null || true)
+SW=${SCREEN%% *}; REST=${SCREEN#* }; SH=${REST%% *}; REST=${REST#* }; DETECTED=${REST%% *}; REST=${REST#* }; DISPLAY_ID=${REST%% *}; CHROME=${REST#* }
 case "$SW$SH$DETECTED" in ''|*[!0-9]*) SW=""; SH=""; DETECTED=1; DISPLAY_ID="" ;; esac
 case "$DISPLAY_ID" in ''|*[!0-9]*|0) DISPLAY_ID="" ;; esac
 # the window opens on that display (the runtime's QEMU places it there), whichever one macOS would have picked
 [ -z "$DISPLAY_ID" ] || export MYLINUX_WINDOW_DISPLAY="$DISPLAY_ID"
 SCALE="${SCALE:-$DETECTED}"
 case "$SCALE" in 1|2) ;; *) die "SCALE must be 1 or 2" ;; esac
-# the title bar carries a toolbar (the Session menu and the size buttons): 52 points, not a plain title bar's 28
-TITLE=52
+# the title bar carries a toolbar (the Session menu and the size buttons): its height as measured above, or 52 points
+# (more than it is on any macOS so far) when that did not work
+case "${CHROME:-}" in ''|*[!0-9]*) TITLE=52 ;; *) if [ "$CHROME" -ge 20 ] && [ "$CHROME" -le 120 ]; then TITLE=$CHROME; else TITLE=52; fi ;; esac
+# the guest's width is a whole multiple of 8 pixels (the kernel rounds a mode's width to that), its height even
+ALIGN=$(( 8 / SCALE ))
 if [ -z "${RES:-}" ]; then
-  if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then RES="$(( (SW - 40) / 8 * 8 ))x$(( (SH - 40 - TITLE) / 8 * 8 ))"; else RES=1600x1000; fi
+  if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then RES="$(( SW / ALIGN * ALIGN ))x$(( (SH - TITLE) / 2 * 2 ))"; else RES=1600x1000; fi
 fi
 case "$RES" in [0-9]*x[0-9]*) XRES="${RES%x*}"; YRES="${RES#*x}" ;; *) die "RES must look like 1920x1200 (got '$RES')" ;; esac
 [ "$XRES" -ge 640 ] && [ "$XRES" -le 8192 ] && [ "$YRES" -ge 480 ] && [ "$YRES" -le 8192 ] || die "RES out of range: $RES"
 # a chosen size larger than the display would put the window's bottom off screen: keep it inside
 if [ -n "$SW" ] && [ "$SW" -gt 800 ]; then
-  MAXW=$(( (SW - 16) / 8 * 8 )); MAXH=$(( (SH - 16 - TITLE) / 8 * 8 ))
+  MAXW=$(( SW / ALIGN * ALIGN )); MAXH=$(( (SH - TITLE) / 2 * 2 ))
   [ "$XRES" -le "$MAXW" ] || XRES=$MAXW; [ "$YRES" -le "$MAXH" ] || YRES=$MAXH
   [ "$RES" = "${XRES}x${YRES}" ] || { echo "run-omarchy.sh: $RES does not fit the display, using ${XRES}x${YRES}" >&2; RES="${XRES}x${YRES}"; }
 fi

@@ -64,7 +64,9 @@ work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdo
 title bar has four buttons at the right: 10% smaller, 10% larger (Omarchy follows with a lower or higher
 resolution; myLinux's window has the same buttons since runtime 11.1.1-3, and its desktop is zoomed), Fill Screen
 (since runtime 11.1.1-18, as in the terminal windows: the whole screen below the menu bar, and the size before when
-pressed again) and full screen.
+pressed again) and full screen. From launcher 0.7.59 a desktop's window opens filling the screen (no margin around
+it: `run.sh` and `run-omarchy.sh` measure the title bar's height and give the guest what is left), so the first boot
+screen is full size too; `RES` or the machine's Screen setting still chooses another size.
 Since runtime 11.1.1-4 the window is resizable from the start, so Window › Fill, the green button's tiling and a
 drag work straight away; until you size it, it follows the guest's resolution as a fixed window did; Control+Command+F toggles full screen in every keyboard mode, and a small floating
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
@@ -250,7 +252,7 @@ first (`apps-base`, once); each runs in a terminal that shows the command it run
 that disk.
 
 Useful environment variables for `run.sh`: `RES=1600x1000` guest resolution (default is your
-screen minus margins), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,
+screen below the menu bar, less the window's title bar: the window opens filling the screen), `MEM=8G`, `APPS_IMG=path`, `SHARE_DIR=path`, `GRAB=opt|full|none`,
 `MOUSE=tablet|relative` (relative: a click captures the Mac pointer for the guest, hidden and confined,
 until Ctrl+Option+G; tablet, the default, lets it slide in and out of the window), `MYLINUX_QEMU=brew|runtime` (which QEMU, see above), `RENDER=soft` (software GL in the guest), `PLACER=0` (leave the
 window where macOS puts it), `MYLINUX_OUT=dir` (kernel, rootfs, apps disk and the QEMU wrapper elsewhere
