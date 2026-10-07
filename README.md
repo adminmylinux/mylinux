@@ -61,8 +61,10 @@ guest's own checksums; nothing from it is run on the Mac), and `./run-omarchy.sh
 Mac's GPU. A machine is a folder holding its root disk (unpacked on first start, `DISK_SIZE_GB=32`, grown by the guest)
 and `boot/`, the kernel that disk was made with. `SHARE_DIR=~/Work` shows up inside as `~/Work`; `GRAB`, `MEM`, `RES`
 work as for `run.sh`; `QMP=socket` gives a control socket, where `system_powerdown` is a clean shutdown. The window's
-title bar has three buttons at the right: 10% smaller, 10% larger (Omarchy follows with a lower or higher
-resolution; myLinux's window has the same buttons since runtime 11.1.1-3, and its desktop is zoomed), and full screen.
+title bar has four buttons at the right: 10% smaller, 10% larger (Omarchy follows with a lower or higher
+resolution; myLinux's window has the same buttons since runtime 11.1.1-3, and its desktop is zoomed), Fill Screen
+(since runtime 11.1.1-18, as in the terminal windows: the whole screen below the menu bar, and the size before when
+pressed again) and full screen.
 Since runtime 11.1.1-4 the window is resizable from the start, so Window › Fill, the green button's tiling and a
 drag work straight away; until you size it, it follows the guest's resolution as a fixed window did; Control+Command+F toggles full screen in every keyboard mode, and a small floating
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
@@ -351,7 +353,8 @@ new-window links go to the browser; a page's file field (the Claude tab's *Open 
 
 **Snippets…** (under Apps… in Omarchy's ⌘ menu and Machine menu, the CMD menu of a Debian or Alpine window; from 0.7.41
 with runtime 11.1.1-15): commands for the machine's system with a name and a line about each, View and Copy (the
-clipboard is shared, so they paste into a terminal inside). The built-in ones are `server-apps/snippets.json`, fetched
+clipboard is shared, so they paste into a terminal inside), and Paste, which puts one at the terminal's prompt and
+(from 0.7.58) closes the Snippets window. The built-in ones are `server-apps/snippets.json`, fetched
 from `main` (the app's copy without GitHub): the cc and cx aliases, an alias per Claude subscription (its token in
 `~/.config/mylinux/claude-accounts/<alias>.env`, as myLinux Apps keeps them) and per Codex account (its own
 `CODEX_HOME`), the installers and the system update. The aliases go into `~/.config/mylinux/my-aliases.sh`, which

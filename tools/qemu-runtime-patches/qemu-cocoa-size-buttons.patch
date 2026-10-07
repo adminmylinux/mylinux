@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,7 +117,37 @@
+@@ -117,6 +117,36 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
@@ -14,7 +14,7 @@
 +/* the launcher that started this machine, asked through a distributed notification (Restart, Cloud Folders…, Mount a Share…, Snippets…) */
 +static bool mylinux_restart_available(void);
 +static void mylinux_ask_launcher(NSString *action);
- 
++
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
 + * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
@@ -34,10 +34,9 @@
 +static bool mylinux_follows_mode(NSWindow *window);
 +static void mylinux_desktop_reached(NSWindow *window, int w, int h);
 +static void mylinux_center(NSWindow *window);
-+
+ 
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
- static QemuEvent cbevent;
 @@ -696,12 +726,16 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
@@ -125,7 +124,7 @@
      return isMouseGrabbed ||
             (full_grab_enabled && [[self window] isKeyWindow]);
  }
-@@ -1405,17 +1474,45 @@
+@@ -1405,17 +1474,46 @@
  
  
  /*
@@ -163,6 +162,7 @@
 +- (void)installSizeButtons;
 +- (void)sizeButtonLarger:(id)sender;
 +- (void)sizeButtonSmaller:(id)sender;
++- (void)sizeButtonFill:(id)sender;
 +- (void)showFullScreenPanel;
 +- (NSMenu *)sessionMenuForPanel:(BOOL)panel;
 +- (void)addLauncherCommands:(NSMenu *)menu;
@@ -172,7 +172,7 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1423,6 +1520,9 @@
+@@ -1423,6 +1521,9 @@
  - (void)removePause;
  - (void)restartQEMU:(id)sender;
  - (void)powerDownQEMU:(id)sender;
@@ -182,7 +182,7 @@
  - (void)ejectDeviceMedia:(id)sender;
  - (void)changeDeviceMedia:(id)sender;
  - (BOOL)verifyQuit;
-@@ -1475,7 +1575,7 @@
+@@ -1475,7 +1576,7 @@
          }
  
          // create a window
@@ -191,7 +191,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1589,9 @@
+@@ -1489,8 +1590,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -202,7 +202,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1654,62 @@
+@@ -1553,28 +1655,62 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -266,7 +266,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1717,23 @@
+@@ -1582,6 +1718,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -290,13 +290,13 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1827,473 @@
+@@ -1675,12 +1828,522 @@
  }
  
  /* Stretches video to fit host monitor size */
 +/*
-+ * myLinux: the window's own controls, in a toolbar. At the right: minus (10% smaller), plus (10% larger) and full
-+ * screen; the first two turn Zoom To Fit on (the window becomes resizable and the picture scales to it: myLinux's
++ * myLinux: the window's own controls, in a toolbar. At the right: minus (10% smaller), plus (10% larger), Fill Screen
++ * (the screen below the menu bar, and back) and full screen; the first three turn Zoom To Fit on (the window becomes resizable and the picture scales to it: myLinux's
 + * desktop is zoomed, and a guest that follows the window's size, Omarchy, gets more or less room that way). Centred: a ⌘
 + * menu (Apps…, Snippets…, Cloud Folders…, Mount a Share…, then the session), when MYLINUX_SESSION_CMD names a helper that hands "save", "restore" or "interval N" to the guest (run
 + * without a shell, with the share folder from MYLINUX_SESSION_SHARE as its first argument; MYLINUX_SESSION_STATUS
@@ -431,7 +431,7 @@
 +        [ids addObject:NSToolbarFlexibleSpaceItemIdentifier];
 +    }
 +    if (mylinux_size_buttons()) {
-+        [ids addObjectsFromArray:@[@"mylinux.smaller", @"mylinux.larger", @"mylinux.fullscreen"]];
++        [ids addObjectsFromArray:@[@"mylinux.smaller", @"mylinux.larger", @"mylinux.fill", @"mylinux.fullscreen"]];
 +    }
 +    return ids;
 +}
@@ -459,6 +459,8 @@
 +        symbol = @"minus"; tip = @"Smaller window (-10%)"; action = @selector(sizeButtonSmaller:);
 +    } else if ([identifier isEqualToString:@"mylinux.larger"]) {
 +        symbol = @"plus"; tip = @"Larger window (+10%)"; action = @selector(sizeButtonLarger:);
++    } else if ([identifier isEqualToString:@"mylinux.fill"]) {
++        symbol = @"macwindow"; tip = @"Fill Screen (again: the size before)"; action = @selector(sizeButtonFill:);
 +    } else if ([identifier isEqualToString:@"mylinux.fullscreen"]) {
 +        symbol = @"arrow.up.left.and.arrow.down.right"; tip = @"Full screen"; action = @selector(doToggleFullScreen:);
 +    } else {
@@ -753,6 +755,53 @@
 +    [self sizeButtonSetContentSize:smaller];
 +}
 +
++/*
++ * Fill Screen, as in the launcher's terminal windows: the window takes the whole screen below the menu bar and
++ * beside the Dock, title bar and all (full screen is the button next to it); pressed again while it still fills
++ * the screen, it goes back to the size and place it had.
++ * A guest that follows the window (Omarchy's and Arch's desktops) takes the new size for its mode within a moment.
++ * One that keeps its mode (myLinux, which is zoomed; a console before the desktop is up, which falls back to a
++ * mode of another shape) would be drawn stretched: after that moment its window takes the picture's shape again,
++ * as large as the screen allows, so "fills" means as wide or as high as the screen.
++ */
++- (void)sizeButtonFill:(id)sender
++{
++    static NSRect before;
++    static bool filled;
++    NSWindow *window = [cocoaView window];
++    if ([window styleMask] & NSWindowStyleMaskFullScreen) {
++        [window toggleFullScreen:nil];
++        return;
++    }
++    NSRect visible = [[window screen] visibleFrame];
++    NSRect frame = [window frame];
++    CGFloat chrome = frame.size.height - [[window contentView] frame].size.height;
++    bool fills = fabs(frame.size.width - visible.size.width) < 2 || fabs(frame.size.height - visible.size.height) < 2;
++    if (filled && fills) {
++        filled = false;
++        [self sizeButtonSetContentSize:NSMakeSize(before.size.width, before.size.height - chrome)];
++        [window setFrameOrigin:before.origin];
++        return;
++    }
++    before = frame;
++    filled = true;
++    [self sizeButtonSetContentSize:NSMakeSize(visible.size.width, visible.size.height - chrome)];
++    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
++        NSWindow *w = [cocoaView window];
++        if (!filled || ([w styleMask] & NSWindowStyleMaskFullScreen)) {
++            return;
++        }
++        NSSize content = [[w contentView] frame].size;
++        NSSize fitted = [cocoaView fixAspectRatio:content];
++        if (fabs(fitted.width - content.width) > 2 || fabs(fitted.height - content.height) > 2) {
++            [self sizeButtonSetContentSize:fitted];
++            /* in the middle of the screen's width, under the menu bar */
++            NSRect v = [[w screen] visibleFrame], f = [w frame];
++            [w setFrameOrigin:NSMakePoint(NSMidX(v) - f.size.width / 2, NSMaxY(v) - f.size.height)];
++        }
++    });
++}
++
  - (void)zoomToFit:(id) sender
  {
      NSWindowStyleMask styleMask = [[cocoaView window] styleMask] ^ NSWindowStyleMaskResizable;
@@ -764,10 +813,12 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1756,6 +2369,78 @@
+@@ -1754,6 +2417,78 @@
+     with_bql(^{
+         qmp_system_powerdown(NULL);
      });
- }
- 
++}
++
 +/* myLinux: Machine › Restart. The launcher that started this machine (MYLINUX_LAUNCHER_ID, MYLINUX_LINK_SCOPE, APP_ID
 + * from its Runner) shuts it down and starts it again: a new QEMU, so a runtime installed since is used (Reset only
 + * reboots the guest in this one). Only shown when the launcher started the machine.
@@ -838,12 +889,10 @@
 +- (void)mylinuxMountShare:(id)sender
 +{
 +    mylinux_ask_launcher(@"share");
-+}
-+
+ }
+ 
  /* Ejects the media.
-  * Uses sender's tag to figure out the device to eject.
-  */
-@@ -1935,7 +2620,24 @@
+@@ -1935,7 +2670,24 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];

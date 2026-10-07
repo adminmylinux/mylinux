@@ -109,6 +109,8 @@ struct SnippetsView: View {
     @StateObject var model: SnippetsModel
     /// Paste: the text into the machine (its terminal when one is in front), nil when done or what went wrong
     var paste: ((String) async -> String?)? = nil
+    /// Closes the Snippets window: after a paste, the terminal it went into is what is wanted next
+    var close: (() -> Void)? = nil
     @State private var pasted: String?
     @State private var viewing: Snippet?
     @State private var editing: Snippet?
@@ -119,7 +121,7 @@ struct SnippetsView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Snippets for \(machine)").font(.title3.weight(.semibold))
-                    Text(paste != nil ? "Paste puts one into the terminal in front in \(machine), waiting for Return; or Copy, then \(model.set.pasteHint)." : "Copy one, then \(model.set.pasteHint).")
+                    Text(paste != nil ? "Paste puts one into the terminal in front in \(machine), waiting for Return, and closes this window; or Copy, then \(model.set.pasteHint)." : "Copy one, then \(model.set.pasteHint).")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -179,6 +181,8 @@ struct SnippetsView: View {
         Task {
             if let problem = await paste(text) { model.error = problem; return }
             model.error = ""; pasted = s.id
+            // pasted: the window goes, and the terminal with the command at its prompt is in front
+            if let close { close(); return }
             try? await Task.sleep(nanoseconds: 1_500_000_000); if pasted == s.id { pasted = nil }
         }
     }
@@ -291,7 +295,8 @@ enum SnippetsWindow {
     private static func show(id: UUID, name: String, set: SnippetSet, over parent: NSWindow?, machine: Profile?, paste: ((String) async -> String?)?) {
         NSApp.activate()
         if let w = open[id] { w.makeKeyAndOrderFront(nil); return }
-        let hosting = NSHostingController(rootView: SnippetsView(machine: name, model: SnippetsModel(set), paste: paste))
+        let hosting = NSHostingController(rootView: SnippetsView(machine: name, model: SnippetsModel(set), paste: paste,
+                                                                 close: { open[id]?.close() }))
         // the window's size is the user's (it resizes; the table fills it): sized by its content, a long line that
         // wraps kept SwiftUI and AppKit re-measuring it until AppKit gave up ("more Update Constraints passes than views")
         hosting.sizingOptions = []
