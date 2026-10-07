@@ -172,7 +172,7 @@ mkdir -p "$STAGE/e2fsprogs" && tar -xJf "$E2FS_TAR" -C "$STAGE/e2fsprogs" --stri
 cp "$STAGE/e2fsprogs/debugfs/debugfs" "$R/bin/debugfs"
 otool -L "$R/bin/debugfs" | grep -q '/opt/homebrew' && { echo "debugfs links against Homebrew libraries" >&2; exit 1; }
 codesign --force -s - "$R/bin/debugfs" 2>/dev/null || true
-# mke2fs from the same build: makes a filesystem with files already inside (-d), without mounting anything
+# mke2fs from the same build: run-server.sh makes a Tiny Alpine machine's disk with it
 cp "$STAGE/e2fsprogs/misc/mke2fs" "$R/bin/mke2fs"
 otool -L "$R/bin/mke2fs" | grep -q '/opt/homebrew' && { echo "mke2fs links against Homebrew libraries" >&2; exit 1; }
 codesign --force -s - "$R/bin/mke2fs" 2>/dev/null || true

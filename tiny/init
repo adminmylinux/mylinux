@@ -1,0 +1,31 @@
+#!/bin/sh
+# Tiny Alpine, first stage. run-server.sh (DISTRO=tiny) starts the machine with myLinux's kernel and an initrd that
+# is Alpine's mini root filesystem plus this file and /mylinux (the boot scripts in tiny/ and this machine's
+# settings). The machine's disk becomes the system: a new, empty disk first receives Alpine (this initrd, copied with
+# its owners, which a filesystem made on the Mac could not have); at every start myLinux's files are refreshed on it,
+# and BusyBox init takes over from the disk.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc; mount -t sysfs sys /sys; mount -t devtmpfs dev /dev 2>/dev/null
+n=0; while [ ! -b /dev/vda ] && [ "$n" -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
+mkdir -p /newroot
+# noinit_itable: the disk is a sparse file on the Mac, zero wherever nothing was written; writing the unused inode
+# tables out would only make that file some hundred MB larger
+if ! mount -t ext4 -o noatime,noinit_itable /dev/vda /newroot; then
+  echo "tiny: the machine's disk (/dev/vda) could not be mounted; a shell in the initrd instead"
+  exec sh
+fi
+if [ ! -x /newroot/bin/busybox ]; then
+  echo "tiny: a new disk: Alpine $(cat /etc/alpine-release 2>/dev/null) goes onto it"
+  for d in /*; do
+    case "$d" in /proc|/sys|/dev|/newroot|/mylinux|/init|/lost+found) continue ;; esac
+    cp -a "$d" /newroot/ || { echo "tiny: copying $d failed; a shell in the initrd instead"; exec sh; }
+  done
+  mkdir -p /newroot/proc /newroot/sys /newroot/dev
+  cp /mylinux/inittab /newroot/etc/inittab
+  sync
+fi
+# myLinux's own: the boot scripts as this launcher has them, and this machine's settings (the seed)
+rm -rf /newroot/etc/mylinux; mkdir -p /newroot/etc/mylinux && cp -a /mylinux/. /newroot/etc/mylinux/
+chmod 700 /newroot/etc/mylinux/seed
+umount /sys; umount /proc; mount -o move /dev /newroot/dev
+exec switch_root /newroot /sbin/init

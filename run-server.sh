@@ -7,7 +7,13 @@
 # set up by cloud-init from a seed made here: the distribution's user ("debian" with bash and sudo, or Alpine's own
 # "alpine" with ash and doas) with an SSH key generated for this machine (<machine>/ssh_key), a random console
 # password (<machine>/console-password), the Mac share mounted at /mnt/mac and linked from the home folder.
-# Environment: DISTRO=debian|alpine, DISK=path of the root disk (default $MYLINUX_OUT/<distro>-machine/<distro>.raw),
+# DISTRO=tiny (run-tiny.sh) is Tiny Alpine: no cloud image, no firmware and no cloud-init. Alpine's mini root
+# filesystem (tools/get-tiny.sh) is the initrd of myLinux's own kernel, booted directly; tiny/init in it puts Alpine
+# onto the machine's disk at the first start (an empty ext4 filesystem made here with the runtime's mke2fs) and
+# hands over to it, and tiny/rc.boot sets up the same account, key, password and share from the settings this
+# script writes into the initrd at every start. The kernel has no power button: Stop is the power key of a virtio
+# keyboard ({"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"power"}]}} on QMP).
+# Environment: DISTRO=debian|alpine|tiny, DISK=path of the root disk (default $MYLINUX_OUT/<distro>-machine/<distro>.raw),
 #              DISK_SIZE_GB=32, NAME=machine name (also the host name), MEM=2G (Alpine 1G), CPUS,
 #              SHARE_DIR=folder shown inside as ~/<its name> (optional),
 #              SERIAL=chardev for the console (default: file <machine>/console.log; unix:<path>,server,nowait for the launcher),
@@ -25,8 +31,10 @@ die() { echo "run-$DISTRO.sh: $*" >&2; exit 1; }
 case "$DISTRO" in
   debian) PRETTY=Debian; USERNAME=debian; USERSHELL=/bin/bash; DEFAULT_MEM=2G ;;
   alpine) PRETTY=Alpine; USERNAME=alpine; USERSHELL=/bin/ash; DEFAULT_MEM=1G ;;
-  *) echo "run-server.sh: DISTRO must be debian or alpine" >&2; exit 1 ;;
+  tiny)   PRETTY="Tiny Alpine"; USERNAME=alpine; USERSHELL=/bin/ash; DEFAULT_MEM=1G ;;
+  *) echo "run-server.sh: DISTRO must be debian, alpine or tiny" >&2; exit 1 ;;
 esac
+TINY=0; [ "$DISTRO" != tiny ] || TINY=1
 UPPER=$(printf '%s' "$DISTRO" | tr 'a-z' 'A-Z')
 # grow_file <path> <GB>: create the file or grow it to that size, sparse; never shrinks, keeps what is in it
 grow_file() {
@@ -42,6 +50,10 @@ if [ "$FLAVOUR" = runtime ]; then
 else
   QEMU=$(PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" command -v qemu-system-aarch64) || die "qemu-system-aarch64 not found (tools/get-qemu-runtime.sh, or brew install qemu)"
   MACHINE_TYPE="virt"; ROM=""; OWNER=""
+fi
+if [ "$TINY" = 1 ]; then
+  # mke2fs for the machine's disk comes with the runtime (11.1.1-17 on); the kernel is built for the runtime's machine
+  [ "$FLAVOUR" = runtime ] && [ -x "$OUT/qemu-runtime/bin/mke2fs" ] || die "Tiny Alpine needs the accelerated QEMU runtime, 11.1.1-17 or newer: run tools/get-qemu-runtime.sh"
 fi
 NAME="${NAME:-$PRETTY}"
 HOSTNAME=$(printf '%s' "$NAME" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//'); [ -n "$HOSTNAME" ] || HOSTNAME=$DISTRO
@@ -79,7 +91,40 @@ fi
 
 # ---- first start: the disk from the image, the SSH key, the console password, the cloud-init seed --------------
 SEED="$MACHINE/seed.iso"
-if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$SEED" ]; }; then
+# ---- Tiny Alpine: an empty disk and the kernel and initrd beside it on the first start; the settings at every start
+if [ "$TINY" = 1 ] && [ "${DRYRUN:-0}" != 1 ]; then
+  if [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/Image" ] || [ ! -s "$MACHINE/boot/rootfs.cpio.gz" ]; then
+    [ -s "$G/Image" ] && [ -s "$G/rootfs.cpio.gz" ] || die "Tiny Alpine is not downloaded: run tools/get-tiny.sh"
+    [ ! -f "$DISK" ] || die "$DISK exists but $MACHINE/boot (its kernel and initrd) is missing; restore it or move the disk away"
+    mkdir -p "$MACHINE/boot"
+    echo "creating $DISK ($DISK_SIZE_GB GB, sparse) for $PRETTY $(cat "$G/$UPPER-REVISION" 2>/dev/null) ..."
+    # empty: Alpine copies itself onto it at the first start. The inode tables and journal are left for the guest
+    # to write, so the file stays small on the Mac.
+    rm -f "$DISK.new"
+    "$OUT/qemu-runtime/bin/mke2fs" -q -F -t ext4 -L tiny -m 1 -E root_owner=0:0,lazy_itable_init=1,lazy_journal_init=1,nodiscard "$DISK.new" "${DISK_SIZE_GB}G" >/dev/null \
+      || { rm -f "$DISK.new"; die "could not create the disk"; }
+    cp "$G/Image" "$G/rootfs.cpio.gz" "$MACHINE/boot/"; cp "$G/$UPPER-REVISION" "$MACHINE/$UPPER-REVISION" 2>/dev/null || true
+    mv "$DISK.new" "$DISK"
+    rm -f "$MACHINE/known_hosts"       # a new disk has a new host key: forget the old one
+  fi
+  [ -s "$MACHINE/ssh_key" ] || ssh-keygen -q -t ed25519 -N '' -C "myLinux $HOSTNAME" -f "$MACHINE/ssh_key" || die "could not make the SSH key (ssh-keygen)"
+  if [ ! -s "$MACHINE/console-password" ]; then
+    (umask 077; LC_ALL=C tr -dc 'a-hj-np-z2-9' < /dev/urandom | head -c 14 > "$MACHINE/console-password"; echo >> "$MACHINE/console-password")
+  fi
+  # the initrd: Alpine's files, then tiny/ and this machine's settings (a second archive, which the kernel unpacks
+  # over the first). macOS's tar writes it, every file root's.
+  SEEDDIR="$MACHINE/.seed"; rm -rf "$SEEDDIR"; mkdir -p "$SEEDDIR/mylinux/seed"
+  cp tiny/init "$SEEDDIR/init"; cp tiny/inittab tiny/rc.boot tiny/rc.shutdown tiny/local-service "$SEEDDIR/mylinux/"
+  chmod 755 "$SEEDDIR/init" "$SEEDDIR/mylinux/rc.boot" "$SEEDDIR/mylinux/rc.shutdown" "$SEEDDIR/mylinux/local-service"
+  printf '%s\n' "$HOSTNAME" > "$SEEDDIR/mylinux/seed/hostname"
+  printf '%s\n' "$SHARE_NAME" > "$SEEDDIR/mylinux/seed/share-name"
+  cp "$MACHINE/ssh_key.pub" "$SEEDDIR/mylinux/seed/authorized_keys"
+  (umask 077; cp "$MACHINE/console-password" "$SEEDDIR/mylinux/seed/console-password")
+  (umask 077; { cat "$MACHINE/boot/rootfs.cpio.gz" && /usr/bin/tar --format newc --uid 0 --gid 0 -cf - -C "$SEEDDIR" . | gzip -1; } > "$MACHINE/boot/initrd.gz.new") \
+    && mv -f "$MACHINE/boot/initrd.gz.new" "$MACHINE/boot/initrd.gz" || { rm -rf "$SEEDDIR"; die "could not make the initrd"; }
+  rm -rf "$SEEDDIR"
+fi
+if [ "$TINY" != 1 ] && [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$SEED" ]; }; then
   [ -s "$G/$DISTRO.raw" ] && [ -s "$G/edk2-aarch64-code.fd" ] || die "the $PRETTY image is not downloaded: run tools/get-$DISTRO.sh"
   mkdir -p "$MACHINE"
   if [ ! -f "$DISK" ]; then
@@ -156,6 +201,18 @@ case "$SERIAL" in
   *) die "SERIAL must be file:<path> or unix:<path>,server,nowait" ;;
 esac
 
+if [ "$TINY" = 1 ]; then
+  # the kernel and initrd directly, no firmware and no seed disk; the keyboard is there for its power key (Stop)
+  set -- \
+    -name "$NAME" -M "$MACHINE_TYPE" -accel hvf -cpu host -smp "$CPUS" -m "$MEM" \
+    -kernel "$MACHINE/boot/Image" -initrd "$MACHINE/boot/initrd.gz" -append "console=ttyAMA0 quiet rdinit=/init" \
+    -drive "if=none,id=root,file=$DISK,format=raw,media=disk,cache=writeback" -device "virtio-blk-pci,drive=root,serial=$DISTRO-root$ROM" \
+    -netdev "$NETDEV" -device "virtio-net-pci,netdev=n0$ROM" \
+    -object rng-random,id=rng0,filename=/dev/urandom -device "virtio-rng-pci,rng=rng0$ROM" \
+    -device "virtio-keyboard-pci$ROM" \
+    -display none -chardev "$CONSOLE" -serial chardev:con \
+    "$@"
+else
 set -- \
   -name "$NAME" -M "$MACHINE_TYPE" -accel hvf -cpu host -smp "$CPUS" -m "$MEM" \
   -bios "$G/edk2-aarch64-code.fd" \
@@ -166,6 +223,7 @@ set -- \
   -device "virtio-balloon-pci$ROM" \
   -display none -chardev "$CONSOLE" -serial chardev:con \
   "$@"
+fi
 if [ -n "$SHARE_DIR" ]; then
   set -- "$@" -fsdev "local,id=share,path=$SHARE_DIR,security_model=none,multidevs=remap$OWNER" \
     -device "virtio-9p-pci,fsdev=share,mount_tag=mac$ROM"
@@ -179,7 +237,7 @@ if [ "${DRYRUN:-0}" = 1 ]; then
   exit 0
 fi
 [ -x "$QEMU" ] || die "$QEMU is missing"
-[ -s "$G/edk2-aarch64-code.fd" ] || die "the UEFI firmware is missing: run tools/get-$DISTRO.sh"
+[ "$TINY" = 1 ] || [ -s "$G/edk2-aarch64-code.fd" ] || die "the UEFI firmware is missing: run tools/get-$DISTRO.sh"
 # the path in double quotes inside the option: ssh reads an unquoted UserKnownHostsFile as a list split at spaces
 printf '%s\n' "ssh -i \"$MACHINE/ssh_key\" -p $SSH_PORT -o 'UserKnownHostsFile=\"$MACHINE/known_hosts\"' -o StrictHostKeyChecking=accept-new $USERNAME@127.0.0.1" > "$MACHINE/ssh-command"
 exec "$QEMU" "$@"

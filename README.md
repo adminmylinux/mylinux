@@ -50,7 +50,7 @@ goes back for good. It is built by `tools/build-qemu-runtime.sh` from a pinned c
 [Try Omarchy](https://github.com/omacom/try-omarchy)'s runtime build; sources and licences travel inside it (`NOTICES.md`).
 Since 11.1.1-17 it also holds a PC emulator (`qemu-system-x86_64`, the same source built with TCG, with SeaBIOS in
 `share/qemu`) and `mke2fs`. They were added for Puppy Linux machines (launcher 0.7.54 only: a PC system, too slow
-emulated to keep) and no machine uses them now.
+emulated to keep); Tiny Alpine makes its disks with `mke2fs`, nothing uses the PC emulator now.
 
 ### Omarchy machines
 
@@ -196,7 +196,7 @@ hold Claude in one terminal, Codex in another below it, and the result in the br
 
 ### Alpine server machines
 
-**Alpine Server** is the smallest machine: Alpine Linux's official aarch64 cloud-init image, the same kind of
+**Alpine Server** is a small machine: Alpine Linux's official aarch64 cloud-init image, the same kind of
 terminal server as Debian with the same window, browser pane and Apps… menu. `tools/get-alpine.sh`
 finds the newest stable release in Alpine's cloud folder and downloads its raw disk (about 100 MB, checked against
 the `.sha512` beside it; kept sparse in `out/alpine`, about 230 MB of a 1 GB disk) and the same UEFI firmware
@@ -210,6 +210,29 @@ It idles in about 60 MB of memory and answers SSH about 13 seconds after Start (
 script is [`alpine_install.sh`](alpine_install.sh): plain `sh`, `apk` and `doas`; it adds bash and makes it the
 login shell, and Claude Code's musl needs (`libgcc`, `libstdc++`, `ripgrep`). Memory defaults to 1 GB (2 GB on a
 Mac with 24 GB or more).
+
+### Tiny Alpine server machines
+
+**Tiny Alpine Server** is the smallest machine: Alpine without the cloud image, the UEFI firmware, the boot loader,
+cloud-init and OpenRC. `tools/get-tiny.sh` downloads Alpine's mini root filesystem for aarch64 (about 4 MB: BusyBox,
+musl and `apk`; the newest stable release, checked against the `.sha256` beside it) and myLinux's own kernel (`Image`,
+14 MB, from the latest image release, checked against its SHA256SUMS; it has the virtio disk, network and 9p built
+in, so nothing else is needed to boot). macOS's `tar` rewrites the root filesystem as an initrd (`rootfs.cpio.gz`),
+owners and modes as they are. `./run-tiny.sh` is `run-server.sh` with `DISTRO=tiny`: it boots the kernel directly
+with that initrd, to which it adds [`tiny/`](tiny/) and the machine's settings at every start (a second cpio archive:
+host name, the machine's SSH key, the console password, the share's name). `tiny/init` mounts the machine's disk, an
+empty ext4 filesystem made by the runtime's `mke2fs` (so it needs runtime 11.1.1-17 or newer); a new disk first
+receives Alpine, copied from the initrd, and BusyBox init then runs from the disk. `tiny/rc.boot` is the whole boot:
+the network (udhcpc), the account `alpine` (uid 1000, `doas` without a password), sshd with local TCP forwarding,
+the share at `/mnt/mac`, `/etc/fstab` (the cloud folders) and `/etc/local.d/*.start`. OpenSSH and doas are not in
+the mini root filesystem: `apk` adds them at the first start, which therefore needs the internet once.
+The kernel has no power button, so Stop presses the power key of a virtio keyboard (QMP `send-key`), which
+BusyBox's `acpid` turns into `poweroff`. To the launcher it is an Alpine: the same terminal window, menus, snippets
+and install script (`alpine_install.sh`, whose Tailscale step writes `/etc/local.d/tailscale.start` here instead of
+an OpenRC service). Measured on an M-series Mac: SSH answers 1.5 seconds after Start (also on the first start), Stop
+takes 2 seconds, it idles in about 40 MB of memory, the system is 15 MB on disk and a new 16 GB disk takes 21 MB on
+the Mac (mounted `noinit_itable`: the unused inode tables are not written out). With Claude Code, Codex, Bun, btop
+and Tailscale installed it is about 770 MB.
 
 `run.sh` wraps QEMU in `out/myLinux.app` so the Mac shows it as "myLinux". The window opens at the
 size of the display under your mouse pointer; if the first start puts it on another display, give your

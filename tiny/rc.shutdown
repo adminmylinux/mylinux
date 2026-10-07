@@ -1,0 +1,8 @@
+#!/bin/sh
+# Tiny Alpine's shutdown (BusyBox init runs it for poweroff and reboot): the local stop scripts, the daemons, the disks.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+for f in /etc/local.d/*.stop; do [ -x "$f" ] && "$f"; done
+killall sshd acpid udhcpc syslogd 2>/dev/null
+sync
+umount -a -r 2>/dev/null
+exit 0

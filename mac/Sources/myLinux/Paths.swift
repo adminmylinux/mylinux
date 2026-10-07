@@ -101,6 +101,8 @@ final class AppSettings: ObservableObject {
     }
     /// The accelerated QEMU runtime next to the image (run.sh prefers it over Homebrew's QEMU).
     var runtimePresent: Bool { Paths.runtimeQemu(in: outDir) != nil }
+    /// mke2fs in the runtime (from qemu-runtime-11.1.1-17): makes a Tiny Alpine machine's disk.
+    var runtimeHasMke2fs: Bool { FileManager.default.isExecutableFile(atPath: outDir.appendingPathComponent("qemu-runtime/bin/mke2fs").path) }
     var runtimeRevision: String? {
         guard runtimePresent else { return nil }
         return (try? String(contentsOf: outDir.appendingPathComponent("qemu-runtime/RUNTIME-REVISION"), encoding: .utf8))?
@@ -121,7 +123,8 @@ final class AppSettings: ObservableObject {
     /// A server's cloud image and UEFI firmware (tools/get-debian.sh, tools/get-alpine.sh), in <out>/<distro>.
     func serverImagePresent(_ kind: Profile.Kind) -> Bool {
         let dir = outDir.appendingPathComponent(kind.rawValue, isDirectory: true)
-        return ["\(kind.rawValue).raw", "edk2-aarch64-code.fd"].allSatisfy {
+        // Tiny Alpine (tools/get-tiny.sh) is a kernel and an initrd instead
+        return (kind == .tiny ? ["Image", "rootfs.cpio.gz"] : ["\(kind.rawValue).raw", "edk2-aarch64-code.fd"]).allSatisfy {
             ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
         }
     }

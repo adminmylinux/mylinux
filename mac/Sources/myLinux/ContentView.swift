@@ -91,11 +91,11 @@ struct ContentView: View {
             images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
             // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
-            DesktopImageManager.omarchy.refresh(settings); DesktopImageManager.arch.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings)
+            DesktopImageManager.omarchy.refresh(settings); DesktopImageManager.arch.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings); ServerImageManager.tiny.refresh(settings)
             // (no machines and nothing downloaded: a new install, or one whose data was cleared; not a remembered flag,
             // which outlives the data and kept a fresh start from showing it)
             if !settings.developerMode, store.profiles.isEmpty, !images.present, !DesktopImageManager.omarchy.present, !DesktopImageManager.arch.present,
-               !ServerImageManager.debian.present, !ServerImageManager.alpine.present {
+               !ServerImageManager.debian.present, !ServerImageManager.alpine.present, !ServerImageManager.tiny.present {
                 showWelcome = true
             }
         }
@@ -103,7 +103,7 @@ struct ContentView: View {
         // tests (MYLINUX_TEST_TOUR): a page by id
         .onReceive(NotificationCenter.default.publisher(for: ContentView.selectNotification)) { n in if let id = n.object as? UUID { selection = id } }
         .sheet(isPresented: $showWelcome) {
-            WelcomeSheet(images: images, omarchy: .omarchy, arch: .arch, debian: .debian, alpine: .alpine, runtime: runtime, done: { kinds in
+            WelcomeSheet(images: images, omarchy: .omarchy, arch: .arch, debian: .debian, alpine: .alpine, tiny: .tiny, runtime: runtime, done: { kinds in
                 showWelcome = false
                 // a machine of each downloaded kind that has none yet, and the first of them selected
                 var first: UUID?
@@ -136,6 +136,9 @@ struct ContentView: View {
             }
             Button { selection = store.add(copying: selected?.kind == .alpine ? selected : nil, kind: .alpine).id } label: {
                 Label("Alpine Server", systemImage: "mountain.2")
+            }
+            Button { selection = store.add(copying: selected?.kind == .tiny ? selected : nil, kind: .tiny).id } label: {
+                Label("Tiny Alpine Server", systemImage: "mountain.2.fill")
             }
             Divider()
             Button { selection = remote.add(.vnc).id } label: { Label("VNC Desktop", systemImage: "display") }

@@ -1,0 +1,19 @@
+#!/bin/sh
+# Tiny Alpine has no OpenRC. For one daemon this stands in for "rc-update add NAME default; rc-service NAME start":
+#   doas /etc/mylinux/local-service NAME 'COMMAND ...'
+# writes /etc/local.d/NAME.start, which starts COMMAND in the background unless its program already runs, and runs
+# it now; /etc/mylinux/rc.boot runs /etc/local.d/*.start at every boot. The daemon's output is /var/log/NAME.log.
+# alpine_install.sh and myLinux Apps (server-apps/catalog.json) start Tailscale's daemon this way.
+set -eu
+NAME=${1:?usage: local-service NAME 'COMMAND ...'}
+CMD=${2:?usage: local-service NAME 'COMMAND ...'}
+case "$NAME" in *[!a-z0-9-]*) echo "local-service: a name is made of a-z, 0-9 and -" >&2; exit 64 ;; esac
+PROG=${CMD%% *}; PROG=${PROG##*/}
+mkdir -p /etc/local.d
+cat > "/etc/local.d/$NAME.start" <<EOF
+#!/bin/sh
+# $NAME, started at boot by /etc/mylinux/rc.boot (written by /etc/mylinux/local-service)
+pidof $PROG >/dev/null || setsid $CMD >/var/log/$NAME.log 2>&1 &
+EOF
+chmod 755 "/etc/local.d/$NAME.start"
+"/etc/local.d/$NAME.start"

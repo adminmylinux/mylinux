@@ -224,6 +224,15 @@ render("machine-arch", to: out) { ctx in
     }
 }
 
+render("machine-tiny", to: out) { ctx in
+    // Alpine's peaks again, filled and on a green of its own: the small one of the two
+    body(ctx, gradient: [0x2FB3A0, 0x1A8F80, 0x0E5A52], glow: 0xA8F0E2)
+    let cfg = NSImage.SymbolConfiguration(pointSize: 400, weight: .bold)
+    if let i = NSImage(systemSymbolName: "mountain.2.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
+        mark(ctx, i, size: 430, tint: .white)
+    }
+}
+
 // ---- the machines' apps as the Dock and ⌘Tab show them: each with myLinux's own icon in the bottom-right corner,
 // so they read as myLinux machines and not apps of their own (machine-<kind>-app.png → machine-<kind>.icns) ----
 func badged(_ name: String) {
@@ -246,4 +255,4 @@ func badged(_ name: String) {
         ctx.restoreGState()
     }
 }
-for kind in ["omarchy", "debian", "alpine", "arch"] { badged("machine-" + kind) }
+for kind in ["omarchy", "debian", "alpine", "arch", "tiny"] { badged("machine-" + kind) }

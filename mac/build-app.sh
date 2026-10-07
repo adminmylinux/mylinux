@@ -80,14 +80,15 @@ for lib in "$NEW"/Contents/Frameworks/*.dylib; do
   fi
 done
 # the scripts the app runs: run.sh and everything it calls
-cp run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh "$NEW/Contents/Resources/runtime/"
+cp run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh run-tiny.sh "$NEW/Contents/Resources/runtime/"
 # myLinux Apps (Apps… in a server's terminal) comes from GitHub too; this copy stands in when it can't
 mkdir -p "$NEW/Contents/Resources/server-apps"
 cp server-apps/run.sh server-apps/mylinux_apps.py server-apps/catalog.json server-apps/speedtest.py server-apps/mount-share.sh server-apps/snippets.json server-apps/snippets-vnc.json "$NEW/Contents/Resources/server-apps/"
 # GhosttyKit's resources (Ghostty's resource folder and terminfo), found there by its patched lookup
 cp -R "$(dirname "$BIN")/GhosttyKit_GhosttyTerminal.bundle" "$NEW/Contents/Resources/"
 mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session "$NEW/Contents/Resources/runtime/omarchy/"
-for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-arch.sh get-debian.sh get-alpine.sh get-edk2.sh download-cache.sh save-downloads.sh extra-shares.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh omarchy-update-session.sh qemu-flavour.sh qemu-runtime.version; do
+cp -R tiny "$NEW/Contents/Resources/runtime/"      # Tiny Alpine's boot scripts, which run-server.sh puts into the initrd
+for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-arch.sh get-debian.sh get-alpine.sh get-tiny.sh get-edk2.sh download-cache.sh save-downloads.sh extra-shares.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh omarchy-update-session.sh qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done
 # icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds
@@ -97,10 +98,10 @@ cp "tools/icons/myLinux Launcher.icns" "$NEW/Contents/Resources/myLinux Launcher
 # Omarchy) and Debian's Open Use Logo (Software in the Public Interest, LGPL-3 or CC-BY-SA 3.0)
 mkdir -p "$NEW/Contents/Resources/icons"
 cp "tools/icons/myLinux Launcher.png" tools/icons/myLinux.png tools/icons/omarchy.png tools/icons/debian.png "$NEW/Contents/Resources/icons/"
-cp tools/icons/machine-omarchy.png tools/icons/machine-debian.png tools/icons/machine-alpine.png tools/icons/machine-arch.png "$NEW/Contents/Resources/icons/"
+cp tools/icons/machine-omarchy.png tools/icons/machine-debian.png tools/icons/machine-alpine.png tools/icons/machine-arch.png tools/icons/machine-tiny.png "$NEW/Contents/Resources/icons/"
 cp tools/icons/myLinux.icns "$NEW/Contents/Resources/runtime/tools/icons/myLinux.icns"
 # each machine's own app (make-app-bundle.sh for the desktops, MachineApp.swift for the servers) has its kind's icon
-cp tools/icons/machine-omarchy.icns tools/icons/machine-debian.icns tools/icons/machine-alpine.icns tools/icons/machine-arch.icns "$NEW/Contents/Resources/runtime/tools/icons/"
+cp tools/icons/machine-omarchy.icns tools/icons/machine-debian.icns tools/icons/machine-alpine.icns tools/icons/machine-arch.icns tools/icons/machine-tiny.icns "$NEW/Contents/Resources/runtime/tools/icons/"
 
 # Signed inside out: the libraries, then the app with its entitlements. MYLINUX_SIGN_IDENTITY, else the local
 # "myLinux Launcher (local signing)" certificate when the login keychain has one (a stable signature keeps the

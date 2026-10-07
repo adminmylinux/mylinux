@@ -13,6 +13,7 @@ struct MachineView: View {
     @StateObject private var archImage = DesktopImageManager.arch
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
+    @StateObject private var tiny = ServerImageManager.tiny
     @StateObject private var images = ImageManager.shared
     private var isOmarchy: Bool { draft.kind == .omarchy }
     /// Omarchy or Arch: a desktop on the QEMU runtime (run-omarchy.sh)
@@ -22,7 +23,9 @@ struct MachineView: View {
     private var isServer: Bool { draft.isServer }
     private var guestName: String { draft.kind.title }
     /// A server's download: Debian's image or Alpine's.
-    private var server: ServerImageManager { draft.kind == .alpine ? alpine : debian }
+    private var server: ServerImageManager { draft.kind == .alpine ? alpine : draft.kind == .tiny ? tiny : debian }
+    /// Tiny Alpine's disk is made with the runtime's mke2fs (11.1.1-17 on); an older or missing runtime is downloaded first.
+    private var tinyNeedsRuntime: Bool { draft.kind == .tiny && !settings.runtimeHasMke2fs }
 
     init(profile: Profile, runner: Runner) {
         self.runner = runner
@@ -41,9 +44,9 @@ struct MachineView: View {
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             if !runtime.present { return "Download the accelerated QEMU first" }
             return created || desktopImage.present ? nil : "Download \(guestName) first"
-        case .debian, .alpine:
-            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
-            if !settings.qemuAvailable { return "Download the accelerated QEMU first" }
+        case .debian, .alpine, .tiny:
+            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent(draft.kind.firstStartFile).path)
+            if !settings.qemuAvailable || tinyNeedsRuntime { return "Download the accelerated QEMU first" }
             return created || server.present ? nil : "Download \(guestName) first"
         }
     }
@@ -61,9 +64,9 @@ struct MachineView: View {
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             let image = desktopImage
             return created || image.present ? nil : (guestName, image, { image.download(settings) })
-        case .debian, .alpine:
-            if !settings.qemuAvailable { return ("QEMU", runtime, { runtime.download(settings) }) }
-            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
+        case .debian, .alpine, .tiny:
+            if !settings.qemuAvailable || tinyNeedsRuntime { return ("QEMU", runtime, { runtime.download(settings) }) }
+            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent(draft.kind.firstStartFile).path)
             return created || server.present ? nil : (guestName, server, { server.download(settings) })
         }
     }
@@ -358,7 +361,9 @@ struct MachineView: View {
                     Text("ssh -p \(String(draft.sshPort)) \(draft.kind.serverUser)@127.0.0.1").font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
-            Text(draft.kind == .alpine
+            Text(draft.kind == .tiny
+                 ? "The Terminal button opens an SSH terminal with the key made for this machine (ssh_key in its folder). The account is \"alpine\", with doas for root (Install Script… adds bash). OpenSSH and doas come from Alpine's servers at the first start, which needs the internet once; reachable from this Mac only."
+                 : draft.kind == .alpine
                  ? "The Terminal button opens an SSH terminal with the key made for this machine (ssh_key in its folder). The account is Alpine's own \"alpine\", with doas for root (Install Script… adds bash); reachable from this Mac only."
                  : "The Terminal button opens an SSH terminal with the key made for this machine (ssh_key in its folder). The account is \"debian\" with sudo; reachable from this Mac only.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -439,7 +444,7 @@ struct MachineView: View {
 
     /// What a server needs before its first start.
     @ViewBuilder private var serverDownloads: some View {
-        let needQemu = !settings.qemuAvailable
+        let needQemu = !settings.qemuAvailable || tinyNeedsRuntime
         let needImage = !server.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
         if needQemu || needImage || runtime.busy || server.busy || runtime.lastError != nil || server.lastError != nil {
             Section("Before the first start") {

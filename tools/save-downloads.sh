@@ -27,3 +27,4 @@ save omarchy OMARCHY-REVISION "$OUT/omarchy" rootfs.ext4.zst
 save arch ARCH-REVISION "$OUT/arch" rootfs.ext4.zst
 save debian DEBIAN-REVISION "$OUT/debian" debian.raw
 save alpine ALPINE-REVISION "$OUT/alpine" alpine.raw
+save tiny TINY-REVISION "$OUT/tiny" rootfs.cpio.gz

@@ -1,0 +1,6 @@
+# /etc/inittab of a Tiny Alpine machine: BusyBox init without OpenRC.
+# /etc/mylinux/rc.boot brings the machine up; myLinux refreshes /etc/mylinux at every start, this file it leaves alone.
+::sysinit:/etc/mylinux/rc.boot
+ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100
+::ctrlaltdel:/sbin/reboot
+::shutdown:/etc/mylinux/rc.shutdown

@@ -80,7 +80,7 @@ final class MachineStats: ObservableObject {
                 var s = Stat(cpu: min(1, proc.cpu / 100 / Double(vcpus)), macCPU: min(1, proc.cpu / 100 / Double(max(1, hostNow.cores))),
                              vcpus: vcpus, memUsed: min(allocated, proc.rss), memTotal: allocated,
                              memFromGuest: false, diskUsed: 0, diskTotal: 0, diskFromGuest: false)
-                if p.kind != .mylinux, let socket = sockets[p.id], let m = self.balloon(socket, pid: proc.pid) {
+                if p.kind != .mylinux, p.kind != .tiny, let socket = sockets[p.id], let m = self.balloon(socket, pid: proc.pid) {
                     s.memUsed = m.used; s.memTotal = m.total; s.memFromGuest = true
                 }
                 if let d = MachineStats.fileDisk(p.appsDisk) { s.diskUsed = d.used; s.diskTotal = d.total }

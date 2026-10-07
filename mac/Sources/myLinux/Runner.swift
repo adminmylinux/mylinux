@@ -75,11 +75,15 @@ final class Runner: ObservableObject {
         }
         if p.isServer {
             // an existing machine has its disk and seed; only a new one needs the downloaded image and firmware
-            let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: p.machineFolder.appendingPathComponent("seed.iso").path)
+            let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: p.machineFolder.appendingPathComponent(p.kind.firstStartFile).path)
             let downloaded = settings.serverImagePresent(p.kind)
             guard created || downloaded else { state = .failed("\(p.kind.title) is not downloaded yet (Download on this page)."); return }
-            guard downloaded || FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("\(p.kind.rawValue)/edk2-aarch64-code.fd").path) else {
-                state = .failed("The UEFI firmware is missing (Download \(p.kind.title) on this page)."); return
+            if p.kind == .tiny {
+                guard settings.runtimeHasMke2fs else { state = .failed("Tiny Alpine needs the accelerated QEMU, 11.1.1-17 or later (Settings › QEMU)."); return }
+            } else {
+                guard downloaded || FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("\(p.kind.rawValue)/edk2-aarch64-code.fd").path) else {
+                    state = .failed("The UEFI firmware is missing (Download \(p.kind.title) on this page)."); return
+                }
             }
         } else if p.kind.runsDesktop {
             guard settings.runtimePresent else { state = .failed("\(p.kind.title) needs the accelerated QEMU (Settings › QEMU › Download)."); return }
@@ -342,9 +346,11 @@ final class Runner: ObservableObject {
         guard state == .running || state == .starting || canStopElsewhere else { return }
         if profile?.kind.runsDesktop == true || profile?.isServer == true {
             state = .stopping; stoppingSince = Date()
-            let path = qmpSocket
+            let path = qmpSocket, tiny = profile?.kind == .tiny
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let ok = Runner.qmp(path, execute: "system_powerdown")
+                // Tiny Alpine's kernel has no power button: the power key of its keyboard instead (BusyBox acpid acts on it)
+                let ok = tiny ? Runner.qmp(path, json: #"{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"power"}]}}"#)
+                              : Runner.qmp(path, execute: "system_powerdown")
                 if !ok { DispatchQueue.main.async { self?.forceQuit() } }
             }
             return

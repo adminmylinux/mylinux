@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 swift icons.swift "$TMP" >/dev/null
-for name in "myLinux" "myLinux Launcher" machine-omarchy machine-debian machine-alpine machine-arch; do
+for name in "myLinux" "myLinux Launcher" machine-omarchy machine-debian machine-alpine machine-arch machine-tiny; do
   set_dir="$TMP/$name.iconset"
   # a machine's app icon (the Dock, ⌘Tab) carries myLinux's badge: packed from <name>-app.png; the plain picture
   # stays for the launcher's own list and the website

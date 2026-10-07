@@ -12,6 +12,7 @@ struct WelcomeSheet: View {
     @ObservedObject var arch: DesktopImageManager
     @ObservedObject var debian: ServerImageManager
     @ObservedObject var alpine: ServerImageManager
+    @ObservedObject var tiny: ServerImageManager
     @ObservedObject var runtime: RuntimeManager
     /// Called when the sheet closes, with the kinds that were downloaded and are ready (to add machines for).
     let done: ([Profile.Kind]) -> Void
@@ -39,7 +40,9 @@ struct WelcomeSheet: View {
         Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
               text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
         Offer(kind: .alpine, name: "Alpine Server", size: "100 MB", bytes: 100e6,
-              text: "The smallest: Alpine Linux as a terminal that boots in seconds and idles in about 100 MB of memory. The same menu installs the agents, and the same browser looks inside."),
+              text: "Small: Alpine Linux as a terminal that boots in seconds and idles in about 100 MB of memory. The same menu installs the agents, and the same browser looks inside."),
+        Offer(kind: .tiny, name: "Tiny Alpine Server", size: "18 MB", bytes: 18e6,
+              text: "The smallest: Alpine at its 4 MB core on myLinux's own kernel. It is up in about a second and idles in 40 MB of memory; the same menu installs Claude Code and the other agents."),
     ]
 
     var body: some View {
@@ -144,6 +147,8 @@ struct WelcomeSheet: View {
                 tile(Color(red: 0.05, green: 0.35, blue: 0.50), "mountain.2")
             case .arch:
                 tile(Color(red: 0.09, green: 0.58, blue: 0.82), "triangle.fill")
+            case .tiny:
+                tile(Color(red: 0.10, green: 0.50, blue: 0.45), "mountain.2.fill")
             }
         }
         .frame(width: 52, height: 52)
@@ -208,14 +213,14 @@ struct WelcomeSheet: View {
 
     // ---- state ----------------------------------------------------------------------------------------------------
     private func manager(_ kind: Profile.Kind) -> ScriptDownloader {
-        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch }
+        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch; case .tiny: return tiny }
     }
     private func present(_ kind: Profile.Kind) -> Bool {
-        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present }
+        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present; case .tiny: return tiny.present }
     }
     /// Ticked and not downloaded yet.
     private var pending: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && !present($0) } }
-    private var anyBusy: Bool { images.busy || omarchy.busy || arch.busy || debian.busy || alpine.busy || runtime.busy }
+    private var anyBusy: Bool { images.busy || omarchy.busy || arch.busy || debian.busy || alpine.busy || tiny.busy || runtime.busy }
     private var readyKinds: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && present($0) } }
     private var summary: String {
         if started && anyBusy { return "Downloading…" }
@@ -236,6 +241,10 @@ struct WelcomeSheet: View {
                 (kind == .arch ? arch : omarchy).download(settings)
             case .debian: debian.download(settings)
             case .alpine: alpine.download(settings)
+            case .tiny:
+                // its disk is made with the runtime's mke2fs; a release carries the runtime, a local build fetches it
+                if !settings.runtimeHasMke2fs && !runtime.busy && RuntimeManager.bundledTarball == nil { runtime.download(settings) }
+                tiny.download(settings)
             }
         }
     }

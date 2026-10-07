@@ -144,7 +144,7 @@ enum SavedDownloads {
     static let kinds: [(folder: String, name: String, revisionFile: String)] = [
         ("mylinux", "myLinux image", "IMAGE-REVISION"), ("omarchy", "Omarchy", "OMARCHY-REVISION"),
         ("debian", "Debian", "DEBIAN-REVISION"), ("alpine", "Alpine", "ALPINE-REVISION"),
-        ("arch", "Arch Linux", "ARCH-REVISION"),
+        ("arch", "Arch Linux", "ARCH-REVISION"), ("tiny", "Tiny Alpine", "TINY-REVISION"),
     ]
 
     /// At launch: Linuxes installed before saving existed are saved too (APFS clones: no time, no extra space).
@@ -285,11 +285,15 @@ final class DesktopImageManager: ScriptDownloader {
 
 /// A server's cloud image and its UEFI firmware: Debian's latest stable image (tools/get-debian.sh, about 300 MB) or
 /// Alpine's (tools/get-alpine.sh, about 100 MB), kept in <out>/<distro>; every machine of that kind has its disk
+/// copied from it on its first start. Tiny Alpine (tools/get-tiny.sh, about 18 MB) is Alpine's mini root filesystem
+/// and myLinux's kernel instead; a new machine installs itself from them onto an empty disk.
 /// copied from it on its first start.
 final class ServerImageManager: ScriptDownloader {
     static let debian = ServerImageManager(.debian)
     static let alpine = ServerImageManager(.alpine)
-    static func shared(_ kind: Profile.Kind) -> ServerImageManager { kind == .alpine ? alpine : debian }
+    static let tiny = ServerImageManager(.tiny)
+    static func shared(_ kind: Profile.Kind) -> ServerImageManager { kind == .alpine ? alpine : kind == .tiny ? tiny : debian }
+    var size: String { kind == .tiny ? "about 18 MB" : kind == .alpine ? "about 100 MB" : "about 300 MB" }
 
     let kind: Profile.Kind
     @Published private(set) var revision: String?
@@ -299,7 +303,8 @@ final class ServerImageManager: ScriptDownloader {
 
     /// For the download rows: the size and where it comes from.
     var detail: String {
-        kind == .alpine ? "about 100 MB, the latest stable cloud image from alpinelinux.org"
+        kind == .tiny ? "about 18 MB: Alpine's mini root filesystem from alpinelinux.org and myLinux's kernel"
+        : kind == .alpine ? "about 100 MB, the latest stable cloud image from alpinelinux.org"
                         : "about 300 MB, the latest stable cloud image from debian.org"
     }
 
@@ -309,7 +314,7 @@ final class ServerImageManager: ScriptDownloader {
     }
 
     func download(_ settings: AppSettings = .shared) {
-        install("tools/get-\(kind.rawValue).sh", name: kind.title, size: kind == .alpine ? "about 100 MB" : "about 300 MB", installed: present,
+        install("tools/get-\(kind.rawValue).sh", name: kind.title, size: size, installed: present,
                 starting: "Looking up the latest \(kind.title) image…", settings: settings)
     }
 

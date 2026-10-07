@@ -39,11 +39,11 @@
      "bin": ["fastfetch"], "run": "fastfetch", "apk": ["fastfetch"], "apt": ["fastfetch"]},
     {"id": "tailscale", "icon": "f0582", "pacman": ["tailscale"], "arch": ["sudo systemctl enable --now tailscaled", "sudo tailscale up"], "name": "Tailscale", "category": "System", "description": "Your private network (signs in with a link)",
      "bin": ["tailscale"], "run": "tailscale status",
-     "apk": ["tailscale"], "alpine": ["doas rc-update add tailscale default", "doas rc-service tailscale start", "doas tailscale up"],
+     "apk": ["tailscale"], "alpine": ["if command -v rc-update >/dev/null; then doas rc-update add tailscale default && doas rc-service tailscale start; else doas mkdir -p /var/lib/tailscale && doas /etc/mylinux/local-service tailscale 'tailscaled --state=/var/lib/tailscale/tailscaled.state' && sleep 2; fi", "doas tailscale up"],
      "apt": ["curl"], "debian": ["curl -fsSL https://tailscale.com/install.sh | sh", "sudo tailscale up"]},
     {"id": "docker", "icon": "f308", "pacman": ["docker", "docker-compose"], "arch": ["sudo systemctl enable --now docker", "sudo usermod -aG docker $(id -un)"], "name": "Docker", "category": "System", "description": "Containers (you join the docker group)",
      "bin": ["docker"], "run": "docker ps",
-     "apk": ["docker", "docker-cli-compose"], "alpine": ["doas rc-update add docker default", "doas rc-service docker start", "doas addgroup $(id -un) docker"],
+     "apk": ["docker", "docker-cli-compose"], "alpine": ["if command -v rc-update >/dev/null; then doas rc-update add docker default && doas rc-service docker start && doas addgroup $(id -un) docker; else echo 'Docker does not run on Tiny Alpine (its kernel has no container networking): use an Alpine Server or Debian machine for it.'; fi"],
      "apt": ["docker.io", "docker-compose"], "debian": ["sudo usermod -aG docker $(id -un)"]},
 
     {"id": "tmux", "pacman": ["tmux"], "name": "tmux", "category": "Terminal", "description": "Sessions that outlive the window",

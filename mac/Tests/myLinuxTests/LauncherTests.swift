@@ -639,6 +639,21 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
         XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the same QEMU wrapper as Omarchy's")
     }
+    func testTinyAlpineIsAServerThatIsAlpineInside() {
+        let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
+        XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)
+        XCTAssertEqual(p.script, "run-tiny.sh"); XCTAssertEqual(p.kind.title, "Tiny Alpine")
+        XCTAssertEqual(p.appsDisk, "/tmp/m/t/tiny.raw"); XCTAssertEqual(p.shareDir, "/tmp/m/t/Mac")
+        // Alpine's account, install script and snippets; its own first-start file (no cloud-init seed)
+        XCTAssertEqual(p.kind.serverUser, "alpine"); XCTAssertEqual(p.terminalProfile.username, "alpine")
+        XCTAssertEqual(p.kind.installScriptName, "alpine_install.sh"); XCTAssertEqual(p.kind.snippetOS, "alpine")
+        XCTAssertEqual(p.kind.firstStartFile, "boot/Image"); XCTAssertEqual(Profile.Kind.alpine.firstStartFile, "seed.iso")
+        XCTAssertEqual(Profile.Kind.alpine.installScriptName, "alpine_install.sh"); XCTAssertEqual(Profile.Kind.debian.installScriptName, "debian_install.sh")
+        XCTAssertEqual(Profile.Kind.debian.serverUser, "debian"); XCTAssertEqual(Profile.Kind.debian.snippetOS, "debian")
+        XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.machine.\(p.id.uuidString.lowercased())")
+        XCTAssertEqual([8, 16, 36].map { Profile.recommendedMemoryGB(.tiny, macGB: $0) }, [2, 2, 4])
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+    }
     func testMachinesOfARetiredKindAreLeftOutNotOpenedAsMyLinux() throws {
         let json = #"[{"kind":"puppy","name":"P","appsDisk":"/d/p/puppy.ext4","shareDir":""},{"kind":"debian","name":"D","appsDisk":"/d/d","shareDir":"","sshPort":2223}]"#
         let list = try XCTUnwrap(ProfileStore.decodeList(Data(json.utf8)))

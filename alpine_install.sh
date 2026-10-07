@@ -1,5 +1,5 @@
 #!/bin/sh
-# myLinux: set up an Alpine Server machine. Safe to run again.
+# myLinux: set up an Alpine Server or Tiny Alpine machine. Safe to run again.
 #
 # Install Script… in the myLinux menu of an Alpine terminal loads this file from GitHub
 # (adminmylinux/mylinux, main), shows it, and runs it in the machine's terminal.
@@ -72,8 +72,15 @@ echo "Aliases: cc (Claude), cx (Codex); bash is the login shell now (this termin
 if [ "$TAILSCALE" = 1 ]; then
   echo "== Tailscale"
   doas apk add -q tailscale
-  doas rc-update add tailscale default >/dev/null
-  doas rc-service tailscale start >/dev/null 2>&1 || true
+  if command -v rc-update >/dev/null 2>&1; then
+    doas rc-update add tailscale default >/dev/null
+    doas rc-service tailscale start >/dev/null 2>&1 || true
+  else
+    # Tiny Alpine has no OpenRC: /etc/local.d/tailscale.start, which its boot script runs (tiny/local-service)
+    doas mkdir -p /var/lib/tailscale
+    doas /etc/mylinux/local-service tailscale 'tailscaled --state=/var/lib/tailscale/tailscaled.state'
+    sleep 2
+  fi
   tailscale version | head -1
   if ! doas tailscale status >/dev/null 2>&1; then
     echo "Sign in with the link below (⌘-click opens it). Ctrl-C skips; sign in later with: doas tailscale up"

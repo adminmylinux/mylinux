@@ -9,19 +9,25 @@ struct Profile: Codable, Identifiable, Hashable {
     /// Debian and Alpine are servers (run-debian.sh, run-alpine.sh, both run-server.sh): terminal-only machines from
     /// the distribution's cloud image, `appsDisk` their root disk, no window; the launcher reaches them through the
     /// serial console and an SSH terminal on `sshPort`. Arch is a desktop like Omarchy (run-omarchy.sh with
-    /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh.
+    /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh. Tiny is a third server
+    /// (run-tiny.sh): Tiny Alpine, Alpine's mini root filesystem on myLinux's kernel, no cloud image and no firmware.
     enum Kind: String, Codable {
-        case mylinux, omarchy, debian, alpine, arch
-        var isServer: Bool { self == .debian || self == .alpine }
+        case mylinux, omarchy, debian, alpine, arch, tiny
+        var isServer: Bool { self == .debian || self == .alpine || self == .tiny }
         /// A desktop on the QEMU runtime started by run-omarchy.sh: Omarchy, or Arch with Plasma.
         var runsDesktop: Bool { self == .omarchy || self == .arch }
         var title: String {
-            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux" }
+            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .tiny: return "Tiny Alpine" }
         }
         /// A server's account inside: "debian" (bash, sudo) or Alpine's own "alpine" (ash until the install script, doas).
-        var serverUser: String { rawValue }
-        /// What Install Script… loads for a server: debian_install.sh, alpine_install.sh.
-        var installScriptName: String { "\(rawValue)_install.sh" }
+        /// Tiny Alpine is Alpine: the same account, install script and snippets.
+        var serverUser: String { self == .tiny ? "alpine" : rawValue }
+        /// What Install Script… loads for a server: debian_install.sh, alpine_install.sh (Tiny Alpine's too).
+        var installScriptName: String { "\(serverUser)_install.sh" }
+        /// Whose snippets a machine is offered (snippets.json's "os").
+        var snippetOS: String { self == .tiny ? "alpine" : rawValue }
+        /// What a server's first start leaves in its folder beside the disk: the cloud-init seed, or Tiny Alpine's kernel.
+        var firstStartFile: String { self == .tiny ? "boot/Image" : "seed.iso" }
     }
     var isServer: Bool { kind.isServer }
 
@@ -82,7 +88,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case .mylinux: return [3, 4, 6][tier]
         case .omarchy, .arch: return [4, 6, 8][tier]
         case .debian: return [2, 2, 4][tier]
-        case .alpine: return [2, 2, 4][tier]      // idles in 60 MB; Claude Code and Codex's server need the room
+        case .alpine, .tiny: return [2, 2, 4][tier]      // idles in 60 MB (Tiny in 40); Claude Code and Codex's server need the room
         }
     }
     static var macMemoryGB: Int { Int((ProcessInfo.processInfo.physicalMemory + (1 << 29)) >> 30) }

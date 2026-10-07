@@ -182,6 +182,7 @@ private struct ImagesSettingsPage: View {
     @StateObject private var arch = DesktopImageManager.arch
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
+    @StateObject private var tiny = ServerImageManager.tiny
     @StateObject private var runtime = RuntimeManager.shared
 
     var body: some View {
@@ -207,6 +208,10 @@ private struct ImagesSettingsPage: View {
             row(icon: MachineIcon.image(.alpine), name: "Alpine", size: "100 MB", loader: alpine,
                 status: alpine.present ? "Installed · \(alpine.revision ?? "")" : nil,
                 action: alpine.present ? "Update" : "Download", start: { alpine.download(settings) })
+            Divider()
+            row(icon: MachineIcon.image(.tiny), name: "Tiny Alpine", size: "18 MB", loader: tiny,
+                status: tiny.present ? "Installed · \(tiny.revision ?? "")" : nil,
+                action: tiny.present ? "Update" : "Download", start: { tiny.download(settings) })
         }
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.045)))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.1)))
@@ -231,7 +236,7 @@ private struct ImagesSettingsPage: View {
             }
             .padding(.top, 6)
         }
-        .onAppear { images.refresh(settings); omarchy.refresh(settings); arch.refresh(settings); debian.refresh(settings); alpine.refresh(settings); runtime.refresh(settings) }
+        .onAppear { images.refresh(settings); omarchy.refresh(settings); arch.refresh(settings); debian.refresh(settings); alpine.refresh(settings); tiny.refresh(settings); runtime.refresh(settings) }
     }
 
     private func row(icon: NSImage?, symbol: String = "shippingbox", name: String, size: String, loader: ScriptDownloader,
@@ -590,7 +595,7 @@ struct StorageUsage {
             var downloads = 0.0
             if !dev {
                 for (name, paths) in [("myLinux image", ["Image", "rootfs.cpio.gz"]), ("Omarchy", ["omarchy"]), ("Arch Linux", ["arch"]), ("Debian", ["debian"]),
-                                      ("Alpine", ["alpine"]), ("QEMU runtime", ["qemu-runtime", "qemu-runtime.prev"])] {
+                                      ("Alpine", ["alpine"]), ("Tiny Alpine", ["tiny"]), ("QEMU runtime", ["qemu-runtime", "qemu-runtime.prev"])] {
                     let b = paths.reduce(0.0) { $0 + allocated(out.appendingPathComponent($1)) }
                     if b > 0 { downloads += b; items.append(Item(name: name, bytes: b, color: .purple)) }
                 }

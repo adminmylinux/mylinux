@@ -23,7 +23,7 @@ enum MachineApp {
         switch p.kind {
         case .mylinux: return "dev.mylinux.vm.\(id)"
         case .omarchy, .arch: return "dev.mylinux.vm.omarchy.\(id)"      // run-omarchy.sh's wrapper, for both
-        case .debian, .alpine: return "dev.mylinux.machine.\(id)"
+        case .debian, .alpine, .tiny: return "dev.mylinux.machine.\(id)"
         }
     }
 
