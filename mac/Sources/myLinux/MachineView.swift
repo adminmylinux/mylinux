@@ -11,18 +11,14 @@ struct MachineView: View {
     @StateObject private var runtime = RuntimeManager.shared
     @StateObject private var omarchyImage = DesktopImageManager.omarchy
     @StateObject private var archImage = DesktopImageManager.arch
-    @StateObject private var puppyImage = DesktopImageManager.puppy
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
     @StateObject private var images = ImageManager.shared
     private var isOmarchy: Bool { draft.kind == .omarchy }
     /// Omarchy or Arch: a desktop on the QEMU runtime (run-omarchy.sh)
     private var isDesktop: Bool { draft.kind.runsDesktop }
-    /// A desktop's download: Omarchy's guest, Arch's or Puppy's.
-    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : draft.kind == .puppy ? puppyImage : omarchyImage }
-    private var isPuppy: Bool { draft.kind == .puppy }
-    /// Puppy needs the runtime's PC emulator (11.1.1-17 on); an older runtime is updated by the same download.
-    private var runtimeTooOld: Bool { runtime.present && draft.kind.isEmulated && !settings.runtimeHasPC }
+    /// A desktop's download: Omarchy's guest or Arch's.
+    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : omarchyImage }
     private var isServer: Bool { draft.isServer }
     private var guestName: String { draft.kind.title }
     /// A server's download: Debian's image or Alpine's.
@@ -41,10 +37,9 @@ struct MachineView: View {
         switch draft.kind {
         case .mylinux:
             return images.present ? nil : (settings.developerMode ? "Build the image first (./build.sh)" : "Download myLinux first")
-        case .omarchy, .arch, .puppy:
+        case .omarchy, .arch:
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             if !runtime.present { return "Download the accelerated QEMU first" }
-            if runtimeTooOld { return "Update the accelerated QEMU first" }
             return created || desktopImage.present ? nil : "Download \(guestName) first"
         case .debian, .alpine:
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("seed.iso").path)
@@ -61,8 +56,8 @@ struct MachineView: View {
         case .mylinux:
             guard !images.present, !settings.developerMode else { return nil }
             return ("myLinux", images, { images.download(settings) })
-        case .omarchy, .arch, .puppy:
-            if !runtime.present || runtimeTooOld { return ("QEMU", runtime, { runtime.download(settings) }) }
+        case .omarchy, .arch:
+            if !runtime.present { return ("QEMU", runtime, { runtime.download(settings) }) }
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             let image = desktopImage
             return created || image.present ? nil : (guestName, image, { image.download(settings) })
@@ -236,7 +231,7 @@ struct MachineView: View {
     /// A desktop's window: its own app (MachineApp), or any myLinux desktop from before 0.6.
     private func showWindow() {
         if let app = MachineApp.running(draft) { app.activate(); return }
-        let prefix = isPuppy ? "dev.mylinux.vm.puppy" : isDesktop ? "dev.mylinux.vm.omarchy" : "dev.mylinux.vm"      // Arch's window is the same wrapper as Omarchy's
+        let prefix = isDesktop ? "dev.mylinux.vm.omarchy" : "dev.mylinux.vm"      // Arch's window is the same wrapper as Omarchy's
         NSWorkspace.shared.runningApplications.first { ($0.bundleIdentifier ?? "").hasPrefix(prefix) }?.activate()
     }
 
@@ -382,7 +377,6 @@ struct MachineView: View {
                         help: "The whole \(guestName) install. Its kernel lives in the boot folder beside it, so keep the two together.")
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
                         help: isOmarchy ? "Shows up inside Omarchy as a folder of the same name in your home folder. Leave empty for none."
-                                        : isPuppy ? "Mounted inside at /mnt/mac, and Mac in the home folder (File on the desktop) points to it. Leave empty for none."
                                         : "Mounted inside at /mnt/mac, and ~/Mac in your home folder points to it. Leave empty for none.")
             } else {
                 PathRow(title: "Apps disk", path: $draft.appsDisk, isDirectory: false,
@@ -504,10 +498,7 @@ struct MachineView: View {
                     }
                 }
             }
-            if isPuppy {
-                Text("Puppy's desktop gets exactly this size, one pixel per point. Resizing the window, or its − and + buttons, enlarges or shrinks the picture.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            } else if isDesktop {
+            if isDesktop {
                 Text("The window opens at exactly this size and is not resizable; the green button gives full screen. Sizes are in points: a Retina MacBook screen is about 1728 × 1084, not its pixel count.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -547,11 +538,11 @@ struct MachineView: View {
     /// What a desktop machine (Omarchy, Arch) needs before its first start, each with its own download.
     @ViewBuilder private var desktopDownloads: some View {
         let image = desktopImage
-        let needRuntime = !runtime.present || runtimeTooOld, needGuest = !image.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
+        let needRuntime = !runtime.present, needGuest = !image.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
         if needRuntime || needGuest || runtime.busy || image.busy || runtime.lastError != nil || image.lastError != nil {
             Section("Before the first start") {
                 if needRuntime || runtime.busy {
-                    downloadRow(title: runtimeTooOld ? "Newer QEMU (with the PC emulator)" : "Accelerated QEMU", detail: "about 15 MB", busy: runtime.busy, progress: runtime.progress,
+                    downloadRow(title: "Accelerated QEMU", detail: "about 15 MB", busy: runtime.busy, progress: runtime.progress,
                                 start: { runtime.download(settings) }, cancel: { runtime.cancel() })
                 }
                 if let e = runtime.lastError { Banner(text: e, kind: .error) }
@@ -580,13 +571,6 @@ struct MachineView: View {
     }
 
     private var grabHelp: String {
-        if isPuppy {
-            switch draft.grab {
-            case "full": return "Puppy receives every key, ⌘ as the Windows key, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives Puppy every key again."
-            case "none": return "macOS keeps all its shortcuts; Puppy only sees combinations macOS does not claim."
-            default: return "The Option key acts as the Windows key inside Puppy. macOS keeps its ⌘ shortcuts; Puppy's own are Ctrl ones (Ctrl+C and Ctrl+V, Ctrl+Shift+C and Ctrl+Shift+V in the terminal)."
-            }
-        }
         if draft.kind == .arch {
             switch draft.grab {
             case "full": return "Plasma receives every key, ⌘ as Meta, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives Plasma every key again."
@@ -640,8 +624,7 @@ struct MachineView: View {
             let gb = size.int64Value / (1024 * 1024 * 1024)
             return "the disk already exists (\(gb) GB); the size applies to new disks"
         }
-        return isPuppy ? "made on first start with Puppy's files in it, growing as it fills"
-            : isDesktop ? "unpacked from the download on first start, growing as it fills" : "created on first start, growing as it fills"
+        return isDesktop ? "unpacked from the download on first start, growing as it fills" : "created on first start, growing as it fills"
     }
 }
 

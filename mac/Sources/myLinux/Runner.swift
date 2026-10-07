@@ -83,7 +83,6 @@ final class Runner: ObservableObject {
             }
         } else if p.kind.runsDesktop {
             guard settings.runtimePresent else { state = .failed("\(p.kind.title) needs the accelerated QEMU (Settings › QEMU › Download)."); return }
-            guard !p.kind.isEmulated || settings.runtimeHasPC else { state = .failed("\(p.kind.title) needs a newer QEMU, 11.1.1-17 or later (Settings › QEMU › Check for update)."); return }
             // an existing machine has its own disk and boot files; only a new one needs the downloaded guest
             let machine = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
             let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: machine.appendingPathComponent("boot/vmlinuz-linux").path)

@@ -1,3 +1,0 @@
-#!/bin/sh
-# myLinux: the clipboard shared with the Mac, started with the desktop (Puppy runs what is in ~/Startup)
-exec /usr/local/bin/mylinux-clipboard >/tmp/mylinux-clipboard.log 2>&1

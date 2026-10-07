@@ -59,7 +59,8 @@ if line not in s: s = s.replace(anchor, anchor + line, 1)
 open(p, 'w').write(s)
 PY
 done
-# The PC emulator for the x86 guests (Puppy Linux): the same patched source configured a second time, for x86-64
+# The PC emulator (added for Puppy Linux machines, launcher 0.7.54 only; nothing uses it now): the same patched
+# source configured a second time, for x86-64
 # with TCG instead of HVF, in a build folder of its own, so qemu-system-aarch64 stays exactly what their recipe makes.
 # Their script deletes its scratch folder when it ends; the binary and the firmware it boots with (SeaBIOS and the
 # VGA BIOS, from the QEMU source's pc-bios) are copied out to macos/.build/mylinux-x86 before that.
@@ -171,7 +172,7 @@ mkdir -p "$STAGE/e2fsprogs" && tar -xJf "$E2FS_TAR" -C "$STAGE/e2fsprogs" --stri
 cp "$STAGE/e2fsprogs/debugfs/debugfs" "$R/bin/debugfs"
 otool -L "$R/bin/debugfs" | grep -q '/opt/homebrew' && { echo "debugfs links against Homebrew libraries" >&2; exit 1; }
 codesign --force -s - "$R/bin/debugfs" 2>/dev/null || true
-# mke2fs from the same build: run-omarchy.sh makes a Puppy machine's disk with it, the downloaded files already inside
+# mke2fs from the same build: makes a filesystem with files already inside (-d), without mounting anything
 cp "$STAGE/e2fsprogs/misc/mke2fs" "$R/bin/mke2fs"
 otool -L "$R/bin/mke2fs" | grep -q '/opt/homebrew' && { echo "mke2fs links against Homebrew libraries" >&2; exit 1; }
 codesign --force -s - "$R/bin/mke2fs" 2>/dev/null || true

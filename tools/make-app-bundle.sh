@@ -24,18 +24,13 @@ OUT="${MYLINUX_OUT:-out}"
 case "${MYLINUX_BUNDLE:-mylinux}" in
   mylinux) APP="$OUT/myLinux.app"; HIDPI=false; BUNDLE_ID=dev.mylinux.vm ;;
   omarchy) APP="$OUT/myLinux-omarchy.app"; HIDPI=true; BUNDLE_ID=dev.mylinux.vm.omarchy ;;
-  # Puppy Linux (run-omarchy.sh with DESKTOP=puppy): the runtime's PC emulator, 1x like myLinux.app
-  puppy)   APP="$OUT/myLinux-puppy.app"; HIDPI=false; BUNDLE_ID=dev.mylinux.vm.puppy ;;
-  *) echo "MYLINUX_BUNDLE must be mylinux, omarchy or puppy" >&2; exit 1 ;;
+  *) echo "MYLINUX_BUNDLE must be mylinux or omarchy" >&2; exit 1 ;;
 esac
 # Which QEMU: the accelerated runtime in $OUT/qemu-runtime (tools/get-qemu-runtime.sh: VirGL, self-contained, no
 # Homebrew needed) when it is there, else Homebrew's. MYLINUX_QEMU=brew insists on Homebrew's. run.sh asks the same
 # question (tools/qemu-flavour.sh) because the two take different machine arguments.
 FLAVOUR=$(sh tools/qemu-flavour.sh "$OUT")
-if [ "${MYLINUX_BUNDLE:-mylinux}" = puppy ]; then
-  FLAVOUR=runtime; QEMU="$OUT/qemu-runtime/bin/qemu-system-x86_64"
-  [ -x "$QEMU" ] || { echo "$QEMU is missing: Puppy Linux needs QEMU runtime 11.1.1-17 or newer (tools/get-qemu-runtime.sh)" >&2; exit 1; }
-elif [ "$FLAVOUR" = runtime ]; then
+if [ "$FLAVOUR" = runtime ]; then
   QEMU="$OUT/qemu-runtime/bin/qemu-system-aarch64"
 else
   QEMU=$(PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" command -v qemu-system-aarch64) || { echo "qemu-system-aarch64 not found (brew install qemu, or tools/get-qemu-runtime.sh)" >&2; exit 1; }

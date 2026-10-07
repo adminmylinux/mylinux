@@ -101,12 +101,6 @@ final class AppSettings: ObservableObject {
     }
     /// The accelerated QEMU runtime next to the image (run.sh prefers it over Homebrew's QEMU).
     var runtimePresent: Bool { Paths.runtimeQemu(in: outDir) != nil }
-    /// The runtime's PC emulator, its firmware and mke2fs (from qemu-runtime-11.1.1-17): what Puppy Linux runs on.
-    var runtimeHasPC: Bool {
-        ["bin/qemu-system-x86_64", "bin/mke2fs", "share/qemu/bios-256k.bin"].allSatisfy {
-            FileManager.default.fileExists(atPath: outDir.appendingPathComponent("qemu-runtime/\($0)").path)
-        }
-    }
     var runtimeRevision: String? {
         guard runtimePresent else { return nil }
         return (try? String(contentsOf: outDir.appendingPathComponent("qemu-runtime/RUNTIME-REVISION"), encoding: .utf8))?
@@ -115,8 +109,7 @@ final class AppSettings: ObservableObject {
     /// A desktop guest (tools/get-omarchy.sh, tools/get-arch.sh): kernel, initramfs and the compressed factory disk.
     func desktopPresent(_ kind: Profile.Kind) -> Bool {
         let dir = outDir.appendingPathComponent(kind.rawValue, isDirectory: true)
-        // Puppy (tools/get-puppy.sh) has its .sfs layers instead of a factory disk; the revision file is written last
-        return ["vmlinuz-linux", "initramfs-linux.img", kind == .puppy ? "PUPPY-REVISION" : "rootfs.ext4.zst"].allSatisfy {
+        return ["vmlinuz-linux", "initramfs-linux.img", "rootfs.ext4.zst"].allSatisfy {
             ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
         }
     }

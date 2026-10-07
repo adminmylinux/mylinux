@@ -25,6 +25,5 @@ if [ -s "$OUT/SHA256SUMS" ] && (cd "$OUT" && shasum -a 256 -c SHA256SUMS >/dev/n
 fi
 save omarchy OMARCHY-REVISION "$OUT/omarchy" rootfs.ext4.zst
 save arch ARCH-REVISION "$OUT/arch" rootfs.ext4.zst
-save puppy PUPPY-REVISION "$OUT/puppy" vmlinuz-linux
 save debian DEBIAN-REVISION "$OUT/debian" debian.raw
 save alpine ALPINE-REVISION "$OUT/alpine" alpine.raw

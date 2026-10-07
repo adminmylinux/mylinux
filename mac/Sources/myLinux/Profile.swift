@@ -9,17 +9,14 @@ struct Profile: Codable, Identifiable, Hashable {
     /// Debian and Alpine are servers (run-debian.sh, run-alpine.sh, both run-server.sh): terminal-only machines from
     /// the distribution's cloud image, `appsDisk` their root disk, no window; the launcher reaches them through the
     /// serial console and an SSH terminal on `sshPort`. Arch is a desktop like Omarchy (run-omarchy.sh with
-    /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh. Puppy is the third desktop
-    /// there (DESKTOP=puppy): Puppy Linux, a PC system, emulated by the runtime's qemu-system-x86_64.
+    /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh.
     enum Kind: String, Codable {
-        case mylinux, omarchy, debian, alpine, arch, puppy
+        case mylinux, omarchy, debian, alpine, arch
         var isServer: Bool { self == .debian || self == .alpine }
-        /// A desktop on the QEMU runtime started by run-omarchy.sh: Omarchy, Arch with Plasma, or Puppy.
-        var runsDesktop: Bool { self == .omarchy || self == .arch || self == .puppy }
-        /// Puppy is a PC system: emulated, on the runtime's PC emulator (from 11.1.1-17), in a window of its own kind.
-        var isEmulated: Bool { self == .puppy }
+        /// A desktop on the QEMU runtime started by run-omarchy.sh: Omarchy, or Arch with Plasma.
+        var runsDesktop: Bool { self == .omarchy || self == .arch }
         var title: String {
-            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .puppy: return "Puppy Linux" }
+            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux" }
         }
         /// A server's account inside: "debian" (bash, sudo) or Alpine's own "alpine" (ash until the install script, doas).
         var serverUser: String { rawValue }
@@ -84,7 +81,6 @@ struct Profile: Codable, Identifiable, Hashable {
         switch kind {
         case .mylinux: return [3, 4, 6][tier]
         case .omarchy, .arch: return [4, 6, 8][tier]
-        case .puppy: return [2, 4, 4][tier]       // small by design; more does not make an emulated machine faster
         case .debian: return [2, 2, 4][tier]
         case .alpine: return [2, 2, 4][tier]      // idles in 60 MB; Claude Code and Codex's server need the room
         }
@@ -188,7 +184,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
-            if kind != .omarchy { env["DESKTOP"] = kind.rawValue }      // arch, puppy
+            if kind == .arch { env["DESKTOP"] = "arch" }
             let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             env.merge(appBundleEnvironment) { $1 }
@@ -232,7 +228,7 @@ final class ProfileStore: ObservableObject {
 
     init(file: URL = Paths.profilesFile, settings: AppSettings = .shared) {
         self.file = file
-        if let data = try? Data(contentsOf: file), let list = try? JSONDecoder().decode([Profile].self, from: data) {
+        if let data = try? Data(contentsOf: file), let list = ProfileStore.decodeList(data) {
             profiles = list
         } else if settings.developerMode {
             profiles = [ProfileStore.firstProfile(settings: settings)]
@@ -271,7 +267,6 @@ final class ProfileStore: ObservableObject {
             // Omarchy: every key to it, Command as Super, its shortcuts as they are meant. Plasma is a Ctrl desktop:
             // ⌘ stays with the Mac, Option is its Meta key
             p.grab = kind == .omarchy ? "full" : "opt"
-            if kind == .puppy { p.appsSizeGB = 16 }
             return p
         }
         var p = Profile(name: name, appsDisk: dir.appendingPathComponent("apps.img").path,
@@ -364,12 +359,24 @@ final class ProfileStore: ObservableObject {
         return items.contains { !$0.hasPrefix(".") }
     }
 
+    /// Kinds the launcher had once and has no more: Puppy Linux (0.7.54 only, emulated and too slow to keep).
+    static let retiredKinds: Set<String> = ["puppy"]
+    /// The saved list without the machines of retired kinds. An unknown kind otherwise opens as myLinux, which would
+    /// take a Puppy machine's disk for an apps disk; such a machine is left out instead, its folder stays on disk.
+    static func decodeList(_ data: Data) -> [Profile]? {
+        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              raw.contains(where: { retiredKinds.contains($0["kind"] as? String ?? "") }),
+              let kept = try? JSONSerialization.data(withJSONObject: raw.filter { !retiredKinds.contains($0["kind"] as? String ?? "") })
+        else { return try? JSONDecoder().decode([Profile].self, from: data) }
+        return try? JSONDecoder().decode([Profile].self, from: kept)
+    }
+
     /// A machine's own app (MachineApp) reads the list but never writes it: the launcher keeps it.
     static var readOnly: Bool { MachineApp.active }
 
     /// The list as saved now (a machine's own app, after the launcher changed it).
     func reload() {
-        guard let data = try? Data(contentsOf: file), let list = try? JSONDecoder().decode([Profile].self, from: data), !list.isEmpty else { return }
+        guard let data = try? Data(contentsOf: file), let list = ProfileStore.decodeList(data), !list.isEmpty else { return }
         loaded = false; profiles = list; loaded = true
     }
 

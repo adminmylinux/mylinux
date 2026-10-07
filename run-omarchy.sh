@@ -6,11 +6,6 @@
 # was created with (they must match the modules on the disk, so a newer download never replaces them).
 # DESKTOP=arch boots the Arch Linux (KDE Plasma) image instead (tools/build-arch-image.sh, tools/get-arch.sh), laid out
 # the same way: out/arch, its own disk, no Omarchy session agent; the Mac share is mounted by its fstab (tag mac).
-# DESKTOP=puppy boots Puppy Linux (tools/get-puppy.sh), a PC system: emulated (qemu-system-x86_64 with TCG, from runtime
-# 11.1.1-17 on), so slower than the others. Its disk is made on first start with Puppy's files and an empty save
-# folder in it, so changes are kept from the first boot; the desktop is drawn at one pixel per point and zoomed, as
-# myLinux's is. puppy/save goes into the save folder: start scripts that mount the Mac share at /mnt/mac (~/Mac), give
-# X the window's size, and share the clipboard (an agent for X11 that speaks Omarchy's protocol).
 # Environment: RES=WxH window size in points (default: fits the display the window opens on, the frontmost app's; a
 #              Retina display gives the guest twice that in pixels, SCALE=1|2 overrides), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
 #              NAME=window title, MEM=8G, CPUS=6, SHARE_DIR=folder shown inside Omarchy as ~/<its name> (optional),
@@ -46,18 +41,12 @@ DESKTOP="${DESKTOP:-omarchy}"
 case "$DESKTOP" in
   omarchy) TITLE_NAME=Omarchy; REVFILE=OMARCHY-REVISION; GET=tools/get-omarchy.sh ;;
   arch)    TITLE_NAME="Arch Linux"; REVFILE=ARCH-REVISION; GET=tools/get-arch.sh ;;
-  puppy)   TITLE_NAME="Puppy Linux"; REVFILE=PUPPY-REVISION; GET=tools/get-puppy.sh ;;
-  *) die "DESKTOP must be omarchy, arch or puppy" ;;
+  *) die "DESKTOP must be omarchy or arch" ;;
 esac
 G="$OUT/$DESKTOP"
-PUPPY=0; [ "$DESKTOP" != puppy ] || PUPPY=1
 
 [ "$(MYLINUX_QEMU=auto sh tools/qemu-flavour.sh "$OUT")" = runtime ] || die "$TITLE_NAME needs the accelerated QEMU runtime: run tools/get-qemu-runtime.sh"
 export MYLINUX_QEMU=runtime
-if [ "$PUPPY" = 1 ]; then
-  [ -x "$OUT/qemu-runtime/bin/qemu-system-x86_64" ] && [ -x "$OUT/qemu-runtime/bin/mke2fs" ] && [ -s "$OUT/qemu-runtime/share/qemu/bios-256k.bin" ] \
-    || die "Puppy Linux needs QEMU runtime 11.1.1-17 or newer (the PC emulator): run tools/get-qemu-runtime.sh"
-fi
 # ---- window size and guest resolution -----------------------------------------------------------------------
 # RES is the window's size in points (default: the display where the window will open, minus margins: Cocoa puts a
 # new app's window on the display of the frontmost app's window, the launcher's or the terminal's). That display's
@@ -92,9 +81,6 @@ case "$DISPLAY_ID" in ''|*[!0-9]*|0) DISPLAY_ID="" ;; esac
 # the window opens on that display (the runtime's QEMU places it there), whichever one macOS would have picked
 [ -z "$DISPLAY_ID" ] || export MYLINUX_WINDOW_DISPLAY="$DISPLAY_ID"
 SCALE="${SCALE:-$DETECTED}"
-# Puppy's desktop has no scaling of its own and is drawn by the emulated processor: one guest pixel per point, in a
-# window that is not Retina (tools/make-app-bundle.sh), which macOS enlarges
-[ "$PUPPY" != 1 ] || SCALE=1
 case "$SCALE" in 1|2) ;; *) die "SCALE must be 1 or 2" ;; esac
 # the title bar carries a toolbar (the Session menu and the size buttons): 52 points, not a plain title bar's 28
 TITLE=52
@@ -113,7 +99,7 @@ GX=$(( XRES * SCALE )); GY=$(( YRES * SCALE ))
 [ "$GX" -le 8192 ] && [ "$GY" -le 8192 ] || die "RES $RES is too large for a Retina display (the guest would need ${GX}x${GY})"
 
 NAME="${NAME:-$TITLE_NAME}"
-MEM="${MEM:-$([ "$PUPPY" = 1 ] && echo 4G || echo 8G)}"
+MEM="${MEM:-8G}"
 NCPU=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 CPUS="${CPUS:-$(( NCPU > 8 ? 6 : (NCPU > 4 ? 4 : 2) ))}"
 case "$CPUS" in ''|*[!0-9]*) die "CPUS must be a number" ;; esac
@@ -137,11 +123,7 @@ for fw in $(printf '%s' "${FORWARD:-}" | tr ',' ' '); do
   case "$fw" in [0-9]*:[0-9]*) NETDEV="$NETDEV,hostfwd=tcp:127.0.0.1:${fw%%:*}-:${fw##*:}" ;; *) die "FORWARD entries look like hostport:guestport (got '$fw')" ;; esac
 done
 APPEND="root=/dev/vda rw rootwait console=tty0 console=hvc0 loglevel=4 systemd.show_status=false rd.systemd.show_status=false mitigations=off nowatchdog"
-if [ "$PUPPY" = 1 ]; then
-  # Puppy's own boot line for a hard disk: its files are searched on the disks, the save folder checked at each start
-  # mylinux.res: the desktop's size, which X is told before it starts (puppy/save/etc/profile.d/mylinux-res)
-  APPEND="pmedia=atahd pfix=fsck mylinux.res=${GX}x${GY}"
-elif [ "$DESKTOP" = omarchy ]; then
+if [ "$DESKTOP" = omarchy ]; then
   APPEND="$APPEND omarchy.qemu_virgl=1"
   [ "${SSH:-0}" = 1 ] && APPEND="$APPEND tryomarchy.ssh_access=1"
 else
@@ -172,43 +154,13 @@ if [ -n "$SHARE_DIR" ] && [ "$DESKTOP" = omarchy ]; then
   export MYLINUX_SESSION_CMD="$REPO/tools/omarchy-session-mac.sh" MYLINUX_SESSION_SHARE="$SHARE_DIR" MYLINUX_SESSION_STATUS="$SHARE_DIR/mylinux-tools/control/status.json"
 fi
 # Arch: the ⌘ menu in the middle of the title bar (⌘P opens it) with the launcher's commands it has, without Omarchy's session
-[ "$DESKTOP" != arch ] || export MYLINUX_COMMANDS_MENU="snippets cloud share"
+[ "$DESKTOP" = omarchy ] || export MYLINUX_COMMANDS_MENU="snippets cloud share"
 export MYLINUX_SIZE_BUTTONS=1     # the window's −10% / +10% / full screen buttons (Omarchy's desktop follows the window)
 # Hyprland's mode: the window starts fixed (the first-boot screen needs that) and becomes resizable once it is reached
 export MYLINUX_DESKTOP_MODE="${GX}x${GY}"
 
-# ---- first start of a Puppy machine: a disk with Puppy's files and an empty save folder, the kernel beside it ----
-# Puppy runs from its .sfs layers and keeps every change in a save folder next to them (<name>save, found by its
-# boot script). The folder is made here, so the first shutdown has nothing to ask; puppy/save holds what goes into
-# it (the start scripts named above). mke2fs writes the files in as it makes the filesystem.
-if [ "$PUPPY" = 1 ] && [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then
-  MAIN=$(ls "$G"/puppy_*.sfs 2>/dev/null | head -1)
-  [ -n "$MAIN" ] && [ -s "$G/vmlinuz-linux" ] && [ -s "$G/initramfs-linux.img" ] || die "the $TITLE_NAME guest is not downloaded: run $GET"
-  [ ! -f "$DISK" ] || die "$DISK exists but $MACHINE/boot (its kernel and initrd) is missing; restore it or move the disk away"
-  # puppy_trixiepup64_11.4.sfs: the save folder is trixiepup64save
-  PREFIX=$(basename "$MAIN" .sfs); PREFIX=${PREFIX#puppy_}; PREFIX=${PREFIX%_*}
-  case "$PREFIX" in ''|*[!A-Za-z0-9]*) die "cannot tell Puppy's name from $(basename "$MAIN")" ;; esac
-  mkdir -p "$MACHINE/boot"
-  echo "creating $DISK ($DISK_SIZE_GB GB, sparse) from $TITLE_NAME $(cat "$G/$REVFILE" 2>/dev/null) ..."
-  STAGE="$MACHINE/.disk-staging"; rm -rf "$STAGE" "$DISK.new"; mkdir -p "$STAGE/${PREFIX}save/upper"
-  cp -c "$G"/*.sfs "$STAGE/" 2>/dev/null || cp "$G"/*.sfs "$STAGE/" || { rm -rf "$STAGE"; die "could not copy Puppy's files"; }
-  cp -R puppy/save/. "$STAGE/${PREFIX}save/upper/"
-  # the Mac's time zone, so the clock is right from the first start (Puppy's own default is GMT)
-  ZONE=$(readlink /etc/localtime 2>/dev/null | sed -n 's|.*/zoneinfo/||p')
-  case "$ZONE" in ''|*[!A-Za-z0-9_+/-]*|*..*) ;; *) ln -s "/usr/share/zoneinfo/$ZONE" "$STAGE/${PREFIX}save/upper/etc/localtime" ;; esac
-  "$OUT/qemu-runtime/bin/mke2fs" -q -F -t ext4 -L puppy -m 0 -E root_owner=0:0 -d "$STAGE" "$DISK.new" "${DISK_SIZE_GB}G" >/dev/null \
-    || { rm -rf "$STAGE" "$DISK.new"; die "could not create the disk"; }
-  # mke2fs gives the files the Mac user's owner; what is inside the save folder becomes part of Puppy's system: root's
-  (cd "$STAGE" && find "${PREFIX}save" | sed 's|.*|sif "/&" uid 0\
-sif "/&" gid 0|') | "$OUT/qemu-runtime/bin/debugfs" -w -f - "$DISK.new" >/dev/null 2>&1 || echo "run-omarchy.sh: the save folder's files keep the Mac user's owner" >&2
-  rm -rf "$STAGE"
-  cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/$REVFILE" "$MACHINE/boot/$REVFILE" 2>/dev/null || true
-  mv "$DISK.new" "$DISK"
-fi
-
 # ---- first start of this machine: unpack the factory disk, grow it, keep the matching kernel beside it ----------
-if [ "$PUPPY" = 1 ]; then :
-elif [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then
+if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then
   [ -s "$G/rootfs.ext4.zst" ] && [ -s "$G/vmlinuz-linux" ] && [ -s "$G/initramfs-linux.img" ] || die "the $TITLE_NAME guest is not downloaded: run $GET"
   [ ! -f "$DISK" ] || die "$DISK exists but $MACHINE/boot (its kernel and initramfs) is missing; restore it or move the disk away"
   mkdir -p "$MACHINE/boot"
@@ -233,22 +185,6 @@ case "$SERIAL" in
 esac
 
 QEMU="$OUT/myLinux-omarchy.app/Contents/MacOS/qemu-myLinux"
-if [ "$PUPPY" = 1 ]; then
-  # a PC: SeaBIOS and its VGA BIOS from the runtime's share/qemu, a SATA disk (Puppy's boot script has no virtio
-  # disk driver), the clock in local time as PCs keep it. Every other device without its option ROM (romfile=).
-  set -- \
-    -name "$NAME" -M q35 -accel tcg,thread=multi,tb-size=1024 -cpu max -smp "$CPUS" -m "$MEM" -rtc base=localtime \
-    -L "$OUT/qemu-runtime/share/qemu" \
-    -kernel "$MACHINE/boot/vmlinuz-linux" -initrd "$MACHINE/boot/initramfs-linux.img" -append "$APPEND" \
-    -drive "if=none,id=root,file=$DISK,format=raw,media=disk,cache=writeback" -device "ide-hd,drive=root,bus=ide.0,serial=puppy-root" \
-    -device "virtio-vga,max_outputs=1,xres=$GX,yres=$GY" \
-    -device virtio-keyboard-pci,romfile= -device virtio-tablet-pci,romfile= \
-    -netdev "$NETDEV" -device virtio-net-pci,netdev=n0,romfile= \
-    -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-pci,rng=rng0,romfile= \
-    -device virtio-serial-pci,id=ser,romfile= -chardev "$CONSOLE" -serial chardev:hvc0 \
-    -display "cocoa,show-cursor=on,zoom-to-fit=off,zoom-interpolation=on,$KEYS" \
-    "$@"
-else
 set -- \
   -name "$NAME" -M virt,gic-version=3 -accel hvf -cpu host,pmu=off -smp "$CPUS" -m "$MEM" \
   -kernel "$MACHINE/boot/vmlinuz-linux" -initrd "$MACHINE/boot/initramfs-linux.img" -append "$APPEND" \
@@ -261,7 +197,6 @@ set -- \
   -device virtio-serial-pci,id=ser,romfile= -chardev "$CONSOLE" -device virtconsole,bus=ser.0,nr=0,chardev=hvc0 \
   -display "cocoa,gl=es,show-cursor=on,zoom-to-fit=off,$KEYS" \
   "$@"
-fi
 if [ "${CLIPBOARD:-1}" = 1 ]; then
   # the port Omarchy's own clipboard agent waits for; the Mac side is tools/omarchy-clipboard.py
   set -- "$@" -chardev "socket,id=clip,path=$CLIPSOCK,server=on,wait=off" \
@@ -270,14 +205,12 @@ fi
 if [ "${AUDIO:-1}" = 1 ]; then
   set -- "$@" -audiodev sdl,id=audio -device intel-hda,id=hda,romfile= -device hda-micro,bus=hda.0,audiodev=audio
 fi
-# the Mac user's files belong to the desktop's user inside: uid 1000, or root in Puppy, which runs as root
-OWNER=",guest_owner_uid=1000,guest_owner_gid=1000"; [ "$PUPPY" != 1 ] || OWNER=",guest_owner_uid=0,guest_owner_gid=0"
 if [ -n "$SHARE_DIR" ]; then
-  set -- "$@" -fsdev "local,id=share,path=$SHARE_DIR,security_model=none,multidevs=remap$OWNER" \
+  set -- "$@" -fsdev "local,id=share,path=$SHARE_DIR,security_model=none,multidevs=remap,guest_owner_uid=1000,guest_owner_gid=1000" \
     -device "virtio-9p-pci,fsdev=share,mount_tag=mac,romfile="
 fi
 # more Mac folders: the cloud folders (tools/extra-shares.sh; mounted inside by the commands the launcher gives)
-ME=run-omarchy.sh; ROM=",romfile="; . "$REPO/tools/extra-shares.sh"
+ME=run-omarchy.sh; ROM=",romfile="; OWNER=",guest_owner_uid=1000,guest_owner_gid=1000"; . "$REPO/tools/extra-shares.sh"
 [ -z "${QMP:-}" ] || set -- "$@" -qmp "unix:$QMP,server=on,wait=off"
 if [ "${DRYRUN:-0}" = 1 ]; then
   echo "RES=$RES SCALE=$SCALE DISK=$DISK SHARE_DIR=$SHARE_DIR NAME=$NAME CPUS=$CPUS MEM=$MEM"
@@ -286,8 +219,8 @@ if [ "${DRYRUN:-0}" = 1 ]; then
   exit 0
 fi
 # With APP_ID (the launcher's machines) the machine has a bundle of its own, named after it: its own app in ⌘Tab.
-BUNDLE=$(MYLINUX_BUNDLE=$([ "$PUPPY" = 1 ] && echo puppy || echo omarchy) tools/make-app-bundle.sh | sed -n 's/ ready$//p' | tail -1) || true
-[ -n "$BUNDLE" ] || die "could not prepare the machine's app in $OUT"
+BUNDLE=$(MYLINUX_BUNDLE=omarchy tools/make-app-bundle.sh | sed -n 's/ ready$//p' | tail -1) || true
+[ -n "$BUNDLE" ] || die "could not prepare $OUT/myLinux-omarchy.app"
 QEMU="$BUNDLE/Contents/MacOS/qemu-myLinux"
 [ -x "$QEMU" ] || die "$QEMU is missing"
 # the clipboard bridge connects once QEMU has made the socket and leaves when QEMU (its parent after the exec) is gone
