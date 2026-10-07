@@ -639,6 +639,37 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
         XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the same QEMU wrapper as Omarchy's")
     }
+    func testCodexLoginRequestIsTakenOnceAndTheLoginDeliveredPrivately() throws {
+        let share = FileManager.default.temporaryDirectory.appendingPathComponent("codexlogin-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: share) }
+        XCTAssertNil(CodexLogin.take(share), "no request, nothing taken")
+        try FileManager.default.createDirectory(at: CodexLogin.folder(share), withIntermediateDirectories: true)
+        try Data("1\n".utf8).write(to: CodexLogin.requestFile(share))
+        let age = try XCTUnwrap(CodexLogin.take(share)); XCTAssertLessThan(age, CodexLogin.requestLifetime)
+        XCTAssertNil(CodexLogin.take(share), "the launcher and a machine's app both watch: one of them gets it")
+        // an old request (the script inside has given up) is taken and reported as old
+        try Data("1\n".utf8).write(to: CodexLogin.requestFile(share))
+        XCTAssertGreaterThan(try XCTUnwrap(CodexLogin.take(share, now: Date().addingTimeInterval(600))), CodexLogin.requestLifetime)
+
+        let login = Data(#"{"auth_mode":"chatgpt","tokens":{"access_token":"x"}}"#.utf8)
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("auth-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        XCTAssertNil(CodexLogin.login(at: file), "no file")
+        try Data("not json".utf8).write(to: file); XCTAssertNil(CodexLogin.login(at: file))
+        try login.write(to: file); XCTAssertEqual(CodexLogin.login(at: file), login)
+
+        XCTAssertTrue(CodexLogin.deliver(login, to: share))
+        XCTAssertEqual(try Data(contentsOf: CodexLogin.loginFile(share)), login)
+        let mode = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: CodexLogin.loginFile(share).path)[.posixPermissions] as? NSNumber)
+        XCTAssertEqual(mode.intValue & 0o777, 0o600, "the login is the owner's only")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: CodexLogin.folder(share).path), ["codex-auth.json"], "no temporary file left")
+        CodexLogin.sweep(share); XCTAssertTrue(FileManager.default.fileExists(atPath: CodexLogin.loginFile(share).path), "just delivered: it waits")
+        CodexLogin.sweep(share, now: Date().addingTimeInterval(CodexLogin.loginLifetime + 5))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: CodexLogin.loginFile(share).path), "never collected: removed from the share")
+
+        CodexLogin.decline(share, "you chose Don't Copy on the Mac.")
+        XCTAssertEqual(try String(contentsOf: CodexLogin.declinedFile(share), encoding: .utf8), "you chose Don't Copy on the Mac.\n")
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)
@@ -1211,7 +1242,8 @@ final class SnippetTests: XCTestCase {
         let vnc = try XCTUnwrap(Snippets.decode(try Data(contentsOf: dir.appendingPathComponent("snippets-vnc.json"))))
         XCTAssertTrue(vnc.allSatisfy { $0.os == ["vnc"] }, "a file of their own, for VNC desktops only")
         let omarchy = try XCTUnwrap(Snippets.decode(try Data(contentsOf: dir.appendingPathComponent("snippets.json")))).filter { $0.os.contains("omarchy") }
-        XCTAssertEqual(Set(vnc.map(\.id)), Set(omarchy.map(\.id)), "begun as a copy of Omarchy's")
+        // codex-login asks the launcher through a machine's share folder, which a VNC desktop does not have
+        XCTAssertEqual(Set(vnc.map(\.id)), Set(omarchy.map(\.id)).subtracting(["codex-login"]), "begun as a copy of Omarchy's")
         XCTAssertEqual(SnippetSet.vnc.file, "snippets-vnc.json"); XCTAssertEqual(SnippetSet.machine(.omarchy).file, "snippets.json")
     }
 }

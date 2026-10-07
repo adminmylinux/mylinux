@@ -594,9 +594,13 @@ final class RunManager: ObservableObject {
                     let inUse = Runner.diskInUse(p.appsDisk)
                     let cloudAsked = (p.isServer || p.kind.runsDesktop) && !p.shareDir.isEmpty
                         && FileManager.default.fileExists(atPath: ServerApps.cloudRequestFile(p.shareDir).path)
+                    // "Sign Codex in as on the Mac" from inside the machine (CodexLogin): a request to answer, a login to clear away
+                    let codexAsked = !p.shareDir.isEmpty && FileManager.default.fileExists(atPath: CodexLogin.requestFile(p.shareDir).path)
+                    if !p.shareDir.isEmpty { CodexLogin.sweep(p.shareDir) }
                     DispatchQueue.main.async {
                         r.refreshExternal(inUse: inUse)
                         if cloudAsked { self.cloudRequest(p.id, store: store) }
+                        if codexAsked { CodexLogin.answer(p) }
                     }
                 }
             }

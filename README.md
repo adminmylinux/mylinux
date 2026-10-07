@@ -442,6 +442,19 @@ Press **Option+K** for the full list.
 The set follows Omarchy's, so the same fingers work on both. Alt+Tab (window cycling) reaches the guest
 only with `GRAB=full`, because Alt is the Mac Cmd key and macOS keeps Cmd+Tab otherwise.
 
+### Codex signed in as on the Mac
+
+Codex has no token to paste, as `claude setup-token` gives Claude Code; what OpenAI documents for a machine without a
+browser is a copy of `~/.codex/auth.json` from a computer that is signed in. Nothing inside a machine can read the
+Mac's files, so the machine asks: [`server-apps/codex-login.sh`](server-apps/codex-login.sh) (the snippet **Sign
+Codex in as on the Mac**, and **Codex login from the Mac** in Apps…; both run it from GitHub's main) writes
+`.mylinux/codex-login-request` into the Mac share folder. The launcher's watcher (from 0.7.57, `CodexLogin.swift`)
+takes the request and asks on the Mac; on **Copy Login** it puts the Mac's `auth.json` into the share as
+`.mylinux/codex-auth.json` (mode 600), which the script moves to `~/.codex/auth.json` inside (`$CODEX_HOME` when set;
+a login that was there is kept as `auth.json.before-mac`). **Don't Copy**, or no login file on the Mac (Codex keeps
+it in the Keychain unless `cli_auth_credentials_store = "file"`), is answered with `.mylinux/codex-login-declined`
+and its reason. The script waits three minutes; a login nobody collected is removed from the share after one.
+
 ### Startup apps
 
 The desktop starts with the launcher menu open and no windows. To open apps at start instead, list them

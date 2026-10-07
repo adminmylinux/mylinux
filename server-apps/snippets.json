@@ -74,6 +74,18 @@
    "text": "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh"
   },
   {
+   "id": "codex-login",
+   "name": "Sign Codex in as on the Mac",
+   "os": [
+    "omarchy",
+    "debian",
+    "alpine",
+    "arch"
+   ],
+   "description": "Your Mac's Codex login into this machine, no browser: the launcher asks you on the Mac first (0.7.57 or newer)",
+   "text": "curl -fsSL https://raw.githubusercontent.com/adminmylinux/mylinux/main/server-apps/codex-login.sh | sh"
+  },
+  {
    "id": "claude-desktop-arch",
    "name": "Claude Desktop app",
    "os": [
