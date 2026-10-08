@@ -57,11 +57,19 @@ else
   gh release edit "$LATEST" -R "$REPO" --title "myLinux Launcher (latest: $VERSION)" --notes-file "$STAGE/latest-notes.md"
 fi
 
-# check what a visitor gets
+# check what a visitor gets; GitHub may serve the replaced files' earlier copies for some seconds (0.7.62: latest.json
+# still said 0.7.61 right after the swap), so the check is given a minute before it counts as wrong
 URL="https://github.com/$REPO/releases/download/$LATEST/myLinux-Launcher.dmg"
-GOT=$(curl -fsSL "$URL.sha256" | cut -d' ' -f1); WANT=$(cut -d' ' -f1 "$STAGE/myLinux-Launcher.dmg.sha256")
+WANT=$(cut -d' ' -f1 "$STAGE/myLinux-Launcher.dmg.sha256")
+n=0
+while :; do
+  GOT=$(curl -fsSL "$URL.sha256" | cut -d' ' -f1) || GOT=""
+  GOTV=$(curl -fsSL "https://github.com/$REPO/releases/download/$LATEST/latest.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])') || GOTV=""
+  [ "$GOT" = "$WANT" ] && [ "$GOTV" = "$VERSION" ] && break
+  n=$((n + 1)); [ "$n" -lt 12 ] || break
+  sleep 5
+done
 [ "$GOT" = "$WANT" ] || { echo "the latest link serves $GOT, expected $WANT" >&2; exit 1; }
-GOTV=$(curl -fsSL "https://github.com/$REPO/releases/download/$LATEST/latest.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
 [ "$GOTV" = "$VERSION" ] || { echo "latest.json says $GOTV, expected $VERSION" >&2; exit 1; }
 echo "published $VERSION: https://github.com/$REPO/releases/tag/launcher-$VERSION"
 echo "latest link: $URL"
