@@ -58,7 +58,7 @@ else
 fi
 
 # check what a visitor gets; GitHub may serve the replaced files' earlier copies for some seconds (0.7.62: latest.json
-# still said 0.7.61 right after the swap), so the check is given a minute before it counts as wrong
+# said 0.7.61 on and off for two minutes after the swap), so the check is given three minutes before it counts as wrong
 URL="https://github.com/$REPO/releases/download/$LATEST/myLinux-Launcher.dmg"
 WANT=$(cut -d' ' -f1 "$STAGE/myLinux-Launcher.dmg.sha256")
 n=0
@@ -66,7 +66,7 @@ while :; do
   GOT=$(curl -fsSL "$URL.sha256" | cut -d' ' -f1) || GOT=""
   GOTV=$(curl -fsSL "https://github.com/$REPO/releases/download/$LATEST/latest.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])') || GOTV=""
   [ "$GOT" = "$WANT" ] && [ "$GOTV" = "$VERSION" ] && break
-  n=$((n + 1)); [ "$n" -lt 12 ] || break
+  n=$((n + 1)); [ "$n" -lt 36 ] || break
   sleep 5
 done
 [ "$GOT" = "$WANT" ] || { echo "the latest link serves $GOT, expected $WANT" >&2; exit 1; }
