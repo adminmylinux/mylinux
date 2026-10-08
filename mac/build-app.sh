@@ -179,6 +179,9 @@ cat > "$NEW/Contents/Info.plist" <<PLIST
   <!-- run.sh places the machine window through System Events (osascript); this text is macOS's permission prompt -->
   <key>NSAppleEventsUsageDescription</key><string>myLinux Launcher moves a machine's window onto the display it was sized for.</string>
   <key>NSLocalNetworkUsageDescription</key><string>myLinux Launcher finds the file servers on your network (a NAS, another Mac) for Mount a Share, and connects to remote desktops there.</string>
+  <!-- QEMU is the launcher's child, so macOS grants the Mac's microphone to the launcher; without this text it never asks
+       and a machine records silence -->
+  <key>NSMicrophoneUsageDescription</key><string>A machine's sound device has a microphone: programs inside it (voice input, calls, recordings) hear this Mac's microphone while they record.</string>
   <key>NSBonjourServices</key><array><string>_smb._tcp</string></array>
 $( [ "${MYLINUX_RELEASE:-0}" = 1 ] || printf '  <!-- the checkout this was built from; offered as the developer checkout when it is still there -->\n  <key>MyLinuxRepo</key><string>%s</string>\n' "$REPO" )
 </dict></plist>

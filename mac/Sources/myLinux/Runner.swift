@@ -50,6 +50,8 @@ final class Runner: ObservableObject {
     init(profileID: UUID) { self.profileID = profileID }
 
     var isActive: Bool { [.starting, .running, .stopping].contains(state) }
+    /// macOS's microphone question was put for this machine in this run of the launcher: not twice, whatever came of it.
+    private var askedMicrophone = false
 
     /// Short socket path: unix socket paths are limited to 104 bytes, Application Support paths are long.
     var serialSocket: String { "/tmp/mylinux-\(getuid())-\(profileID.uuidString.prefix(8).lowercased()).serial" }
@@ -99,6 +101,14 @@ final class Runner: ObservableObject {
             }
         }
         if Runner.diskInUse(p.appsDisk) { state = .inUseElsewhere; return }
+        // The sound device has a microphone, and QEMU is this app's child: macOS asks once whether myLinux Launcher may
+        // use the Mac's. The machine starts after the answer, so QEMU opens its input knowing it (a no leaves the
+        // machine with sound out and a silent microphone).
+        if p.kind.runsDesktop, p.sound, !askedMicrophone, Microphone.shouldAsk {
+            askedMicrophone = true
+            Microphone.ask { [weak self] in self?.start(p, settings: settings) }
+            return
+        }
 
         let fm = FileManager.default
         do {

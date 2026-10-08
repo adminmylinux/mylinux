@@ -86,7 +86,9 @@ Omarchy's own clipboard agent and, on the Mac, the launcher's own binary in a he
 command line without the app, `tools/omarchy-clipboard.py` when a working python3 is there). `CLIPBOARD=0` turns it
 off. New Omarchy machines in the launcher send every key to Omarchy with Command as Super (`GRAB=full`); the
 machine page switches to Option. Neither a machine's first start nor a download needs python3. Not there
-(they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output.
+(they need Try Omarchy's own helper app): camera and Touch ID; sound plays through the Mac's default output, and the sound device's microphone is the Mac's default input: macOS asks once
+whether myLinux Launcher may use the microphone, when a machine with sound starts (from 0.7.63; before that nothing
+asked, so a machine recorded silence), and System Settings › Privacy & Security › Microphone holds the answer.
 
 ### Arch Linux machines (KDE Plasma)
 

@@ -521,6 +521,15 @@ struct MachineView: View {
         if isDesktop {
             Section(isOmarchy ? "Sound and network" : "Sound") {
                 Toggle("Sound through the Mac", isOn: $draft.sound)
+                    .help("The Mac's speakers and its microphone: macOS asks once whether myLinux Launcher may use the microphone, when a machine with sound starts.")
+                if draft.sound, Microphone.access == .denied {
+                    HStack(alignment: .firstTextBaseline) {
+                        Label("The microphone is off for myLinux Launcher in macOS: machines play sound and record silence.", systemImage: "mic.slash")
+                            .font(.caption).foregroundStyle(.orange)
+                        Spacer()
+                        Button("Open Settings") { Microphone.openSettings() }.controlSize(.small)
+                    }
+                }
                 if isOmarchy { sshToggle }
             }
         }

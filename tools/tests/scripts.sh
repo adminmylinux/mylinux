@@ -378,6 +378,13 @@ out=$(sh "$W/out/myLinux.app/Contents/MacOS/myLinux" -version 2>&1); has "entry 
 (cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/bundle dir" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?
 is_rc "MYLINUX_OUT: bundle in another directory" $rc 0
 [ -x "$T/bundle dir/myLinux.app/Contents/MacOS/qemu-myLinux" ] && ok "MYLINUX_OUT: QEMU copy in the data directory" || ko "MYLINUX_OUT: no binary in the data directory bundle"
+# the sound device's microphone: macOS asks (and lets a machine record) only for an app that says why it wants it
+plutil -lint "$W/out/myLinux.app/Contents/Info.plist" >/dev/null 2>&1 && ok "the bundle's Info.plist is a property list" || ko "the bundle's Info.plist does not parse"
+has "the bundle says what the microphone is for" "$(plutil -extract NSMicrophoneUsageDescription raw "$W/out/myLinux.app/Contents/Info.plist" 2>&1)" "microphone"
+(cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/bundle dir" APP_ID=0f0f0f0f-1111-2222-3333-444444444444 APP_NAME="Mic Test" sh tools/make-app-bundle.sh >/dev/null 2>&1)
+MP="$T/bundle dir/machines/0f0f0f0f-1111-2222-3333-444444444444/Mic Test.app/Contents/Info.plist"
+plutil -lint "$MP" >/dev/null 2>&1 && ok "a machine's own bundle: its Info.plist is a property list" || ko "a machine's own Info.plist does not parse"
+has "a machine's own bundle says it too" "$(plutil -extract NSMicrophoneUsageDescription raw "$MP" 2>&1)" "microphone"
 
 mkdir -p "$T/rt out/qemu-runtime/bin" "$T/rt out/qemu-runtime/lib"; printf '#!/bin/sh\necho runtime qemu\n' > "$T/rt out/qemu-runtime/bin/qemu-system-aarch64"; chmod +x "$T/rt out/qemu-runtime/bin/qemu-system-aarch64"
 (cd "$W" && PATH="$W/bin:$PATH" MYLINUX_OUT="$T/rt out" sh tools/make-app-bundle.sh >/dev/null 2>&1); rc=$?

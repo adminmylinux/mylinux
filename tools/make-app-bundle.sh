@@ -90,6 +90,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <!-- 1x backing store on purpose: QEMU sizes a non-resizable window in device pixels, so with a 1x
        window one guest pixel is one point and the desktop appears at the size run.sh asked for. -->
   <key>NSHighResolutionCapable</key><$HIDPI/>
+  <!-- the sound device's microphone: macOS asks the launcher that started the machine, or this app once that launcher
+       is gone; without the text it never asks and the machine records silence -->
+  <key>NSMicrophoneUsageDescription</key><string>This machine's sound device has a microphone: programs inside it (voice input, calls, recordings) hear this Mac's microphone while they record.</string>
 </dict></plist>
 PLIST
 # icon: tools/icons/myLinux.icns (drawn by tools/icons/make-icons.sh, committed), refreshed whenever it changes so an
@@ -142,6 +145,9 @@ cat > "$MAPP/Contents/Info.plist.new" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>NSHighResolutionCapable</key><$HIDPI/>
+  <!-- the sound device's microphone: macOS asks the launcher that started the machine, or this app once that launcher
+       is gone; without the text it never asks and the machine records silence -->
+  <key>NSMicrophoneUsageDescription</key><string>This machine's sound device has a microphone: programs inside it (voice input, calls, recordings) hear this Mac's microphone while they record.</string>
 </dict></plist>
 PLIST
 if cmp -s "$MAPP/Contents/Info.plist.new" "$MAPP/Contents/Info.plist"; then rm -f "$MAPP/Contents/Info.plist.new"

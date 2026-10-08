@@ -809,6 +809,20 @@ final class OmarchyProfileTests: XCTestCase {
             XCTAssertEqual(size(), ClaudeInstallView.size, "\(page)")
         }
     }
+    func testTheLauncherSaysWhatTheMicrophoneIsForAndAsksOnlyAsAnApp() throws {
+        // 0.7.62 and before: no usage text and no request, so macOS never granted the microphone and a machine recorded
+        // silence. The text and the entitlement are in what build-app.sh writes; the question is put only by the app
+        // itself (asking without the text in the running bundle's Info.plist ends the process: not in a test run).
+        let mac = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../..").standardized
+        let build = try String(contentsOf: mac.appendingPathComponent("build-app.sh"), encoding: .utf8)
+        XCTAssertTrue(build.contains("<key>NSMicrophoneUsageDescription</key><string>"), "the launcher's Info.plist")
+        let entitlements = try XCTUnwrap(NSDictionary(contentsOf: mac.appendingPathComponent("launcher.entitlements")))
+        XCTAssertEqual(entitlements["com.apple.security.device.audio-input"] as? Bool, true, "a release's hardened runtime asks only with it")
+        let bundles = try String(contentsOf: mac.appendingPathComponent("../tools/make-app-bundle.sh"), encoding: .utf8)
+        XCTAssertEqual(bundles.components(separatedBy: "<key>NSMicrophoneUsageDescription</key><string>").count - 1, 2, "the machines' app and each machine's own")
+        XCTAssertFalse(Microphone.canAsk, "the test runner is no app with the text")
+        XCTAssertFalse(Microphone.shouldAsk)
+    }
     func testKaliIsADesktopStartedLikeArch() {
         let p = ProfileStore.newProfile(named: "K", kind: .kali, folder: URL(fileURLWithPath: "/tmp/m/k"))
         XCTAssertTrue(p.kind.runsDesktop); XCTAssertFalse(p.isServer); XCTAssertEqual(p.kind.title, "Kali Linux")

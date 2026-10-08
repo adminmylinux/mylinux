@@ -5,5 +5,9 @@
   <!-- run.sh and run-omarchy.sh place the machine window through System Events; the launcher is the responsible app -->
   <key>com.apple.security.automation.apple-events</key>
   <true/>
+  <!-- a desktop machine's sound device has a microphone; macOS asks the user on the launcher's behalf (Microphone.swift),
+       and the hardened runtime of a release lets the launcher ask only with this -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
 </dict>
 </plist>
