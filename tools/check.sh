@@ -67,6 +67,7 @@ step "tests: shell script behaviour"
 sh tools/tests/scripts.sh || fail=$((fail + 1))
 sh tools/tests/claude-bootstrap.sh || fail=$((fail + 1))
 sh tools/tests/apps-claude.sh || fail=$((fail + 1))
+sh tools/tests/claude-setup.sh || fail=$((fail + 1))
 
 step "tests: guest script libraries (disk, secrets, downloads, themes, clipboard)"
 sh tools/tests/guest.sh || fail=$((fail + 1))

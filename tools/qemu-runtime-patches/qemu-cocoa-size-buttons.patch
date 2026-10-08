@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,6 +117,36 @@
+@@ -117,7 +117,37 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
@@ -14,7 +14,7 @@
 +/* the launcher that started this machine, asked through a distributed notification (Restart, Cloud Folders…, Mount a Share…, Snippets…) */
 +static bool mylinux_restart_available(void);
 +static void mylinux_ask_launcher(NSString *action);
-+
+ 
 +/*
 + * myLinux (MYLINUX_SIZE_BUTTONS): the window is resizable from the start, so Window › Fill, the green button's
 + * tiling and dragging an edge all work, but until the user picks a size it follows the guest's mode exactly as a
@@ -34,9 +34,10 @@
 +static bool mylinux_follows_mode(NSWindow *window);
 +static void mylinux_desktop_reached(NSWindow *window, int w, int h);
 +static void mylinux_center(NSWindow *window);
- 
++
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
+ static QemuEvent cbevent;
 @@ -696,12 +726,16 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
@@ -56,23 +57,22 @@
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -980,6 +1014,11 @@
-     InputButton button;
+@@ -981,6 +1015,11 @@
      unsigned int keycode;
      NSUInteger modifiers = [event modifierFlags];
-+
+ 
 +    /* a click in the window after Ctrl+Option+G: every key goes to the guest again */
 +    if (mylinux_keys_released && [event type] == NSEventTypeLeftMouseDown && [event window] == [self window]) {
 +        mylinux_keys_released = false;
 +    }
- 
++
      /*
       * Check -[NSEvent modifierFlags] here.
-@@ -1125,7 +1164,31 @@
-             return true;
+      *
+@@ -1126,6 +1165,30 @@
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
-+
+ 
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -82,7 +82,7 @@
 +                dispatch_async(dispatch_get_main_queue(), ^{ [[self window] toggleFullScreen:nil]; });
 +                return true;
 +            }
- 
++
 +            // myLinux: Shift+Command+P is the launcher's Cloud Folders dialog for this machine and Shift+Command+A its
 +            // Apps… (myLinux Apps in a terminal inside), also with every key going to the guest (it gets the modifiers only)
 +            if (mylinux_restart_available() && ([event keyCode] == kVK_ANSI_P || [event keyCode] == kVK_ANSI_A) &&
@@ -172,17 +172,18 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1423,6 +1521,9 @@
+@@ -1423,6 +1521,10 @@
  - (void)removePause;
  - (void)restartQEMU:(id)sender;
  - (void)powerDownQEMU:(id)sender;
 +- (void)mylinuxRestart:(id)sender;
 +- (void)mylinuxCloudFolders:(id)sender;
 +- (void)mylinuxApps:(id)sender;
++- (void)mylinuxClaude:(id)sender;
  - (void)ejectDeviceMedia:(id)sender;
  - (void)changeDeviceMedia:(id)sender;
  - (BOOL)verifyQuit;
-@@ -1475,7 +1576,7 @@
+@@ -1475,7 +1577,7 @@
          }
  
          // create a window
@@ -191,7 +192,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1590,9 @@
+@@ -1489,8 +1591,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -202,7 +203,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1655,62 @@
+@@ -1553,28 +1656,62 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -266,7 +267,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1718,23 @@
+@@ -1582,6 +1719,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -290,7 +291,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1828,522 @@
+@@ -1675,12 +1829,526 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -382,7 +383,7 @@
 +static bool mylinux_session(void) { return mylinux_env("MYLINUX_SESSION_CMD") != NULL; }
 +/*
 + * myLinux: MYLINUX_COMMANDS_MENU gives a desktop without Omarchy's session tool (Arch with Plasma) the ⌘ menu too:
-+ * the launcher's commands it names, space separated (apps snippets cloud share; 1 for all), and no session part.
++ * the launcher's commands it names, space separated (apps claude snippets cloud share; 1 for all), and no session part.
 + * Omarchy's (MYLINUX_SESSION_CMD) has them all and the session.
 + */
 +static bool mylinux_commands_menu(void) { return mylinux_session() || mylinux_env("MYLINUX_COMMANDS_MENU") != NULL; }
@@ -450,7 +451,7 @@
 +        NSMenuToolbarItem *item = [[NSMenuToolbarItem alloc] initWithItemIdentifier:identifier];
 +        [item setImage:[NSImage imageWithSystemSymbolName:@"command" accessibilityDescription:@"Commands"]];
 +        [item setLabel:@"Commands"];
-+        [item setToolTip:mylinux_session() ? @"Apps (⇧⌘A), Cloud Folders (⇧⌘P), and saving and restoring the Omarchy session"
++        [item setToolTip:mylinux_session() ? @"Apps (⇧⌘A), Claude Install, Cloud Folders (⇧⌘P), and saving and restoring the Omarchy session"
 +                                           : @"Snippets, Cloud Folders (⇧⌘P) and Mount a Share (⌘P opens this menu)"];
 +        [item setShowsIndicator:YES];
 +        [item setMenu:[self sessionMenuForPanel:NO]];
@@ -513,6 +514,10 @@
 +    if (mylinux_command_shown("apps")) {
 +        item = [menu addItemWithTitle:@"Apps…" action:@selector(mylinuxApps:) keyEquivalent:@"A"];
 +        [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
++        [item setTarget:self];
++    }
++    if (mylinux_command_shown("claude")) {
++        item = [menu addItemWithTitle:@"Claude Install…" action:@selector(mylinuxClaude:) keyEquivalent:@""];
 +        [item setTarget:self];
 +    }
 +    if (mylinux_command_shown("snippets")) {
@@ -648,7 +653,7 @@
 +            [session setBezelStyle:NSBezelStyleToolbar];
 +            [session setMenu:[self sessionMenuForPanel:YES]];
 +            [self menuNeedsUpdate:[self sessionMenuForPanel:YES]];   /* the face (item 0) exists before the first click */
-+            [session setToolTip:@"Apps, Cloud Folders, and the session: save, restore, how often it is saved"];
++            [session setToolTip:@"Apps, Claude Install, Cloud Folders, and the session: save, restore, how often it is saved"];
 +            [[session cell] setArrowPosition:NSPopUpArrowAtBottom];
 +            [[session cell] setImagePosition:NSImageOnly];
 +            [views addObject:session];
@@ -813,12 +818,10 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1754,6 +2417,78 @@
-     with_bql(^{
-         qmp_system_powerdown(NULL);
+@@ -1756,6 +2424,88 @@
      });
-+}
-+
+ }
+ 
 +/* myLinux: Machine › Restart. The launcher that started this machine (MYLINUX_LAUNCHER_ID, MYLINUX_LINK_SCOPE, APP_ID
 + * from its Runner) shuts it down and starts it again: a new QEMU, so a runtime installed since is used (Reset only
 + * reboots the guest in this one). Only shown when the launcher started the machine.
@@ -836,9 +839,12 @@
 +        bool restart = [action isEqualToString:@"restart"];
 +        NSAlert *alert = [[NSAlert alloc] init];
 +        bool apps = [action isEqualToString:@"apps"];
-+        [alert setMessageText:restart ? @"Restart needs myLinux Launcher" : apps ? @"Apps needs myLinux Launcher" : @"Cloud Folders needs myLinux Launcher"];
++        bool claude = [action isEqualToString:@"claude"];
++        [alert setMessageText:restart ? @"Restart needs myLinux Launcher" : apps ? @"Apps needs myLinux Launcher"
++                              : claude ? @"Claude Install needs myLinux Launcher" : @"Cloud Folders needs myLinux Launcher"];
 +        [alert setInformativeText:restart ? @"Open myLinux Launcher and press Restart on this machine, or use Power Down and then Start."
 +                                          : apps ? @"Open myLinux Launcher, then press Shift-Command-A in this window again."
++                                          : claude ? @"Open myLinux Launcher, then choose Claude Install… in this window again."
 +                                                 : @"Open myLinux Launcher and choose Cloud Folders on this machine's page."];
 +        [alert addButtonWithTitle:@"Open myLinux Launcher"];
 +        [alert addButtonWithTitle:@"Cancel"];
@@ -873,6 +879,13 @@
 +    mylinux_ask_launcher(@"apps");
 +}
 +
++/* myLinux: Machine › Claude Install… : the launcher's wizard for Claude Code inside (what is installed and signed in,
++   and a token, an alias and the status line when they are missing; Omarchy's session agent runs its script) */
++- (void)mylinuxClaude:(id)sender
++{
++    mylinux_ask_launcher(@"claude");
++}
++
 +/* myLinux: Machine › Cloud Folders… (⇧⌘P): the launcher's dialog for the Mac's Dropbox and the others inside */
 +- (void)mylinuxCloudFolders:(id)sender
 +{
@@ -889,10 +902,12 @@
 +- (void)mylinuxMountShare:(id)sender
 +{
 +    mylinux_ask_launcher(@"share");
- }
- 
++}
++
  /* Ejects the media.
-@@ -1935,7 +2670,24 @@
+  * Uses sender's tag to figure out the device to eject.
+  */
+@@ -1935,7 +2685,27 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
@@ -905,6 +920,9 @@
 +        NSMenuItem *apps = [[[NSMenuItem alloc] initWithTitle: @"Apps…" action: @selector(mylinuxApps:) keyEquivalent: @"A"] autorelease];
 +        [apps setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
 +        [menu addItem:apps];
++        if (mylinux_command_shown("claude")) {
++            [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Claude Install…" action: @selector(mylinuxClaude:) keyEquivalent: @""] autorelease]];
++        }
 +        [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Snippets…" action: @selector(mylinuxSnippets:) keyEquivalent: @""] autorelease]];
 +        NSMenuItem *cloud = [[[NSMenuItem alloc] initWithTitle: @"Cloud Folders…" action: @selector(mylinuxCloudFolders:) keyEquivalent: @"P"] autorelease];
 +        [cloud setKeyEquivalentModifierMask:NSEventModifierFlagCommand];

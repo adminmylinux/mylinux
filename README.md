@@ -376,7 +376,7 @@ tokens) in a window a little wider than a large phone (540 points), with back, h
 its cookies in a store of its own, so the sign-in lasts; a sign-in popup (Google's) opens as a real window, other
 new-window links go to the browser; a page's file field (the Claude tab's *Open file…*) opens the Mac's open panel.
 
-**Snippets…** (under Apps… in Omarchy's ⌘ menu and Machine menu, the CMD menu of a Debian or Alpine window; from 0.7.41
+**Snippets…** (below Apps… and Claude Install… in Omarchy's ⌘ menu and Machine menu, the CMD menu of a Debian or Alpine window; from 0.7.41
 with runtime 11.1.1-15): commands for the machine's system with a name and a line about each, View and Copy (the
 clipboard is shared, so they paste into a terminal inside), and Paste, which puts one at the terminal's prompt and
 (from 0.7.58) closes the Snippets window. The built-in ones are `server-apps/snippets.json`, fetched
@@ -469,6 +469,38 @@ Press **Option+K** for the full list.
 
 The set follows Omarchy's, so the same fingers work on both. Alt+Tab (window cycling) reaches the guest
 only with `GRAB=full`, because Alt is the Mac Cmd key and macOS keeps Cmd+Tab otherwise.
+
+### Claude Install… in Omarchy
+
+**Claude Install…** (under Apps… in the ⌘ menu of an Omarchy window, which ⌘P opens, and in its Machine menu; from
+0.7.61, runtime 11.1.1-19) is a wizard on the Mac for Claude Code inside the machine, with no terminal and no
+browser. Its first page says what is there: whether Claude Code is installed and its version, the subscriptions saved
+as aliases (`cc1`, `cc2`, …) with their account names, how plain `claude` and `cc` are signed in, and whether the
+status line shows the account of the token in use. What is missing it offers to **Install** or **Update** (the
+status line, an alias that a new terminal would not have, Claude Code itself when a token is saved). Without a token
+the next page asks for one: the long-lived **Claude Code token** from `claude setup-token` (hidden), an **account
+name** for the status line, the **alias** (`cc1`, then `cc2`, …), and optionally a **myLinux API key** (`mlx_…`,
+for your skills, commands and CLAUDE.md from mylinux.app). **Use it for plain claude and the alias cc too** (ticked
+when nobody is signed in there) also keeps the token where
+[`claude-bootstrap`](claude-bootstrap/README.md) keeps it, so every new terminal starts signed in. Then the steps run
+inside and are shown as they go: Claude Code from Anthropic's own installer, the subscription's file, the aliases,
+the status line (`mylinux.app/install/statusline`), your skills.
+
+What it leaves in the machine is what myLinux Apps writes for a subscription (**Claude Code**, at the top of Apps…),
+so one added in the wizard is a row there and the other way round: `~/.config/mylinux/claude-accounts/<alias>.env`
+(mode 600: the token and `MYLINUX_CLAUDE_ACCOUNT`), the alias in `~/.config/mylinux/aliases.sh` (a new file starts
+with the catalog's `cc` and `cx`), and the marked block in `~/.profile` and `~/.bashrc` that loads it. The work
+inside is [`server-apps/claude_setup.py`](server-apps/claude_setup.py), which the launcher writes into the Mac share
+(`.mylinux/claude/`, the copy built into the app, so wizard and script are one version) together with the request;
+Omarchy's session agent starts it on `claude status <id>` or `claude apply <id>` in `mylinux-tools/control/`, and the
+wizard reads `status-<id>.json`, `progress-<id>.jsonl` and `result-<id>.json` back. The request with the token is a
+file only its owner reads; the script removes it before anything else, the launcher after a minute when nobody took
+it, and no progress or result file names a secret. The token is not kept on the Mac. An Omarchy made with an earlier
+launcher learns the command when it starts again (as for Apps…); until then the wizard says the helper did not
+answer. Omarchy's own `claude` (a script in `~/.local/bin` that fetches Claude Code with mise the first time it
+runs) counts as installed, so there the wizard only signs it in; the first look inside a new machine waits for that
+fetch (up to 30 seconds). `tools/tests/claude-setup.sh` runs the script in a scratch home with stand-in installers and compares what it
+writes with myLinux Apps'.
 
 ### Codex signed in as on the Mac
 

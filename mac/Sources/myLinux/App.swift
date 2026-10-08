@@ -473,6 +473,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --show-claude-install <png>` (a scratch MYLINUX_SUPPORT_DIR): the Claude Install wizard for a stand-in
+        // Omarchy, whose share is <support>/machines/omarchy/Mac, where a test plays Omarchy's agent. <png> is its first
+        // page; MYLINUX_TEST_CLAUDE=form goes on to the form (<png>-form.png), =run also fills it (the account "test_account",
+        // the token in MYLINUX_TEST_TOKEN) and runs it (<png>-working.png, <png>-done.png); the pages are printed.
+        // =listen (with MYLINUX_TEST_AUTOSTART=omarchy) does not open the wizard: it waits for the machine's window to ask
+        // for it (Claude Install… in its ⌘ menu), up to MYLINUX_TEST_WAIT seconds
+        if let i = args.firstIndex(of: "--show-claude-install"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1], mode = ProcessInfo.processInfo.environment["MYLINUX_TEST_CLAUDE"] ?? ""
+            let listen = mode == "listen"
+            let p = (listen ? ProfileStore.shared.profiles.first { $0.kind == .omarchy } : nil) ?? ProfileStore.newProfile(named: "Omarchy", kind: .omarchy)
+            func shot(_ suffix: String) {
+                guard let w = NSApp.windows.first(where: { $0.isVisible && $0.title.hasSuffix("Claude Install") }) else { print("no window for \(suffix)"); return }
+                let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                cap.arguments = ["-x", "-l", String(w.windowNumber), suffix.isEmpty ? path : path.replacingOccurrences(of: ".png", with: "-\(suffix).png")]
+                try? cap.run(); cap.waitUntilExit()
+            }
+            Task { @MainActor in
+                func settle(_ seconds: Double, until: () -> Bool) async { for _ in 0..<Int(seconds * 5) where !until() { try? await Task.sleep(nanoseconds: 200_000_000) } }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if listen {
+                    print("listening: machine \(p.id.uuidString.lowercased()) qmp \(RunManager.shared.runner(for: p.id).qmpSocket)"); fflush(stdout)
+                    await settle(Double(ProcessInfo.processInfo.environment["MYLINUX_TEST_WAIT"] ?? "150") ?? 150) { ClaudeInstallWindow.model(for: p.id) != nil }
+                    print(ClaudeInstallWindow.model(for: p.id) != nil ? "asked: the machine's window opened the wizard" : "nobody asked")
+                } else {
+                    ClaudeInstallWindow.show(p)
+                }
+                guard let model = ClaudeInstallWindow.model(for: p.id) else { fflush(stdout); exit(1) }
+                if let t = ProcessInfo.processInfo.environment["MYLINUX_TEST_TIMEOUT"].flatMap(Double.init) { model.answerTimeout = t; model.check() }
+                await settle(60) { model.page != .checking }
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                print("page: \(model.page)"); print("status: \(model.status)"); print("repairs: \(model.status.repairs)"); shot("")
+                if mode == "form" || mode == "run" {
+                    model.openForm()
+                    model.request.account = "test_account"; model.request.token = ProcessInfo.processInfo.environment["MYLINUX_TEST_TOKEN"] ?? ""
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    print("form: alias \(model.request.alias) default \(model.request.makeDefault) problem \(model.request.problem(catalogAliases: model.catalogAliases) ?? "none")"); shot("form")
+                }
+                if mode == "run" || mode == "repair" {
+                    model.run(mode == "run" ? model.request : nil)
+                    await settle(10) { !model.steps.isEmpty || model.page == .finished }
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    print("working: \(model.steps.map { "\($0.step)=\($0.state)" })"); shot("working")
+                    await settle(90) { model.page == .finished }
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    print("outcome: ok \(model.outcome?.ok ?? false) alias \(model.outcome?.alias ?? "") steps \((model.outcome?.steps ?? []).map { "\($0.step)=\($0.state)" })")
+                    print("field after: token empty \(model.request.token.isEmpty)"); shot("done")
+                }
+                fflush(stdout); exit(0)
+            }
+            return
+        }
         // `myLinux --shot <png>` (a scratch MYLINUX_SUPPORT_DIR): the launcher's window after MYLINUX_TEST_WAIT seconds
         // (default 8), sheets included
         if let i = args.firstIndex(of: "--shot"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {

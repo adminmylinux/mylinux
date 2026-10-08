@@ -6,8 +6,8 @@
     omarchy-session status     show the saved layout
     omarchy-session interval <minutes>|off   how often the timer saves (off stops it; the login restore stays)
     omarchy-session agent      run by a user unit: takes commands the Mac window drops into the share folder
-                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N, apps, share) and keeps status.json
-                               there for the window's Session menu
+                               (/mnt/mac/mylinux-tools/control/*.cmd: save, restore, interval N, apps, share, claude) and
+                               keeps status.json there for the window's Session menu
     omarchy-session enable | disable      the units (install.sh enables them)
 
 Each window is remembered with the command line of its process (/proc/<pid>/cmdline), so it is reopened the way
@@ -15,7 +15,7 @@ it was started: a terminal in its working directory, a web app with its --app=UR
 own tabs. Windows without a mappable command (Omarchy's own popups, special workspaces) are skipped. Restore is
 idempotent: a workspace that already shows a window of that class is not given another.
 """
-import json, os, shlex, shutil, subprocess, sys, time
+import json, os, re, shlex, shutil, subprocess, sys, time
 from pathlib import Path
 
 STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "omarchy-session/session.json"
@@ -184,6 +184,27 @@ def share():
     ok = dispatch(f"hl.dsp.exec_cmd({lua_string(cmd)})", ["exec", cmd])
     print(("opened: " if ok else "could not open: ") + cmd)
 
+CLAUDE = Path("/mnt/mac/.mylinux/claude/claude_setup.py")
+CLAUDE_RUNS = []
+
+def claude_argv(words):
+    """Claude Install… (the launcher's wizard, from the ⌘ menu): its script in the share with what the wizard asks,
+    "status <id>" or "apply <id>"; None for anything else."""
+    if len(words) == 2 and words[0] in ("status", "apply") and re.fullmatch(r"[0-9a-f]{8,32}", words[1]):
+        return ["/usr/bin/python3", str(CLAUDE), *words]
+    return None
+
+def claude(words):
+    """Started and left to run (an install takes a minute; the wizard reads its progress from the share), in the
+    background so the other commands are still taken."""
+    argv = claude_argv(words)
+    if argv is None or not CLAUDE.exists():
+        print(f"claude {' '.join(words)}: not a request of Claude Install…, or {CLAUDE} is not there"); return
+    CLAUDE_RUNS[:] = [p for p in CLAUDE_RUNS if p.poll() is None]
+    CLAUDE_RUNS.append(subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1")))
+    print("started: " + shlex.join(argv))
+
 TIMER_DROPIN = Path.home() / ".config/systemd/user/omarchy-session-save.timer.d/interval.conf"
 
 def parse_interval(dropin_text):
@@ -235,6 +256,7 @@ def agent():
                 elif words[0] == "interval" and len(words) > 1: interval(words[1])
                 elif words[0] == "apps": apps()
                 elif words[0] == "share": share()
+                elif words[0] == "claude": claude(words[1:])
                 write_status()
         except OSError:
             pass
@@ -279,6 +301,10 @@ def selftest():
     assert one_shot(["ghostty"], "Mount a Share") and not one_shot(["alacritty"], "~")
     assert plan({"windows": [{"class": "Alacritty", "workspace": 1, "title": "Mount a Share", "command": ["alacritty"]}]}, []) == []
     assert share_command("/usr/local/bin/xdg-terminal-exec").startswith("/usr/local/bin/xdg-terminal-exec --title='Mount a Share' -e sh -c 'sh /mnt/mac/.mylinux/apps/mount-share.sh --from /mnt/mac/.mylinux/mount-share.args;")
+    assert claude_argv(["status", "0123abcd"]) == ["/usr/bin/python3", "/mnt/mac/.mylinux/claude/claude_setup.py", "status", "0123abcd"]
+    assert claude_argv(["apply", "0123abcd4567ef89"])[2:] == ["apply", "0123abcd4567ef89"]
+    assert claude_argv(["apply", "../../x"]) is None and claude_argv(["status"]) is None and claude_argv(["run", "0123abcd"]) is None
+    assert claude_argv(["status", "0123abcd", "more"]) is None, "nothing but the wizard's two requests is started"
     print("omarchy-session selftest ok")
 
 if __name__ == "__main__":

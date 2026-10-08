@@ -164,6 +164,12 @@ The differences from `run.sh`:
 - Inside Omarchy, `omarchy/session/omarchy-session` (installed once by the user with `install-session.sh`) saves
   the window layout, each window's command line and a terminal's working directory every minute and at logout, and
   reopens them at login. It also picks up the command files from the Session menu.
+- The same agent is how the launcher gets work done inside without SSH: `apps` and `share` open a terminal running
+  a script from the share, and `claude status <id>` / `claude apply <id>` start `server-apps/claude_setup.py` in the
+  background for **Claude Install…** (`mac/Sources/myLinux/Agents/ClaudeInstall.swift`), a wizard that reads what is
+  installed and signed in from `.mylinux/claude/status-<id>.json` and follows a setup through
+  `progress-<id>.jsonl` and `result-<id>.json`. Each question has its own id, so no file is ever one the guest's 9p
+  has seen before, and the request that carries a token is removed by the script before it does anything else.
 
 ## 5. Inside the myLinux guest
 
@@ -384,6 +390,7 @@ between the user and the remote machine, not two. It is layered like this:
 |---|---|---|
 | `tools/check.sh` | Shell syntax, Python syntax, QML lint (through the SDK), the two script suites, the Swift tests. | Nothing special; QML lint needs OrbStack. |
 | `tools/tests/scripts.sh` | Host scripts: failed builds and downloads keep the old image, paths with spaces and quotes, `DRYRUN` output, bundle branding. | — |
+| `tools/tests/claude-setup.sh` | Claude Install… inside the machine: `claude_setup.py` in a scratch home with stand-in installers (status, a first and a second subscription, a repair, what is refused), compared with what myLinux Apps writes; the agent's request check. | — |
 | `tools/tests/guest.sh` | Guest script libraries run on the Mac: disk detection, secrets, downloads, themes, clipboard, crash reports. | — |
 | `swift test --package-path mac` | Launcher: profile format and migration, keysyms, certificate parsing, the status menu, sessions, links, import, quick connect. | Homebrew libvncserver |
 | `tools/vmtest/vmtest.py` | Boots the throwaway test VM (`out/apps-fresh.img`, `out/fresh-share`) and runs about 30 scenarios: typing, focus, tiling, fullscreen, clipboard, menus, bar modules, the VNC viewer, SSH tabs, shell restart. | A built image, the test disk |

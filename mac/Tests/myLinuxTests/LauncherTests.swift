@@ -670,6 +670,124 @@ final class OmarchyProfileTests: XCTestCase {
         CodexLogin.decline(share, "you chose Don't Copy on the Mac.")
         XCTAssertEqual(try String(contentsOf: CodexLogin.declinedFile(share), encoding: .utf8), "you chose Don't Copy on the Mac.\n")
     }
+    func testClaudeInstallReadsTheMachinesStatusAndSaysWhatIsMissing() throws {
+        XCTAssertNil(ClaudeStatus.parse(Data("not json".utf8)))
+        XCTAssertNil(ClaudeStatus.parse(Data(#"{"version": 1}"#.utf8)), "an answer without Claude Code's state is not one")
+        // a machine without Claude Code: nothing to repair without a token, the form's alias is cc1
+        let fresh = try XCTUnwrap(ClaudeStatus.parse(Data(#"{"claude": {"installed": false, "version": "", "path": ""}, "default": {"token": false, "account": "", "browser": false}, "accounts": [], "aliases": {"names": [], "loaded": false}, "statusLine": {"script": false, "showsAccount": false, "configured": false, "command": ""}, "apiKey": false}"#.utf8)))
+        XCTAssertFalse(fresh.installed); XCTAssertFalse(fresh.hasToken); XCTAssertFalse(fresh.statusLineOK); XCTAssertEqual(fresh.nextAlias, "cc1")
+        XCTAssertEqual(fresh.repairs.count, 1, "the status line alone; Claude Code comes with the token's page")
+        // set up: a subscription with its alias, plain claude's token, myLinux's status line
+        let json = #"{"claude": {"installed": true, "version": "2.1.34", "path": "~/.local/bin/claude"}, "default": {"token": true, "account": "viktor_gmail", "browser": false}, "accounts": [{"alias": "cc1", "account": "viktor_gmail", "token": true, "aliasLine": true}, {"alias": "cc3", "account": "work", "token": true, "aliasLine": true}], "aliases": {"names": ["cc", "cx", "cc1", "cc3", "cc2"], "loaded": true}, "statusLine": {"script": true, "showsAccount": true, "configured": true, "command": "~/.claude/statusline.sh"}, "apiKey": true}"#
+        var s = try XCTUnwrap(ClaudeStatus.parse(Data(json.utf8)))
+        XCTAssertTrue(s.installed); XCTAssertEqual(s.version, "2.1.34"); XCTAssertEqual(s.accounts.map(\.alias), ["cc1", "cc3"]); XCTAssertEqual(s.defaultAccount, "viktor_gmail")
+        XCTAssertTrue(s.hasToken); XCTAssertTrue(s.statusLineOK); XCTAssertTrue(s.apiKey); XCTAssertEqual(s.repairs, [], "everything is in place")
+        XCTAssertEqual(s.nextAlias, "cc4", "cc2 is an alias of the user's own there: not taken over")
+        // the status line is someone else's script: an update, which says the old one is kept
+        s.lineShowsAccount = false
+        XCTAssertEqual(s.repairs.count, 1); XCTAssertTrue(s.repairs[0].hasPrefix("Update the status line")); XCTAssertTrue(s.repairs[0].contains("before-mylinux"))
+        // another program is the status line: replaced, and named
+        s.lineScript = false; s.lineConfigured = false; s.lineCommand = "npx ccusage statusline"
+        XCTAssertTrue(s.repairs[0].contains("npx ccusage statusline"))
+        // an alias a new terminal would not have; then only the line in ~/.bashrc
+        s.accounts[1].aliasLine = false
+        XCTAssertEqual(s.aliasesMissing, ["cc3"]); XCTAssertTrue(s.repairs.contains("Add the alias cc3 for new terminals"))
+        s.accounts[1].aliasLine = true; s.aliasesLoaded = false
+        XCTAssertTrue(s.repairs.contains("Have new terminals load the aliases (~/.bashrc)"))
+        // signed in with the browser and no token: not sent to the token's page, and the status line can still be installed
+        var browser = fresh; browser.installed = true; browser.browserLogin = true
+        XCTAssertFalse(fresh.signedIn); XCTAssertTrue(browser.signedIn); XCTAssertFalse(browser.hasToken)
+        XCTAssertEqual(browser.repairs.count, 1); XCTAssertTrue(browser.repairs[0].hasPrefix("Install the status line"))
+        // Claude Code gone (the disk was started over) while a token is saved: installing it needs no token
+        s.installed = false
+        XCTAssertEqual(s.repairs.first, "Install Claude Code")
+    }
+    func testClaudeInstallChecksTheFormAndSendsOnlyWhatIsAsked() throws {
+        let catalog: Set<String> = ["cc", "cx", "gm"]
+        var r = ClaudeRequest(alias: "cc1", account: "viktor_gmail", token: "", apiKey: "", makeDefault: true)
+        XCTAssertEqual(r.problem(catalogAliases: catalog), "Paste the token from claude setup-token.")
+        r.token = " sk-ant-oat01-TESTtestTESTtestTESTtest0123456789\n"
+        XCTAssertNil(r.problem(catalogAliases: catalog), "spaces and a line end around a pasted token do not matter")
+        XCTAssertEqual(r.cleanToken, "sk-ant-oat01-TESTtestTESTtestTESTtest0123456789")
+        for (alias, bad) in [("cc", true), ("cx", true), ("claude", true), ("c c", true), ("1cc", true), ("", true), ("work-1", false), ("_x", false)] {
+            r.alias = alias; XCTAssertEqual(r.problem(catalogAliases: catalog) != nil, bad, alias)
+        }
+        r.alias = "cc1"
+        for (account, bad) in [("", true), ("a b", true), ("a'b", true), ("me@work.example", false), ("viktor_gmail", false)] {
+            r.account = account; XCTAssertEqual(r.problem(catalogAliases: catalog) != nil, bad, account)
+        }
+        r.account = "viktor_gmail"
+        r.token = "sk-ant-oat01-abc'; touch pwned; 'def0123456789"; XCTAssertNotNil(r.problem(catalogAliases: catalog), "nothing but a token's characters")
+        r.token = "sk-ant-oat01-TESTtestTESTtestTESTtest0123456789"
+        r.apiKey = "sk-ant-api03-notamylinuxkey"; XCTAssertNotNil(r.problem(catalogAliases: catalog))
+        r.apiKey = "mlx_TESTtestTESTtest"; XCTAssertNil(r.problem(catalogAliases: catalog))
+
+        let defaults = ClaudeInstall.defaultAliases(catalog: #"{"aliases": [{"name": "cc", "command": "claude update && claude", "default": true}, {"name": "gm", "command": "gemini --yolo"}], "apps": []}"#)
+        XCTAssertEqual(defaults, [["name": "cc", "command": "claude update && claude"]], "the aliases that are on from the start")
+        let sent = r.json(defaultAliases: defaults)
+        XCTAssertEqual(sent["alias"] as? String, "cc1"); XCTAssertEqual(sent["account"] as? String, "viktor_gmail"); XCTAssertEqual(sent["makeDefault"] as? Bool, true)
+        XCTAssertEqual(sent["token"] as? String, r.cleanToken); XCTAssertEqual(sent["apiKey"] as? String, "mlx_TESTtestTESTtest")
+        // a repair: no token, so no alias or account either
+        let repair = ClaudeRequest().json(defaultAliases: defaults)
+        XCTAssertEqual(Set(repair.keys), ["defaultAliases", "statusLine"])
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../server-apps").standardized
+        XCTAssertEqual(ClaudeInstall.defaultAliases(catalog: try String(contentsOf: repo.appendingPathComponent("catalog.json"), encoding: .utf8)).map { $0["name"] }, ["cc", "cx"],
+                       "the catalog's own: a new aliases file starts with them, as myLinux Apps starts it")
+    }
+    func testClaudeInstallLeavesItsRequestPrivateAndClearsWhatNobodyTook() throws {
+        let share = FileManager.default.temporaryDirectory.appendingPathComponent("claudeinstall-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: share) }
+        XCTAssertEqual(ClaudeInstall.prepare(""), "Claude Install needs the machine's share folder (its page › Files & sharing).")
+        XCTAssertEqual(ClaudeInstall.prepare(share, script: nil), "The launcher has no copy of the Claude setup script.")
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../server-apps").standardized
+        XCTAssertNil(ClaudeInstall.prepare(share, script: try String(contentsOf: repo.appendingPathComponent("claude_setup.py"), encoding: .utf8)))
+        let script = try String(contentsOf: ClaudeInstall.folder(share).appendingPathComponent("claude_setup.py"), encoding: .utf8)
+        XCTAssertTrue(script.contains("def status()") && script.contains("def apply("), "the script the wizard talks to, from the app itself")
+        let id = ClaudeInstall.newID(), other = ClaudeInstall.newID()
+        XCTAssertNotEqual(id, other); XCTAssertNotNil(id.range(of: "^[0-9a-f]{16}$", options: .regularExpression), "what the agent and the script take as an id")
+
+        XCTAssertTrue(ClaudeInstall.ask(share, "status", id))
+        XCTAssertEqual(try String(contentsOf: ClaudeInstall.commandFile(share, id), encoding: .utf8), "claude status \(id)\n")
+        XCTAssertEqual(ClaudeInstall.commandFile(share, id).deletingLastPathComponent().path, share + "/mylinux-tools/control", "where Omarchy's agent looks")
+        XCTAssertNil(ClaudeInstall.status(share, id), "no answer yet")
+        try Data(#"{"claude": {"installed": true, "version": "2.1.34", "path": "~/.local/bin/claude"}}"#.utf8).write(to: ClaudeInstall.statusFile(share, id))
+        XCTAssertEqual(ClaudeInstall.status(share, id)?.version, "2.1.34")
+
+        let r = ClaudeRequest(alias: "cc1", account: "a", token: "sk-ant-oat01-TESTtestTESTtestTESTtest0123456789", apiKey: "", makeDefault: false)
+        XCTAssertTrue(ClaudeInstall.writeRequest(r, id: id, share: share))
+        let mode = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: ClaudeInstall.requestFile(share, id).path)[.posixPermissions] as? NSNumber)
+        XCTAssertEqual(mode.intValue & 0o777, 0o600, "the token is the owner's only")
+        let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: ClaudeInstall.requestFile(share, id))) as? [String: Any])
+        XCTAssertEqual(sent["token"] as? String, r.token); XCTAssertEqual(sent["alias"] as? String, "cc1")
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: ClaudeInstall.folder(share).path).contains { $0.hasSuffix(".tmp") }, "no temporary file left")
+
+        // the steps as the script appends them: the last word on each, in the order they began; a broken line is skipped
+        try Data("""
+        {"step": "claude", "title": "Installing Claude Code", "state": "running", "detail": ""}
+        {"step": "claude", "title": "Installing Claude Code", "state": "done", "detail": "version 2.1.34"}
+        {"step": "account", "title": "Saving a as cc1", "state": "running", "detail": ""}
+        {"step": "half a li
+        """.utf8).write(to: ClaudeInstall.progressFile(share, id))
+        XCTAssertEqual(ClaudeInstall.steps(share, id).map { "\($0.step) \($0.state) \($0.detail)" }, ["claude done version 2.1.34", "account running "])
+        XCTAssertNil(ClaudeInstall.outcome(share, id))
+        try Data(#"{"ok": true, "steps": [{"step": "claude", "title": "Claude Code", "state": "done", "detail": "already installed"}], "alias": "cc1", "account": "a", "makeDefault": false, "status": {"claude": {"installed": true, "version": "2.1.34", "path": ""}}}"#.utf8).write(to: ClaudeInstall.resultFile(share, id))
+        let outcome = try XCTUnwrap(ClaudeInstall.outcome(share, id))
+        XCTAssertTrue(outcome.ok); XCTAssertEqual(outcome.alias, "cc1"); XCTAssertEqual(outcome.steps.count, 1); XCTAssertEqual(outcome.status?.installed, true)
+
+        // a request nobody took leaves the share after its minute; answers after an hour; the script stays
+        ClaudeInstall.sweep(share)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ClaudeInstall.requestFile(share, id).path), "just written: it waits for the machine")
+        ClaudeInstall.sweep(share, now: Date().addingTimeInterval(ClaudeInstall.requestLifetime + 5))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ClaudeInstall.requestFile(share, id).path), "the token does not stay in the share")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ClaudeInstall.resultFile(share, id).path))
+        ClaudeInstall.sweep(share, now: Date().addingTimeInterval(3700))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: ClaudeInstall.folder(share).path), ["claude_setup.py"])
+        // the wizard forgets its own files, the command too when the agent never took it
+        XCTAssertTrue(ClaudeInstall.writeRequest(r, id: other, share: share)); XCTAssertTrue(ClaudeInstall.ask(share, "apply", other))
+        ClaudeInstall.forget(share, other); ClaudeInstall.forget(share, id)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: ClaudeInstall.folder(share).path), ["claude_setup.py"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: ClaudeInstall.control(share).path), [])
+    }
     func testKaliIsADesktopStartedLikeArch() {
         let p = ProfileStore.newProfile(named: "K", kind: .kali, folder: URL(fileURLWithPath: "/tmp/m/k"))
         XCTAssertTrue(p.kind.runsDesktop); XCTAssertFalse(p.isServer); XCTAssertEqual(p.kind.title, "Kali Linux")
