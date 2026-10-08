@@ -478,7 +478,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // page; MYLINUX_TEST_CLAUDE=form goes on to the form (<png>-form.png), =run also fills it (the account "test_account",
         // the token in MYLINUX_TEST_TOKEN) and runs it (<png>-working.png, <png>-done.png); the pages are printed.
         // =listen (with MYLINUX_TEST_AUTOSTART=omarchy) does not open the wizard: it waits for the machine's window to ask
-        // for it (Claude Install… in its ⌘ menu), up to MYLINUX_TEST_WAIT seconds
+        // for it (Claude Install… in its ⌘ menu), up to MYLINUX_TEST_WAIT seconds. =click walks the pages as a person does,
+        // in the key window of the active app, with a mouse click on each page's default button (0.7.61 crashed on the
+        // first one: the window resized itself from inside its own layout); it says how far it got
         if let i = args.firstIndex(of: "--show-claude-install"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1], mode = ProcessInfo.processInfo.environment["MYLINUX_TEST_CLAUDE"] ?? ""
             let listen = mode == "listen"
@@ -504,6 +506,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await settle(60) { model.page != .checking }
                 try? await Task.sleep(nanoseconds: 600_000_000)
                 print("page: \(model.page)"); print("status: \(model.status)"); print("repairs: \(model.status.repairs)"); shot("")
+                if mode == "click" {
+                    @MainActor func window() -> NSWindow? { NSApp.windows.first { $0.isVisible && $0.title.hasSuffix("Claude Install") } }
+                    // a click on the page's default button, the rightmost one in the bottom row
+                    @MainActor func clickDefault() async {
+                        guard let w = window() else { print("click: no window"); return }
+                        NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil)
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        let at = NSPoint(x: w.frame.width - 60, y: 35)
+                        for (type, n) in [(NSEvent.EventType.leftMouseDown, 1), (.leftMouseUp, 1)] {
+                            if let e = NSEvent.mouseEvent(with: type, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber,
+                                                          context: nil, eventNumber: 0, clickCount: n, pressure: 1) { NSApp.sendEvent(e) }
+                        }
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        print("click: key \(w.isKeyWindow) active \(NSApp.isActive) page \(model.page) window \(Int(w.frame.width))x\(Int(w.frame.height))"); fflush(stdout)
+                    }
+                    // MYLINUX_TEST_SCREEN=<n>: on that display (0 is the one with the menu bar), where the machine's window would be
+                    if let n = ProcessInfo.processInfo.environment["MYLINUX_TEST_SCREEN"].flatMap(Int.init), n < NSScreen.screens.count, let w = window() {
+                        let v = NSScreen.screens[n].visibleFrame
+                        w.setFrameOrigin(NSPoint(x: v.midX - w.frame.width / 2, y: v.midY - w.frame.height / 2))
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        print("screen \(n): scale \(w.screen?.backingScaleFactor ?? 0) window at \(NSStringFromRect(w.frame))"); fflush(stdout)
+                    }
+                    await clickDefault()                                   // Continue: the form
+                    shot("form")
+                    model.request.account = "test_account"; model.request.token = ProcessInfo.processInfo.environment["MYLINUX_TEST_TOKEN"] ?? ""
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    await clickDefault()                                   // Install: the steps
+                    await settle(90) { model.page == .finished }
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    print("outcome: ok \(model.outcome?.ok ?? false) steps \((model.outcome?.steps ?? []).map { "\($0.step)=\($0.state)" })"); shot("done")
+                    model.openForm(); try? await Task.sleep(nanoseconds: 800_000_000)      // Add Another Subscription…, and Back
+                    model.page = .status; try? await Task.sleep(nanoseconds: 800_000_000)
+                    print("back: page \(model.page) window \(window().map { "\(Int($0.frame.width))x\(Int($0.frame.height))" } ?? "none")"); shot("status")
+                    await clickDefault()                                   // Done: the window closes
+                    print("closed: \(window() == nil)"); print("walked every page"); fflush(stdout); exit(0)
+                }
                 if mode == "form" || mode == "run" {
                     model.openForm()
                     model.request.account = "test_account"; model.request.token = ProcessInfo.processInfo.environment["MYLINUX_TEST_TOKEN"] ?? ""

@@ -500,7 +500,9 @@ launcher learns the command when it starts again (as for Apps…); until then th
 answer. Omarchy's own `claude` (a script in `~/.local/bin` that fetches Claude Code with mise the first time it
 runs) counts as installed, so there the wizard only signs it in; the first look inside a new machine waits for that
 fetch (up to 30 seconds). `tools/tests/claude-setup.sh` runs the script in a scratch home with stand-in installers and compares what it
-writes with myLinux Apps'.
+writes with myLinux Apps'. The wizard's window has one size for every page (from 0.7.62): a window that followed
+each page's height was resized from inside its own layout pass, which on a Retina display ended the launcher on the
+first Continue.
 
 ### Codex signed in as on the Mac
 

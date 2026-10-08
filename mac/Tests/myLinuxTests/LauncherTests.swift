@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import myLinux
 
 final class ProfileTests: XCTestCase {
@@ -787,6 +788,26 @@ final class OmarchyProfileTests: XCTestCase {
         ClaudeInstall.forget(share, other); ClaudeInstall.forget(share, id)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: ClaudeInstall.folder(share).path), ["claude_setup.py"])
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: ClaudeInstall.control(share).path), [])
+    }
+    @MainActor func testClaudeInstallWindowKeepsOneSizeOnEveryPage() {
+        // 0.7.61's window followed each page's height and was resized from inside its own layout: on a Retina display the
+        // first Continue ended the launcher. The window has one size, and the view no say in it.
+        let model = ClaudeInstallModel(machine: ProfileStore.newProfile(named: "O", kind: .omarchy, folder: URL(fileURLWithPath: "/tmp/m/o")))
+        let w = ClaudeInstallWindow.window(model, close: {})
+        defer { w.close() }
+        XCTAssertEqual((w.contentViewController as? NSHostingController<ClaudeInstallView>)?.sizingOptions, [], "the view does not size the window")
+        XCTAssertFalse(w.styleMask.contains(.resizable))
+        func size() -> NSSize { w.contentRect(forFrameRect: w.frame).size }
+        XCTAssertEqual(size(), ClaudeInstallView.size)
+        w.orderFront(nil)
+        var pages: [ClaudeInstallModel.Page] = [.status, .form, .working, .finished, .unreachable(ClaudeInstallModel.noAnswer), .checking]
+        model.status.accounts = (1...12).map { ClaudeStatus.Account(alias: "cc\($0)", account: "a\($0)", token: true, aliasLine: false) }   // more than fits: it scrolls
+        pages.append(.status)
+        for page in pages {
+            model.page = page
+            RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+            XCTAssertEqual(size(), ClaudeInstallView.size, "\(page)")
+        }
     }
     func testKaliIsADesktopStartedLikeArch() {
         let p = ProfileStore.newProfile(named: "K", kind: .kali, folder: URL(fileURLWithPath: "/tmp/m/k"))

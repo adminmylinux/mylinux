@@ -387,10 +387,12 @@ struct ClaudeOutcome: Equatable {
     }
 }
 
-/// The wizard: what is there, the token's form, the steps as they go, and how it ended.
+/// The wizard: what is there, the token's form, the steps as they go, and how it ended. Every page has the same
+/// size (see ClaudeInstallWindow): what a page shows scrolls when it is more than fits, and its buttons stay at the bottom.
 struct ClaudeInstallView: View {
     @ObservedObject var model: ClaudeInstallModel
     let close: () -> Void
+    static let size = CGSize(width: 560, height: 460)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -411,7 +413,7 @@ struct ClaudeInstallView: View {
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
     }
 
     private var subtitle: String {
@@ -423,18 +425,29 @@ struct ClaudeInstallView: View {
         }
     }
 
+    /// A page: what it shows, from the top, and below it what is said above the buttons and the buttons themselves.
+    private func page<Content: View, Footer: View>(@ViewBuilder _ content: () -> Content, @ViewBuilder footer: () -> Footer) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ScrollView(.vertical) { content().frame(maxWidth: .infinity, alignment: .topLeading) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            footer()
+        }
+    }
+
     // ---- 1. what is there ---------------------------------------------------------------------------------------------
     private var checking: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        page {
             HStack(spacing: 10) { ProgressView().controlSize(.small); Text("Looking inside \(model.machine.name)…").foregroundStyle(.secondary) }
-                .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
+                .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+        } footer: {
             HStack { Spacer(); Button("Cancel") { close() }.keyboardShortcut(.cancelAction) }
         }
     }
 
     private func unreachable(_ why: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        page {
             Label { Text(why).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+        } footer: {
             HStack {
                 Spacer()
                 Button("Close") { close() }.keyboardShortcut(.cancelAction)
@@ -457,7 +470,7 @@ struct ClaudeInstallView: View {
 
     private var statusPage: some View {
         let s = model.status
-        return VStack(alignment: .leading, spacing: 14) {
+        return page {
             VStack(alignment: .leading, spacing: 9) {
                 if s.installed { row(.good, "Claude Code \(s.version.isEmpty ? "is installed" : s.version)", s.path) }
                 else { row(.missing, "Claude Code is not installed") }
@@ -479,6 +492,7 @@ struct ClaudeInstallView: View {
                     else if !s.aliasesLoaded { row(.warn, "New terminals do not load the aliases", "~/.bashrc lacks the line that reads them.") }
                 }
             }
+        } footer: {
             Divider()
             if !s.signedIn {
                 Text(s.installed ? "Claude Code here has no token. The next page asks for one and sets up an alias and the status line with it."
@@ -517,50 +531,55 @@ struct ClaudeInstallView: View {
     private var form: some View {
         let problem = model.request.problem(catalogAliases: model.catalogAliases)
         let replaces = model.status.accounts.contains { $0.alias == model.request.alias.trimmingCharacters(in: .whitespaces) }
-        return VStack(alignment: .leading, spacing: 14) {
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
-                GridRow {
-                    Text("Claude Code token").gridColumnAlignment(.trailing)
-                    VStack(alignment: .leading, spacing: 3) {
-                        SecureField("sk-ant-oat01-…", text: $model.request.token).textFieldStyle(.roundedBorder)
-                        Text("From claude setup-token, in a terminal where Claude Code is signed in (this Mac's, for instance). It is valid for about a year.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        return page {
+            VStack(alignment: .leading, spacing: 14) {
+                Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
+                    GridRow {
+                        Text("Claude Code token").gridColumnAlignment(.trailing)
+                        VStack(alignment: .leading, spacing: 3) {
+                            SecureField("sk-ant-oat01-…", text: $model.request.token).textFieldStyle(.roundedBorder)
+                            Text("From claude setup-token, in a terminal where Claude Code is signed in (this Mac's, for instance). It is valid for about a year.")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    GridRow {
+                        Text("Account name")
+                        VStack(alignment: .leading, spacing: 3) {
+                            TextField("viktor_gmail", text: $model.request.account).textFieldStyle(.roundedBorder)
+                            Text("What the status line shows for this subscription.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    GridRow {
+                        Text("Alias")
+                        VStack(alignment: .leading, spacing: 3) {
+                            TextField("cc1", text: $model.request.alias).textFieldStyle(.roundedBorder).frame(width: 140)
+                            Text(replaces ? "\(model.request.alias) is there already: it gets this token and name."
+                                          : "Typed in a terminal inside, it starts Claude Code with this subscription.")
+                                .font(.caption).foregroundStyle(replaces ? Color.orange : Color.secondary)
+                        }
+                    }
+                    GridRow {
+                        Text("myLinux API key")
+                        VStack(alignment: .leading, spacing: 3) {
+                            SecureField(model.status.apiKey ? "saved in this machine" : "mlx_…  (optional)", text: $model.request.apiKey).textFieldStyle(.roundedBorder)
+                            Text("Optional: with it your skills, commands and CLAUDE.md from mylinux.app are installed too.")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    GridRow {
+                        Text("")
+                        Toggle("Use it for plain claude and the alias cc too", isOn: $model.request.makeDefault)
+                            .help(model.status.defaultToken ? "Replaces the token every new terminal loads now\(model.status.defaultAccount.isEmpty ? "" : " (\(model.status.defaultAccount))")."
+                                                            : "Every new terminal loads this token, so claude and cc start signed in.")
                     }
                 }
-                GridRow {
-                    Text("Account name")
-                    VStack(alignment: .leading, spacing: 3) {
-                        TextField("viktor_gmail", text: $model.request.account).textFieldStyle(.roundedBorder)
-                        Text("What the status line shows for this subscription.").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                GridRow {
-                    Text("Alias")
-                    VStack(alignment: .leading, spacing: 3) {
-                        TextField("cc1", text: $model.request.alias).textFieldStyle(.roundedBorder).frame(width: 140)
-                        Text(replaces ? "\(model.request.alias) is there already: it gets this token and name."
-                                      : "Typed in a terminal inside, it starts Claude Code with this subscription.")
-                            .font(.caption).foregroundStyle(replaces ? Color.orange : Color.secondary)
-                    }
-                }
-                GridRow {
-                    Text("myLinux API key")
-                    VStack(alignment: .leading, spacing: 3) {
-                        SecureField(model.status.apiKey ? "saved in this machine" : "mlx_…  (optional)", text: $model.request.apiKey).textFieldStyle(.roundedBorder)
-                        Text("Optional: with it your skills, commands and CLAUDE.md from mylinux.app are installed too.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                GridRow {
-                    Text("")
-                    Toggle("Use it for plain claude and the alias cc too", isOn: $model.request.makeDefault)
-                        .help(model.status.defaultToken ? "Replaces the token every new terminal loads now\(model.status.defaultAccount.isEmpty ? "" : " (\(model.status.defaultAccount))")."
-                                                        : "Every new terminal loads this token, so claude and cc start signed in.")
-                }
+                Text("The token goes through the machine's share folder to ~/.config/mylinux/claude-accounts inside, in a file only you read there; it is not kept on the Mac.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Text("The token goes through the machine's share folder to ~/.config/mylinux/claude-accounts inside, in a file only you read there; it is not kept on the Mac.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let problem, !model.request.cleanToken.isEmpty { Text(problem).font(.caption).foregroundStyle(.red) }
+            .padding(1)                                 // the fields' focus ring is not cut off at the scroll view's edge
+        } footer: {
+            // one line, there from the start: a message that comes and goes would move the buttons
+            Text(model.request.cleanToken.isEmpty ? " " : problem ?? " ").font(.caption).foregroundStyle(.red).lineLimit(1)
             HStack {
                 Button("Back") { model.page = .status }
                 Spacer()
@@ -592,11 +611,12 @@ struct ClaudeInstallView: View {
     }
 
     private var working: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        page {
             VStack(alignment: .leading, spacing: 9) {
                 if model.steps.isEmpty { HStack(spacing: 10) { ProgressView().controlSize(.small); Text("Starting inside \(model.machine.name)…").foregroundStyle(.secondary) } }
                 ForEach(model.steps) { stepRow($0) }
-            }.frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+            }
+        } footer: {
             Text("Installing Claude Code downloads it inside the machine: about a minute. Closing this window does not stop it.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack { Spacer(); Button("Close") { close() }.keyboardShortcut(.cancelAction) }
@@ -605,11 +625,12 @@ struct ClaudeInstallView: View {
 
     private var finished: some View {
         let o = model.outcome
-        return VStack(alignment: .leading, spacing: 14) {
+        return page {
             VStack(alignment: .leading, spacing: 9) { ForEach(o?.steps ?? model.steps) { stepRow($0) } }
+        } footer: {
             Divider()
-            if o?.ok == true {
-                Text(doneText(o!)).font(.callout).fixedSize(horizontal: false, vertical: true)
+            if let o, o.ok {
+                Text(doneText(o)).font(.callout).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button("Add Another Subscription…") { model.openForm() }
                     Spacer()
@@ -639,20 +660,30 @@ enum ClaudeInstallWindow {
     /// The wizard that is open for a machine (a test drives it).
     static func model(for id: UUID) -> ClaudeInstallModel? { open[id]?.1 }
 
+    /// The wizard's window, one size for every page, set here and not by the view. A window that follows its page's
+    /// height (.preferredContentSize) is resized from inside its own layout pass when the page changes; on a Retina
+    /// display that ended the launcher on the first Continue (0.7.61: AppKit's "more Update Constraints in Window
+    /// passes than there are views in the window", thrown as the hosting view answered the new frame).
+    @MainActor static func window(_ model: ClaudeInstallModel, close: @escaping () -> Void) -> NSWindow {
+        let hosting = NSHostingController(rootView: ClaudeInstallView(model: model, close: close))
+        hosting.sizingOptions = []
+        let w = NSWindow(contentViewController: hosting)
+        w.title = "\(model.machine.name): Claude Install"
+        w.styleMask = [.titled, .closable]
+        w.setContentSize(ClaudeInstallView.size)
+        w.level = .floating
+        w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        w.isReleasedWhenClosed = false
+        return w
+    }
+
     @MainActor static func show(_ machine: Profile) {
         NSApp.activate()
         if let (w, _) = open[machine.id] { w.makeKeyAndOrderFront(nil); return }
         let model = ClaudeInstallModel(machine: machine)
-        var window: NSWindow?
-        let hosting = NSHostingController(rootView: ClaudeInstallView(model: model, close: { window?.close() }))
-        hosting.sizingOptions = [.preferredContentSize]    // the window follows the page's height
-        let w = NSWindow(contentViewController: hosting)
-        window = w
-        w.title = "\(machine.name): Claude Install"
-        w.styleMask = [.titled, .closable]
-        w.level = .floating
-        w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        w.isReleasedWhenClosed = false
+        var made: NSWindow?
+        let w = window(model, close: { made?.close() })
+        made = w
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
             MainActor.assumeIsolated { open[machine.id]?.1.close(); open[machine.id] = nil }
         }
