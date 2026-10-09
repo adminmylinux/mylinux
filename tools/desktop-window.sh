@@ -14,6 +14,10 @@
 # launcher's menu bar item turns Zoom To Fit on and resizes it later, and the guest then follows the window.
 SCREEN=$(osascript -l JavaScript -e '
   ObjC.import("AppKit"); ObjC.import("CoreGraphics");
+  // as an application: only then does AppKit take the menu bar off the usable area of a display that is not the main
+  // one. A plain script is told the whole display there, and the window came out a menu bar too high (its bottom, with
+  // the taskbar of the desktop inside, below the screen).
+  $.NSApplication.sharedApplication;
   // the display of the frontmost app'"'"'s front window (the launcher, or the terminal this runs from): where Cocoa
   // opens a new app'"'"'s window; the primary display when that cannot be told
   const all = $.NSScreen.screens; let s = all.objectAtIndex(0);

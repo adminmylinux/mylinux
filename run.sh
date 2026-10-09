@@ -29,6 +29,9 @@ export MYLINUX_OUT="$OUT"
 # Accessibility for the terminal app; harmless without).
 SCREEN=$(osascript -l JavaScript -e '
   ObjC.import("AppKit");
+  // as an application: only then does AppKit take the menu bar off the usable area of a display that is not the main
+  // one (a plain script is told the whole display there, and the window came out a menu bar too high)
+  $.NSApplication.sharedApplication;
   const m = $.NSEvent.mouseLocation, all = $.NSScreen.screens, mainH = $.NSScreen.screens.objectAtIndex(0).frame.size.height;
   let s = $.NSScreen.mainScreen;
   for (let i = 0; i < all.count; i++) { const f = all.objectAtIndex(i).frame;

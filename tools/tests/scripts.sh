@@ -401,6 +401,9 @@ out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 GRAB=all sh run-windo
 not_rc0 "unknown GRAB is refused" $rc
 out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 DISK_SIZE_GB=16 sh run-windows.sh 2>&1); rc=$?
 not_rc0 "a disk too small for Windows is refused" $rc
+for f in run.sh tools/desktop-window.sh; do
+  grep -q 'NSApplication.sharedApplication' "$REPO/$f" && ok "$f asks for the display's usable area as an application (a second display's menu bar counts)" || ko "$f reads the display's usable area as a plain script: a window on a second display comes out a menu bar too high"
+done
 grep -q 'cache=writeback' "$W/run-windows.sh" && ! grep -q 'cache=unsafe' "$W/run-windows.sh" && ok "Windows's disk is written through to the Mac's disk" || ko "Windows's disk cache"
 (cd "$W" && sh tools/get-windows.sh --iso "$T/nothing.iso" >/dev/null 2>&1); rc=$?
 not_rc0 "get-windows.sh: a missing file is refused" $rc
