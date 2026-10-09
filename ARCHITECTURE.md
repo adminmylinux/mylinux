@@ -208,8 +208,12 @@ did my PC restart?" with it.
 
 `windows/setup.ps1` runs as SYSTEM at every start and every sign-in (a scheduled task of its own once installed, the
 specialize pass the first time), from the tools disc, so a newer launcher's scripts reach an existing machine: it
-installs the drivers with `pnputil`, turns on the display driver's hardware cursor (the pointer is drawn by the window over the picture, and the Mac's
-own is hidden there: `show-cursor=off`; with both shown there were two pointers),
+installs the drivers with `pnputil`, leaves the pointer to Windows (it draws its own into the picture, and the Mac's
+is hidden over the window: `show-cursor=off`; with both shown there were two pointers. The display driver's hardware
+cursor, `HWCursor`, which the launchers before 0.7.71 turned on, is turned off again: the driver keeps one 64x64
+picture and writes only the new pointer's part into it, so a smaller pointer after a larger one, as when Windows's
+scaling goes from 200 % to 100 %, had the larger one's lower edge under it. Turning it off starts the display device
+again, once, and the agent with it, which would otherwise wait on the display of before),
 keeps the display from sleeping, turns hibernation off, copies the agent to `C:\Program Files\myLinux` and registers
 it to start at sign-in with highest rights (a virtio serial port opens only for an elevated process). An agent that
 was started from the file before (a sign-in without a password is quicker than this script) is stopped and started

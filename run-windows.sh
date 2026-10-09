@@ -103,8 +103,9 @@ if [ "$INSTALLED" = 1 ] && [ -z "${DISPLAY_CARD:-}" ]; then
   DISPLAY_DEVS="-device virtio-gpu-pci,id=vgpu,max_outputs=1,xres=$GX,yres=$GY,romfile="
   # gl=es: the window's GL drawing, as Omarchy's has. Windows draws in 2D either way; QEMU's plain drawing tells the
   # guest a wrong size for a zoomed window (the wanted size times the zoom), and Windows followed that
-  # show-cursor=off: the Mac's own pointer is hidden over the window. Windows's pointer is there (the display driver
-  # hands it to the window, which draws it over the picture), and with the Mac's shown as well there were two.
+  # show-cursor=off: the Mac's own pointer is hidden over the window. Windows's pointer is there, drawn by Windows into
+  # its picture as while it installs, and with the Mac's shown as well there were two. (The display driver's other
+  # way, the pointer handed to the window to draw, left scraps of a larger pointer under a smaller one: setup.ps1.)
   DISPLAY_OPTS="cocoa,gl=es,show-cursor=off,zoom-to-fit=off,$KEYS"
   HIDPI=true                              # one pixel of Windows is one pixel of the display
   export MYLINUX_DESKTOP_MODE="${GX}x${GY}"

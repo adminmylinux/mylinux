@@ -383,6 +383,9 @@ out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 SCALE=2 RES=1600x1000 sh run-window
 has "installed: the virtio display at twice the points on a Retina display" "$out" "virtio-gpu-pci,id=vgpu,max_outputs=1,xres=3200,yres=2000,romfile="
 has "installed: the window's GL drawing, one pointer (the Mac's hidden), a window that follows" "$out" "cocoa,gl=es,show-cursor=off,zoom-to-fit=off,full-grab=on"
 has "installed: the start size and scale for the agent" "$out" "mylinux.res=3200x2000,value=mylinux.scale=2,value=mylinux.run="
+# the display driver's own pointer (HWCursor) left scraps of a larger pointer under a smaller one: off, and never on
+grep -qF -- "-Name HWCursor -Value 0" "$W/windows/setup.ps1" && ! grep -qF -- "-Name HWCursor -Value 1" "$W/windows/setup.ps1" && ok "installed: the pointer is Windows's own (the driver's is turned off)" || ko "windows/setup.ps1 does not turn the driver's pointer off"
+grep -qF -- '($agentNewer -or $displayAgain) -and $running' "$W/windows/setup.ps1" && ok "and the agent starts again with the display" || ko "windows/setup.ps1 does not start the agent again after the display"
 case "$out" in *wincd*) ko "installed: Microsoft's ISO is not attached" ;; *) ok "installed: Microsoft's ISO is not attached" ;; esac
 mkdir -p "$T/win2"; : > "$T/win2/installed"; echo 0a1b2c3d-1111-2222-3333-444455556666 > "$T/win2/uuid"
 rm -rf "$WG/windows.iso" "$WG/drivers"

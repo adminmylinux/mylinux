@@ -3,8 +3,9 @@
 # and a task it leaves behind runs it again at every start of Windows, from the disc when it is there: a newer launcher's
 # files reach a machine made earlier, and a second run changes nothing. It needs the system's or an administrator's rights.
 #   drivers    virtio network (NetKVM), display (viogpudo) and serial ports (vioserial), from the virtio-win project
-#   display    the virtio display hands its pointer to the Mac window (the driver's HWCursor); Windows never turns the
-#              display off or goes to sleep here, and it does not hibernate (every start is a real start)
+#   display    Windows draws its own pointer (the driver's HWCursor is turned off where an earlier launcher turned it
+#              on); Windows never turns the display off or goes to sleep here, and it does not hibernate (every start
+#              is a real start)
 #   agent      mylinux-agent.ps1 at every sign-in: the display follows the Mac window's size, and the clipboard is
 #              shared with the Mac, text and pictures both ways
 #   log        what was done goes to C:\ProgramData\myLinux\setup.log and to the Mac (the virtio port dev.mylinux.setup,
@@ -60,16 +61,20 @@ foreach ($f in 'setup.ps1', 'setup.cmd', 'mylinux-agent.ps1') {
 }
 # a newer agent came with this start (a newer launcher's tools disc)
 $agentNewer = $agentBefore -and $agentBefore -ne (Get-FileHash $agentFile -ErrorAction SilentlyContinue).Hash
-# the pointer handed to the Mac window (the driver asks QEMU to draw it over the picture, so a move redraws nothing
-# in Windows): on the virtio display's driver key, once it exists
+# The pointer is Windows's own, drawn into its picture. The launchers before 0.7.71 turned on the display driver's
+# other way (HWCursor: the driver hands the pointer's picture to QEMU, which draws it over the window), and that way
+# leaves scraps: the driver keeps one 64x64 picture and writes only the new pointer's rows and columns into it, so a
+# smaller pointer after a larger one (Windows's scaling going from 200 % to 100 %, as it does at a sign-in or when
+# the window comes onto another display) kept the larger one's lower edge under it. Turned off where it is on.
 $class = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+$displayAgain = $false
 foreach ($key in Get-ChildItem $class -ErrorAction SilentlyContinue) {
     $p = Get-ItemProperty $key.PSPath -ErrorAction SilentlyContinue
-    if ($p.MatchingDeviceId -like 'pci\ven_1af4&dev_1050*' -and $p.HWCursor -ne 1) {
-        Set-ItemProperty $key.PSPath -Name HWCursor -Value 1 -Type DWord
+    if ($p.MatchingDeviceId -like 'pci\ven_1af4&dev_1050*' -and $p.HWCursor) {
+        Set-ItemProperty $key.PSPath -Name HWCursor -Value 0 -Type DWord
         $device = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'PCI\VEN_1AF4&DEV_1050*' } | Select-Object -First 1
-        if ($device) { & pnputil.exe /restart-device $device.InstanceId | Out-Null }
-        Say 'pointer: drawn by the window from now on'
+        if ($device) { & pnputil.exe /restart-device $device.InstanceId | Out-Null; $displayAgain = $true }
+        Say 'pointer: drawn by Windows from now on'
     }
 }
 # a window on a Mac: the display never turns off and Windows does not go to sleep by itself
@@ -125,12 +130,14 @@ if (-not $tasks -or -not (Get-ScheduledTask -TaskName 'myLinux agent' -ErrorActi
 }
 # The agent that runs was started from the file before this start's: a sign-in without a password is quicker than this
 # script, and the agent of the launcher before would stay until the next sign-in. That one goes; the new one starts below.
+# The same for an agent that was following the display this script has just started again (the pointer, above): what it
+# holds is the display of before, which says nothing any more, and Windows has picked a size of its own for the new one.
 $running = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*-Sta*mylinux-agent.ps1*' }
-if ($agentNewer -and $running) {
+if (($agentNewer -or $displayAgain) -and $running) {
     $running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Seconds 2                    # (its task counts as running until its window host is gone)
     $running = $null
-    Say 'agent: started again from its newer file'
+    Say $(if ($agentNewer) { 'agent: started again from its newer file' } else { 'agent: started again for the display' })
 }
 # someone is signed in already and the agent is not running (this ran after the sign-in, or the agent was just stopped): now
 if (-not $settingUp -and -not $running -and (Get-ScheduledTask -TaskName 'myLinux agent' -ErrorAction SilentlyContinue) -and (Get-Process explorer -ErrorAction SilentlyContinue)) {
