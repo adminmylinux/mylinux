@@ -477,10 +477,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // MYLINUX_TEST_SCREEN=<n> puts it on that display (0 is the one with the menu bar)
         if let i = args.firstIndex(of: "--show-windows-help"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1]
-            let folder = Paths.support.appendingPathComponent("help-test", isDirectory: true)
+            // a machine of the launcher's own list (not running), so the machine watcher's real ticks pass over it too
+            let p = ProfileStore.shared.profiles.first(where: { $0.kind == .windows }) ?? ProfileStore.shared.add(kind: .windows)
+            let folder = p.machineFolder
             try? FileManager.default.removeItem(at: folder)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let p = ProfileStore.newProfile(named: "Windows", kind: .windows, folder: folder)
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 WindowsSetupHelp.show(p, byUser: true)
@@ -498,6 +499,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     { try? "mylinux-setup: first-run screens next\r\n".write(to: log, atomically: true, encoding: .utf8) },
                     { try? "mylinux-setup: first-run screens next\r\nmylinux-setup: installed\r\n".write(to: log, atomically: true, encoding: .utf8) },
                 ]
+                // the machine watcher's ticks, as RunManager makes them: opened by hand for a machine that is not running, the
+                // steps stay; the ones that came by themselves go when their machine stops
+                func open() -> Bool { NSApp.windows.contains { $0.isVisible && $0.title.hasSuffix("Installing Windows") } }
+                WindowsSetupHelp.follow(p, running: false); WindowsSetupHelp.follow(p, running: false)
+                print("opened by hand, machine not running, two ticks: \(open() ? "still open" : "CLOSED")")
+                WindowsSetupHelp.follow(p, running: true); WindowsSetupHelp.follow(p, running: false)
+                print("opened by hand, machine ran and stopped: \(open() ? "still open" : "CLOSED")"); fflush(stdout)
+                try? await Task.sleep(nanoseconds: 9_500_000_000)       // two of the watcher's own ticks (every 4 s)
+                print("after 9 s beside the launcher's own watcher: \(open() ? "still open" : "CLOSED")"); fflush(stdout)
                 for (n, make) in stages.enumerated() {
                     make(); model.refresh()
                     try? await Task.sleep(nanoseconds: 700_000_000)

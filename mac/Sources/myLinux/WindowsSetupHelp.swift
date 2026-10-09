@@ -132,21 +132,28 @@ struct WindowsSetupHelpView: View {
 
 /// The steps window, beside the machine's window while Windows is being installed in it: opened by the launcher when
 /// such a machine runs (without taking the keyboard from it), closed when it stops, and there again from the machine's
-/// page (Show the Steps). A panel that does not activate the launcher: the keyboard stays with Windows.
+/// page (Show the Steps), running or not, until the user closes it. A panel that does not activate the launcher: the keyboard stays with Windows.
 @MainActor
 enum WindowsSetupHelp {
     private static var open: [UUID: (NSPanel, WindowsSetupModel)] = [:]
     private static var dismissed: Set<UUID> = []          // closed by the user while its machine runs: not opened again by itself
     private static var waited: [UUID: Int] = [:]          // ticks spent waiting for the machine's window to appear
     private static var running: Set<UUID> = []            // as the last tick saw it
+    private static var byHand: Set<UUID> = []             // opened with Show the Steps: closed by the user alone
+
+    /// Whether the tick that finds the machine not running takes the steps away: only the ones that came by
+    /// themselves, and only as their machine stops. (Before 0.7.68 every such tick closed the window, so the steps
+    /// opened from a stopped machine's page were gone within four seconds, as one reached for them.)
+    static func closesWithMachine(wasRunning: Bool, openedByHand: Bool) -> Bool { wasRunning && !openedByHand }
 
     static func model(for id: UUID) -> WindowsSetupModel? { open[id]?.1 }
 
     /// RunManager's tick, for every Windows machine: `running` is whether a QEMU has its disk open.
     static func follow(_ p: Profile, running: Bool) {
         guard running else {
-            self.running.remove(p.id)
-            open[p.id]?.0.close(); dismissed.remove(p.id); waited[p.id] = nil
+            let was = self.running.remove(p.id) != nil
+            if closesWithMachine(wasRunning: was, openedByHand: byHand.contains(p.id)) { open[p.id]?.0.close() }
+            dismissed.remove(p.id); waited[p.id] = nil
             return
         }
         self.running.insert(p.id)
@@ -157,7 +164,7 @@ enum WindowsSetupHelp {
     }
 
     static func show(_ p: Profile, byUser: Bool) {
-        if byUser { dismissed.remove(p.id) }
+        if byUser { dismissed.remove(p.id); byHand.insert(p.id) }
         if let (w, model) = open[p.id] { model.refresh(); if byUser { w.makeKeyAndOrderFront(nil) } else { w.orderFrontRegardless() }; return }
         let model = WindowsSetupModel(machine: p)
         let hosting = NSHostingController(rootView: WindowsSetupHelpView(model: model))
@@ -175,7 +182,7 @@ enum WindowsSetupHelp {
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
             MainActor.assumeIsolated {
                 guard let (_, model) = open[p.id] else { return }
-                model.stop(); open[p.id] = nil
+                model.stop(); open[p.id] = nil; byHand.remove(p.id)
                 // closed while its machine runs: the user's wish for this run (follow() forgets it when the machine stops)
                 if running.contains(p.id) { dismissed.insert(p.id) }
             }

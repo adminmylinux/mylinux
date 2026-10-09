@@ -898,6 +898,12 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(stage(), .setup)
         XCTAssertEqual(WindowsSetupStage.allCases.map(\.title).count, 4)
     }
+    @MainActor func testTheStepsOpenedByHandStayUntilTheUserClosesThem() {
+        XCTAssertFalse(WindowsSetupHelp.closesWithMachine(wasRunning: false, openedByHand: true), "Show the Steps on a stopped machine's page")
+        XCTAssertFalse(WindowsSetupHelp.closesWithMachine(wasRunning: false, openedByHand: false), "a tick for a machine that was not running closes nothing")
+        XCTAssertFalse(WindowsSetupHelp.closesWithMachine(wasRunning: true, openedByHand: true), "opened by hand: the user's to close")
+        XCTAssertTrue(WindowsSetupHelp.closesWithMachine(wasRunning: true, openedByHand: false), "came by themselves: gone with the machine")
+    }
     func testWindowsIsToldTheKindOfDisplayItsWindowIsOn() {
         XCTAssertEqual(WindowsDisplay.scale(pixelWidth: 3456, width: 1728), 2, "a Retina display")
         XCTAssertEqual(WindowsDisplay.scale(pixelWidth: 2560, width: 2560), 1)
