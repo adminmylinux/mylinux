@@ -266,6 +266,24 @@ C# for the Windows calls:
 - **The clipboard.** The port `dev.tryomarchy.clipboard` with Omarchy's protocol, so the Mac side is the launcher's
   bridge unchanged (`tools/omarchy-clipboard.py` from the command line): text with its line endings converted, and
   PNG pictures. The log (`%LOCALAPPDATA%\myLinux\agent.log`) has kinds and sizes, never contents.
+- **The wizards.** Claude Install… and Codex Install… in the ⌘ menu (runtime 11.1.1-21 has the second item, shown
+  where `MYLINUX_COMMANDS_MENU` names `codex`) are the launcher's windows, and they work with files, as Claude
+  Install does for Omarchy through its share. Windows reads no Mac folder, so the files are in a folder on the Mac
+  that only stands in for a share, `<machine>/link` (`WindowsLink.swift`), and the helper carries them over
+  `dev.mylinux.host`: a command file (`claude status <id>`, `codex apply <id>`) goes out as `ask <id> <script>
+  <arguments> <input>` (base64 words; the request, with the token or Codex's login in it, is taken from the folder
+  as it is sent), the agent runs the script as the signed-in user, and each line it prints comes back as `say <id>
+  <line>` and becomes the status, progress or result file the wizard reads; `end <id> <code>` closes it. The script
+  is `windows/claude_codex_setup.ps1`, sent with every question, so the wizard and the script are one version. The
+  helper asks only an agent that says `can=ask` with its answers (an agent from before 0.7.72 answers with its memory
+  figure alone): nobody taking a command is what the wizards tell as "not running". Inside, the script does what
+  `server-apps/claude_setup.py` does on Linux with Windows's means: Git for Windows from winget and Claude Code from
+  Anthropic's installer, a subscription as `.config\mylinux\claude-accounts\<alias>.env` (for the account and the
+  system only) with `<alias>.cmd` in `.local\bin` on the user's PATH, the token as the user's environment variable
+  when it is plain `claude`'s too, and a status line in PowerShell (`.claude\statusline.ps1`, written into
+  `settings.json` with every other key kept). For Codex: `OpenAI.Codex` from winget, `cx.cmd`, and the Mac's
+  `~/.codex/auth.json` as `.codex\auth.json` when the wizard's page says so. winget is run for its own source only
+  and with no agreement accepted for the user.
 
 The agent also says once, in front of whatever is open, that Windows is installed and should be started again (the
 start it was installed in still has the installer's hardware).

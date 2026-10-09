@@ -1,5 +1,5 @@
 # myLinux: what runs in a Windows machine's session, from sign-in to sign-out (setup.ps1 starts it at every sign-in,
-# hidden). Two things, both between Windows and the Mac window it lives in. Windows PowerShell 5.1, nothing to install.
+# hidden). Three things, all between Windows and the Mac window it lives in. Windows PowerShell 5.1, nothing to install.
 #
 # The display follows the window. It starts at the size run-windows.sh chose for the window; from then on the virtio
 # display driver (viogpudo) learns the size the Mac window wants at every change and signals an event, and this
@@ -14,6 +14,10 @@
 #     {"type": "clipboard", "format": "text/plain;charset=utf-8" | "image/png", "data": "<base64>"}
 # and {"type": "sync"} to ask for the Mac's clipboard when it starts. What it was just given is not sent back (the
 # same fingerprint within two seconds). It waits for the port, and opens it again when it went away.
+#
+# The Mac's wizards work through it. Claude Install… and Codex Install… in the window's ⌘ menu send a script and a
+# request over the virtio port dev.mylinux.host (the one the display's scaling and the memory figure use); it is run
+# here as the signed-in user and what it prints goes back, a line at a time (Display.Ask below).
 param([string]$Port = '\\.\Global\dev.tryomarchy.clipboard', [switch]$Once)
 
 # Windows's first-run screens run as an account of their own (defaultuser0): nothing here is for it
@@ -49,7 +53,7 @@ if (-not $oem.res -and -not (Test-Path (Join-Path $data 'told'))) {
 
 # ---- the display follows the window: on a thread of its own ---------------------------------------------------------
 Add-Type -TypeDefinition @'
-using System; using System.IO; using System.Runtime.InteropServices; using System.Security.AccessControl; using System.Threading;
+using System; using System.IO; using System.Runtime.InteropServices; using System.Security.AccessControl; using System.Text; using System.Text.RegularExpressions; using System.Threading;
 namespace MyLinux {
 public static class Display {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct DISPLAY_DEVICE { public int cb;
@@ -116,13 +120,62 @@ public static class Display {
     // Windows keeps its scaling as steps from the one it recommends, and what it recommends goes with the number of
     // pixels: the scaling is set at the Mac's word and once more when the new size has come (either may be first).
     static readonly object scaling = new object();
+    static readonly object talking = new object();
+    static void Say(Stream port, string line) {
+        byte[] bytes = Encoding.ASCII.GetBytes(line + "\n");
+        lock (talking) { port.Write(bytes, 0, bytes.Length); port.Flush(); }
+    }
+    // A question from one of the Mac's wizards: "ask <id> <script> <arguments> <input>", the last three in base64 (the
+    // arguments one a line; "-" for no input). The script is run by Windows PowerShell as this user, the input on its standard input,
+    // and every line it prints goes back as "say <id> <the line in base64>"; "end <id> <exit code>" when it is over.
+    // The script is the launcher's own (windows/claude_codex_setup.ps1), sent with each question so the wizard and
+    // the script are one version; it is in a file of this user's only while it runs.
+    static void Ask(Stream port, string line) {
+        string[] w = line.Split(' ');
+        if (w.Length != 5 || !Regex.IsMatch(w[1], "^[0-9a-f]{8,32}$")) return;
+        string id = w[1];
+        Thread t = new Thread(delegate() {
+            int code = -1; string file = null;
+            try {
+                string script = Encoding.UTF8.GetString(Convert.FromBase64String(w[2]));
+                string[] arguments = Encoding.UTF8.GetString(Convert.FromBase64String(w[3])).Split(new char[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                byte[] input = w[4] == "-" ? new byte[0] : Convert.FromBase64String(w[4]);    // "-": nothing
+                string dir = Path.Combine(Path.GetDirectoryName(logFile), "work");
+                Directory.CreateDirectory(dir);
+                file = Path.Combine(dir, id + ".ps1");
+                File.WriteAllText(file, script, new UTF8Encoding(true));
+                System.Diagnostics.ProcessStartInfo info = new System.Diagnostics.ProcessStartInfo();
+                info.FileName = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe");
+                string a = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + file + "\"";
+                foreach (string word in arguments) { if (Regex.IsMatch(word, "^[A-Za-z0-9_-]{1,40}$")) a += " " + word; }
+                info.Arguments = a; info.UseShellExecute = false; info.CreateNoWindow = true;
+                info.RedirectStandardInput = true; info.RedirectStandardOutput = true; info.RedirectStandardError = true;
+                info.StandardOutputEncoding = Encoding.UTF8; info.StandardErrorEncoding = Encoding.UTF8;
+                info.WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                Log("ask " + id + ": " + string.Join(" ", arguments));
+                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(info)) {
+                    p.ErrorDataReceived += delegate(object sender, System.Diagnostics.DataReceivedEventArgs e) { if (!string.IsNullOrEmpty(e.Data)) Log("ask " + id + " said: " + e.Data); };
+                    p.BeginErrorReadLine();
+                    p.StandardInput.BaseStream.Write(input, 0, input.Length); p.StandardInput.Close();
+                    string said;
+                    while ((said = p.StandardOutput.ReadLine()) != null) {
+                        if (said.Length > 0) Say(port, "say " + id + " " + Convert.ToBase64String(Encoding.UTF8.GetBytes(said)));
+                    }
+                    p.WaitForExit(); code = p.ExitCode;
+                }
+            } catch (Exception e) { Log("ask " + id + ": " + e.Message); }
+            finally { if (file != null) { try { File.Delete(file); } catch { } } }
+            try { Say(port, "end " + id + " " + code); } catch { }
+        });
+        t.IsBackground = true; t.Start();
+    }
     static int hostScale;                                               // the Mac's last word as a percentage, 0 before any
     static DateTime hostScaleAt = DateTime.MinValue;
     static void Host() {
         while (true) {
             try {
                 // (GENERIC_READ | GENERIC_WRITE, OPEN_EXISTING, FILE_FLAG_OVERLAPPED: as the clipboard's port is opened;
-                // a stream with no buffer of its own, read and written in turn by this one thread)
+                // a stream with no buffer of its own; this thread reads it, and whoever writes holds `talking`)
                 using (var port = CreateFile("\\\\.\\Global\\dev.mylinux.host", 0xC0000000, 0, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero)) {
                     if (!port.IsInvalid) {
                         using (var stream = new FileStream(port, FileAccess.ReadWrite, 1, true))
@@ -132,10 +185,10 @@ public static class Display {
                                 // every word from the Mac (one every three seconds) is answered with what Windows's
                                 // memory is at, as Task Manager counts it: the launcher shows that beside the machine
                                 MEMORYSTATUSEX m = new MEMORYSTATUSEX(); m.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
-                                if (GlobalMemoryStatusEx(ref m) && m.ullTotalPhys > 0) {
-                                    byte[] answer = System.Text.Encoding.ASCII.GetBytes("memory=" + (m.ullTotalPhys - m.ullAvailPhys) + "/" + m.ullTotalPhys + "\n");
-                                    stream.Write(answer, 0, answer.Length); stream.Flush();
-                                }
+                                if (GlobalMemoryStatusEx(ref m) && m.ullTotalPhys > 0) Say(stream, "memory=" + (m.ullTotalPhys - m.ullAvailPhys) + "/" + m.ullTotalPhys);
+                                // and with what this agent can do besides: the Mac's wizards ask only an agent that says so
+                                Say(stream, "can=ask");
+                                if (line.StartsWith("ask ")) { Ask(stream, line); continue; }
                                 if (line != "scale=1" && line != "scale=2") continue;
                                 int percent = line == "scale=2" ? 200 : 100;
                                 lock (scaling) {

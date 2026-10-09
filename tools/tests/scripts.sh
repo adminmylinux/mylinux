@@ -386,6 +386,12 @@ has "installed: the start size and scale for the agent" "$out" "mylinux.res=3200
 # the display driver's own pointer (HWCursor) left scraps of a larger pointer under a smaller one: off, and never on
 grep -qF -- "-Name HWCursor -Value 0" "$W/windows/setup.ps1" && ! grep -qF -- "-Name HWCursor -Value 1" "$W/windows/setup.ps1" && ok "installed: the pointer is Windows's own (the driver's is turned off)" || ko "windows/setup.ps1 does not turn the driver's pointer off"
 grep -qF -- '($agentNewer -or $displayAgain) -and $running' "$W/windows/setup.ps1" && ok "and the agent starts again with the display" || ko "windows/setup.ps1 does not start the agent again after the display"
+# the ⌘ menu's wizards: named for the runtime's menu, the helper given the folder they talk through, the agent taking questions
+grep -qF -- 'export MYLINUX_COMMANDS_MENU="claude codex snippets share"' "$W/run-windows.sh" && ok "installed: Claude Install and Codex Install in the ⌘ menu" || ko "run-windows.sh does not name claude and codex for the ⌘ menu"
+grep -qF -- '--windows-display "$HOSTSOCK" "$MACHINE/guest-memory" "$MACHINE/link"' "$W/run-windows.sh" && ok "and the helper carries their questions (the machine's link folder)" || ko "run-windows.sh does not give the helper the link folder"
+grep -qF -- 'Say(stream, "can=ask")' "$W/windows/mylinux-agent.ps1" && grep -qF -- 'if (line.StartsWith("ask "))' "$W/windows/mylinux-agent.ps1" && ok "the agent says it takes questions, and takes them" || ko "windows/mylinux-agent.ps1 does not take the wizards' questions"
+grep -qF -- 'Codex Install…' "$REPO/tools/qemu-runtime-patches/qemu-cocoa-size-buttons.patch" && ok "the runtime's menu has Codex Install" || ko "the runtime patch has no Codex Install item"
+[ -s "$W/windows/claude_codex_setup.ps1" ] && ! grep -q 'accept-.*-agreements' "$W/windows/claude_codex_setup.ps1" && ok "the wizards' script is there, and agrees to nothing for the user" || ko "windows/claude_codex_setup.ps1 is missing or accepts agreements"
 case "$out" in *wincd*) ko "installed: Microsoft's ISO is not attached" ;; *) ok "installed: Microsoft's ISO is not attached" ;; esac
 mkdir -p "$T/win2"; : > "$T/win2/installed"; echo 0a1b2c3d-1111-2222-3333-444455556666 > "$T/win2/uuid"
 rm -rf "$WG/windows.iso" "$WG/drivers"

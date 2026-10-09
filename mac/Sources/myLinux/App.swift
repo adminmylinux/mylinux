@@ -13,7 +13,7 @@ struct MyLinuxApp: App {
         // helper mode, before any window: run-omarchy.sh starts the launcher's own binary as the clipboard bridge
         let args = CommandLine.arguments
         if args.count == 3, args[1] == "--omarchy-clipboard" { exit(OmarchyClipboard.run(socketPath: args[2])) }
-        if args.count >= 3, args[1] == "--windows-display" { exit(WindowsDisplay.run(socketPath: args[2], statsFile: args.count > 3 ? args[3] : nil)) }
+        if args.count >= 3, args[1] == "--windows-display" { exit(WindowsDisplay.run(socketPath: args[2], statsFile: args.count > 3 ? args[3] : nil, link: args.count > 4 ? args[4] : nil)) }
         // Clear All Data's second half: once the launcher that asked has quit, its data goes, then a fresh one starts
         if args.count == 4, args[1] == "--finish-start-over", let pid = Int32(args[2]) { exit(StartOver.finish(after: pid, relaunch: args[3])) }
     }
@@ -619,6 +619,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     print("field after: token empty \(model.request.token.isEmpty)"); shot("done")
                 }
                 fflush(stdout); exit(0)
+            }
+            return
+        }
+        // `myLinux --show-windows-wizards <png>` (a scratch MYLINUX_SUPPORT_DIR whose profiles have a Windows machine, started
+        // with MYLINUX_TEST_AUTOSTART=windows): Claude Install and Codex Install against that running machine, once its
+        // agent answers. MYLINUX_TEST_WIZARD is a list of what to do, in order: claude (the first page, <png>-claude.png),
+        // claude-run (a subscription: the account "test_account", the token in MYLINUX_TEST_TOKEN, as plain claude's
+        // too with MYLINUX_TEST_DEFAULT=1), claude-repair, codex (<png>-codex.png), codex-run (with the login the page
+        // offers: MYLINUX_TEST_CODEX_LOGIN names the file that stands for this Mac's), listen (waits MYLINUX_TEST_WAIT
+        // seconds for the machine's window to ask for either wizard: its ⌘ menu). What each found is printed.
+        if let i = args.firstIndex(of: "--show-windows-wizards"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1], env = ProcessInfo.processInfo.environment
+            let todo = (env["MYLINUX_TEST_WIZARD"] ?? "claude,codex").split(separator: ",").map(String.init)
+            func shot(_ suffix: String, _ title: String) {
+                guard let w = NSApp.windows.first(where: { $0.isVisible && $0.title.hasSuffix(title) }) else { print("no window for \(suffix)"); return }
+                let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                cap.arguments = ["-x", "-l", String(w.windowNumber), path.replacingOccurrences(of: ".png", with: "-\(suffix).png")]
+                try? cap.run(); cap.waitUntilExit()
+            }
+            Task { @MainActor in
+                func settle(_ seconds: Double, until: () -> Bool) async { for _ in 0..<Int(seconds * 5) where !until() { try? await Task.sleep(nanoseconds: 200_000_000) } }
+                func out(_ line: String) { print(line); fflush(stdout) }
+                guard let p = ProfileStore.shared.profiles.first(where: { $0.kind == .windows }) else { out("no Windows machine in this folder's profiles"); exit(1) }
+                out("machine \(p.id.uuidString.lowercased()) qmp \(RunManager.shared.runner(for: p.id).qmpSocket)")
+                // the agent answers the helper's lines once someone is signed in: its memory figure is the sign
+                await settle(Double(env["MYLINUX_TEST_WAIT"] ?? "240") ?? 240) { WindowsDisplay.keptMemory(p.machineFolder) != nil }
+                out(WindowsDisplay.keptMemory(p.machineFolder) != nil ? "the agent answers" : "no word from the agent")
+                for what in todo {
+                    if what == "listen" {
+                        await settle(Double(env["MYLINUX_TEST_WAIT"] ?? "240") ?? 240) { ClaudeInstallWindow.model(for: p.id) != nil || CodexInstallWindow.model(for: p.id) != nil }
+                        out("asked: claude \(ClaudeInstallWindow.model(for: p.id) != nil) codex \(CodexInstallWindow.model(for: p.id) != nil)")
+                        try? await Task.sleep(nanoseconds: 6_000_000_000)
+                        shot("asked-claude", "Claude Install"); shot("asked-codex", "Codex Install")
+                    } else if what.hasPrefix("claude") {
+                        if ClaudeInstallWindow.model(for: p.id) == nil { ClaudeInstallWindow.show(p) }
+                        guard let model = ClaudeInstallWindow.model(for: p.id) else { out("claude: no wizard"); continue }
+                        await settle(70) { model.page != .checking }
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        out("claude page: \(model.page)"); out("claude status: \(model.status)"); out("claude repairs: \(model.status.repairs)")
+                        if what == "claude" { shot("claude", "Claude Install") }
+                        if what == "claude-run" || what == "claude-repair" {
+                            if what == "claude-run" {
+                                model.openForm()
+                                model.request.account = "test_account"; model.request.token = env["MYLINUX_TEST_TOKEN"] ?? ""
+                                model.request.makeDefault = env["MYLINUX_TEST_DEFAULT"] == "1"
+                                try? await Task.sleep(nanoseconds: 700_000_000)
+                                out("claude form: alias \(model.request.alias) default \(model.request.makeDefault) problem \(model.request.problem(catalogAliases: model.catalogAliases) ?? "none")")
+                                shot("claude-form", "Claude Install")
+                            }
+                            model.run(what == "claude-run" ? model.request : nil)
+                            await settle(20) { !model.steps.isEmpty || model.page == .finished }
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            shot("claude-working", "Claude Install")
+                            await settle(20 * 60) { model.page == .finished }
+                            try? await Task.sleep(nanoseconds: 600_000_000)
+                            out("claude outcome: ok \(model.outcome?.ok ?? false) alias \(model.outcome?.alias ?? "") steps \((model.outcome?.steps ?? []).map { "\($0.step)=\($0.state) [\($0.detail)]" })")
+                            out("claude status after: \(model.status)")
+                            shot("claude-done", "Claude Install")
+                        }
+                    } else if what.hasPrefix("codex") {
+                        if CodexInstallWindow.model(for: p.id) == nil { CodexInstallWindow.show(p) }
+                        guard let model = CodexInstallWindow.model(for: p.id) else { out("codex: no wizard"); continue }
+                        await settle(70) { model.page != .checking }
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        out("codex page: \(model.page)"); out("codex status: \(model.status) mac login \(model.macHasLogin) copy \(model.copyLogin)"); out("codex repairs: \(model.status.repairs)")
+                        if what == "codex" { shot("codex", "Codex Install") }
+                        if what == "codex-run" {
+                            model.run()
+                            await settle(20) { !model.steps.isEmpty || model.page == .finished }
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            shot("codex-working", "Codex Install")
+                            await settle(20 * 60) { model.page == .finished }
+                            try? await Task.sleep(nanoseconds: 600_000_000)
+                            out("codex outcome: ok \(model.outcome?.ok ?? false) steps \((model.outcome?.steps ?? []).map { "\($0.step)=\($0.state) [\($0.detail)]" })")
+                            out("codex status after: \(model.status)")
+                            shot("codex-done", "Codex Install")
+                        }
+                    }
+                }
+                out("wizards: done")
+                if env["MYLINUX_TEST_STAY"] != "1" { exit(0) }
             }
             return
         }

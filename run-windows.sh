@@ -17,10 +17,11 @@
 #    setup.ps1 reports "installed" when they are over.
 #  - installed: the display is a virtio card (driver viogpudo), which follows the window's size as Omarchy's does (the
 #    title bar's size buttons, Fill Screen, a drag), with twice the pixels on a Retina display; one pointer, Windows's own,
-#    which the window draws over the picture (the Mac's is hidden there); the clipboard is shared both ways (windows/mylinux-agent.ps1 inside, the launcher's or
+#    drawn by Windows (the Mac's is hidden over the window); the clipboard is shared both ways (windows/mylinux-agent.ps1 inside, the launcher's or
 #    tools/omarchy-clipboard.py's bridge here); sound through the Mac. Microsoft's ISO is no longer attached. Dragged
 #    to a display of the other kind (Retina or not), the window keeps its size and Windows changes its scaling (the
-#    launcher's helper tells it; from a terminal the scaling stays the start's).
+#    launcher's helper tells it; from a terminal the scaling stays the start's). The ⌘ menu's Claude Install… and
+#    Codex Install… are the launcher's wizards, which reach Windows through that helper too.
 # Environment: RES=WxH window size in points (default: fills the display; a Retina display gives Windows twice that in
 #              pixels, SCALE=1|2 overrides), DISK=path of the disk (default $MYLINUX_OUT/windows-machine/windows.raw),
 #              DISK_SIZE_GB=64, NAME=window title, MEM=8G, CPUS=6,
@@ -128,7 +129,7 @@ else
 fi
 export MYLINUX_SIZE_BUTTONS=1             # the window's size buttons: − + Fill Screen and full screen
 # the ⌘ menu in the title bar (⌘P opens it): the launcher's commands that fit Windows
-export MYLINUX_COMMANDS_MENU="snippets share"
+export MYLINUX_COMMANDS_MENU="claude codex snippets share"
 
 # ---- the machine's files ------------------------------------------------------------------------------------------------
 TOOLS="$MACHINE/tools.iso"
@@ -243,6 +244,9 @@ fi
 if [ "$HOSTPORT" = 1 ]; then
   rm -f "$HOSTSOCK"
   rm -f "$MACHINE/guest-memory"            # (Windows's own memory figure, kept by the helper for the launcher's sidebar)
-  "$MYLINUX_HELPER" --windows-display "$HOSTSOCK" "$MACHINE/guest-memory" 2>>"${MACHINE}/display.log" &
+  # "$MACHINE/link": where the launcher's wizards (Claude Install…, Codex Install… in the ⌘ menu) leave their questions
+  # for Windows and read its answers; the helper carries them over the same port (WindowsLink.swift)
+  rm -rf "$MACHINE/link"
+  "$MYLINUX_HELPER" --windows-display "$HOSTSOCK" "$MACHINE/guest-memory" "$MACHINE/link" 2>>"${MACHINE}/display.log" &
 fi
 exec "$QEMU" "$@"

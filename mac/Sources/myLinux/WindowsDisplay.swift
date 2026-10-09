@@ -7,7 +7,8 @@ import AppKit
 /// sets Windows's scaling to match. Dragged from a Retina display to another kind or back, the window keeps its size
 /// (the runtime's MYLINUX_GUEST_SCALES), Windows gets half or twice the pixels, and what is in it stays as large.
 /// The agent answers every line with what Windows's memory is at; with a file to keep it in (the second argument), the
-/// launcher's sidebar shows that figure and not what QEMU holds on the Mac.
+/// launcher's sidebar shows that figure and not what QEMU holds on the Mac. With a link folder (the third), the
+/// launcher's wizards reach Windows through the same port (WindowsLink).
 /// CoreGraphics only: this process is no application, and AppKit's list of screens would not follow a display that
 /// comes or goes.
 enum WindowsDisplay {
@@ -49,7 +50,7 @@ enum WindowsDisplay {
     /// Runs until the process that started it (the script, which becomes QEMU) is gone. A line goes to Windows every
     /// three seconds (the display's kind, or "ping" while the window is on no display): its agent answers each with its
     /// memory figure, which is kept in `statsFile` for the launcher.
-    static func run(socketPath: String, statsFile: String? = nil) -> Int32 {
+    static func run(socketPath: String, statsFile: String? = nil, link: String? = nil) -> Int32 {
         let parent = getppid()
         signal(SIGPIPE, SIG_IGN)
         var fd: Int32 = -1
@@ -60,10 +61,11 @@ enum WindowsDisplay {
             if fd < 0 { usleep(500_000) }
         }
         guard fd >= 0 else { log("no port for the display after two minutes"); return 1 }
-        if let statsFile {
+        let bridge = link.map { WindowsLink.Bridge(link: $0) }
+        if statsFile != nil || bridge != nil {
             let port = fd
             Thread.detachNewThread {                            // what Windows answers, a line at a time
-                var pending = Data(), chunk = [UInt8](repeating: 0, count: 512)
+                var pending = Data(), chunk = [UInt8](repeating: 0, count: 4096)
                 while true {
                     let n = read(port, &chunk, chunk.count)
                     if n <= 0 { if n < 0 && errno == EINTR { continue }; return }
@@ -71,9 +73,12 @@ enum WindowsDisplay {
                     while let end = pending.firstIndex(of: 0x0A) {
                         let line = String(decoding: pending[pending.startIndex..<end], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
                         pending.removeSubrange(pending.startIndex...end)
-                        if memory(line) != nil { try? (line + "\n").write(toFile: statsFile, atomically: true, encoding: .utf8) }
+                        if memory(line) != nil {
+                            if let statsFile { try? (line + "\n").write(toFile: statsFile, atomically: true, encoding: .utf8) }
+                        } else if line == "can=ask" { bridge?.heard() }          // an agent that takes the wizards' questions (0.7.72)
+                        else { bridge?.incoming(line) }
                     }
-                    if pending.count > 4096 { pending.removeAll() }
+                    if pending.count > 1 << 20 { pending.removeAll() }      // (a line of a wizard's script is a few thousand bytes)
                 }
             }
         }
@@ -87,6 +92,19 @@ enum WindowsDisplay {
                 let line = Array((last.map { "scale=\($0)" } ?? "ping").utf8) + [0x0A]
                 if write(fd, line, line.count) < 0 { log("the port is gone"); break }
             }
+            // a wizard's question, when one is waiting and Windows's agent is there to take it
+            var gone = false
+            for ask in bridge?.outgoing() ?? [] {
+                var bytes = Array(ask.utf8) + [0x0A], sent = 0
+                while sent < bytes.count {
+                    let n = bytes.withUnsafeBytes { write(fd, $0.baseAddress! + sent, bytes.count - sent) }
+                    if n <= 0 { if n < 0 && errno == EINTR { continue }; gone = true; break }
+                    sent += n
+                }
+                bytes.removeAll()
+                if gone { break }
+            }
+            if gone { log("the port is gone"); break }
             tick += 1
             sleep(1)
         }

@@ -13,6 +13,10 @@ import SwiftUI
 /// <id>" or "claude apply <id>" in the share's control folder, and the wizard reads the status, the steps as they go
 /// and the outcome back from the share. The token is in the share only until the script has read it (it removes the
 /// request first), in a file its owner alone reads; a request nobody took is removed after a minute.
+///
+/// A Windows machine has the wizard too (0.7.72). Windows reads no Mac folder, so its files are in a folder on the Mac
+/// that only stands in for a share (WindowsLink: <machine folder>/link), the script is windows/claude_codex_setup.ps1,
+/// and the launcher's helper beside the machine carries the question and the answers over the machine's own port.
 enum ClaudeInstall {
     static let script = "claude_setup.py"
     static func folder(_ share: String) -> URL { URL(fileURLWithPath: share).appendingPathComponent(".mylinux/claude", isDirectory: true) }
@@ -56,6 +60,7 @@ enum ClaudeInstall {
         guard let text else { return "The launcher has no copy of the Claude setup script." }
         do {
             try FileManager.default.createDirectory(at: folder(share), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: control(share), withIntermediateDirectories: true)
             try text.write(to: folder(share).appendingPathComponent(script), atomically: true, encoding: .utf8)
         } catch {
             return "Could not write into \(folder(share).path): \(error.localizedDescription)"
@@ -108,7 +113,7 @@ enum ClaudeInstall {
         let fm = FileManager.default
         for url in (try? fm.contentsOfDirectory(at: folder(share), includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {
             let name = url.lastPathComponent
-            guard name != script, let written = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { continue }
+            guard name != script, name != WindowsLink.scriptName, let written = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { continue }
             let age = now.timeIntervalSince(written)
             let request = name.hasPrefix("request-") || name.hasPrefix(".request-")
             if request ? age > requestLifetime : age > 3600 { try? fm.removeItem(at: url) }
@@ -134,6 +139,9 @@ struct ClaudeStatus: Equatable {
     var aliasNames: [String] = [], aliasesLoaded = false
     var lineScript = false, lineShowsAccount = false, lineConfigured = false, lineCommand = ""
     var apiKey = false
+    /// A Windows machine's answer (windows/claude_codex_setup.ps1): the aliases are .cmd files on the PATH there, and
+    /// Claude Code works through Git for Windows.
+    var windows = false, git = true
 
     static func parse(_ data: Data) -> ClaudeStatus? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -156,6 +164,7 @@ struct ClaudeStatus: Equatable {
         lineScript = line["script"] as? Bool ?? false; lineShowsAccount = line["showsAccount"] as? Bool ?? false
         lineConfigured = line["configured"] as? Bool ?? false; lineCommand = line["command"] as? String ?? ""
         apiKey = obj["apiKey"] as? Bool ?? false
+        windows = obj["system"] as? String == "windows"; git = obj["git"] as? Bool ?? true
     }
 
     /// Claude Code here can start without the browser: a subscription with its token, or plain claude's.
@@ -170,7 +179,7 @@ struct ClaudeStatus: Equatable {
     /// What Install or Update does without asking for anything (no token needed), in the wizard's words.
     var repairs: [String] {
         var out: [String] = []
-        if !installed && hasToken { out.append("Install Claude Code") }
+        if !installed && hasToken { out.append(git ? "Install Claude Code" : "Install Git for Windows (Claude Code works through it) and Claude Code") }
         if !lineScript || !lineConfigured {
             out.append(lineCommand.isEmpty || lineConfigured ? "Install the status line: folder, git branch, context, limits, cost, model and the account"
                                                              : "Replace the status line that is set (\(lineCommand)) with myLinux's, which shows the account")
@@ -178,7 +187,7 @@ struct ClaudeStatus: Equatable {
             out.append("Update the status line: the one there does not show the account (it is kept as statusline.sh.before-mylinux)")
         }
         if !aliasesMissing.isEmpty { out.append("Add the alias \(aliasesMissing.joined(separator: ", ")) for new terminals") }
-        else if !accounts.isEmpty && !aliasesLoaded { out.append("Have new terminals load the aliases (~/.bashrc)") }
+        else if !accounts.isEmpty && !aliasesLoaded { out.append(windows ? "Put the aliases' folder (.local\\bin in your user folder) on your PATH" : "Have new terminals load the aliases (~/.bashrc)") }
         return out
     }
 
@@ -275,8 +284,9 @@ struct ClaudeOutcome: Equatable {
     /// at its first run, so the first `claude --version` in a new machine takes ten seconds and more (the script
     /// gives it thirty).
     var answerTimeout: TimeInterval = 45
-    /// How long the agent has to take a question; it looks every second.
-    var takeTimeout: TimeInterval { min(6, answerTimeout) }
+    /// How long the agent has to take a question; it looks every second. (Windows's is asked by the launcher's helper,
+    /// once the agent has said in the last seconds that it takes questions: a little longer.)
+    var takeTimeout: TimeInterval { min(windows ? 12 : 6, answerTimeout) }
 
     init(machine: Profile) {
         self.machine = machine
@@ -284,6 +294,12 @@ struct ClaudeOutcome: Equatable {
         catalogAliases = Set(((catalog?["aliases"] as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String })
     }
 
+    var windows: Bool { machine.kind == .windows }
+    var system: String { windows ? "Windows" : "Omarchy" }
+    var notRunning: String { windows ? Self.windowsNotRunning : Self.notRunning }
+    var noAnswer: String { windows ? Self.windowsNoAnswer : Self.noAnswer }
+    static let windowsNotRunning = "Windows's helper did not take the question. It starts when you are signed in to Windows: sign in there, then try again. A machine that was started by a launcher from before 0.7.72 learns the wizards when it starts again: choose Machine › Restart in its window."
+    static let windowsNoAnswer = "Windows's helper took the question and did not answer. Try again; if it stays so, choose Machine › Restart in the machine's window."
     /// Nobody took the question: the agent is not running.
     static let notRunning = "Omarchy's helper is not running. It starts once you are signed in to Omarchy's desktop: sign in there, then try again."
     /// Taken, and no answer: an agent from before this launcher, which takes every command and knows only its own.
@@ -294,7 +310,11 @@ struct ClaudeOutcome: Equatable {
         await wait(takeTimeout) { FileManager.default.fileExists(atPath: ClaudeInstall.commandFile(self.share, id).path) ? nil : true } != nil
     }
 
-    var share: String { machine.shareDir }
+    /// Where the wizard's files are: the machine's share, or for Windows the folder that stands in for one.
+    var share: String { windows ? WindowsLink.folder(machine.machineFolder).path : machine.shareDir }
+    private func prepare() -> String? {
+        windows ? WindowsLink.Files(base: share, tool: "claude").prepare() : ClaudeInstall.prepare(share)
+    }
 
     /// The first page: what is there.
     func check() {
@@ -302,18 +322,18 @@ struct ClaudeOutcome: Equatable {
         page = .checking
         task = Task { [weak self] in
             guard let self else { return }
-            if let problem = ClaudeInstall.prepare(share) { page = .unreachable(problem); return }
+            if let problem = prepare() { page = .unreachable(problem); return }
             let id = ClaudeInstall.newID()
-            guard ClaudeInstall.ask(share, "status", id) else { page = .unreachable("Could not leave the question for Omarchy in \(ClaudeInstall.control(share).path)."); return }
+            guard ClaudeInstall.ask(share, "status", id) else { page = .unreachable("Could not leave the question for \(system) in \(ClaudeInstall.control(share).path)."); return }
             guard await taken(id) else {
                 ClaudeInstall.forget(share, id)
-                if !Task.isCancelled { page = .unreachable(Self.notRunning) }
+                if !Task.isCancelled { page = .unreachable(notRunning) }
                 return
             }
             let found = await wait(answerTimeout) { ClaudeInstall.status(self.share, id) }
             ClaudeInstall.forget(share, id)
             guard !Task.isCancelled else { return }
-            guard let found else { page = .unreachable(Self.noAnswer); return }
+            guard let found else { page = .unreachable(noAnswer); return }
             status = found
             page = .status
         }
@@ -336,14 +356,14 @@ struct ClaudeOutcome: Equatable {
         task = Task { [weak self] in
             guard let self else { return }
             let id = ClaudeInstall.newID()
-            if let problem = ClaudeInstall.prepare(share) { failed(id, problem); return }
+            if let problem = prepare() { failed(id, problem); return }
             guard ClaudeInstall.writeRequest(sent, id: id, share: share), ClaudeInstall.ask(share, "apply", id) else {
                 failed(id, "Could not write the request into \(ClaudeInstall.folder(share).path)."); return
             }
-            guard await taken(id) else { failed(id, Self.notRunning); return }
+            guard await taken(id) else { failed(id, notRunning); return }
             // the script takes the request first: gone means it has begun
             let begun = await wait(answerTimeout) { FileManager.default.fileExists(atPath: ClaudeInstall.requestFile(self.share, id).path) ? nil : true }
-            guard begun != nil else { failed(id, Self.noAnswer); return }
+            guard begun != nil else { failed(id, noAnswer); return }
             // an install is a download of a few hundred megabytes: as long as that takes, within reason
             let done = await wait(30 * 60) { () -> ClaudeOutcome? in
                 let now = ClaudeInstall.steps(self.share, id)
@@ -363,7 +383,7 @@ struct ClaudeOutcome: Equatable {
     /// The setup could not be started or followed: told as a step of its own, after the ones that ran.
     private func failed(_ id: String, _ why: String) {
         ClaudeInstall.forget(share, id)
-        outcome = ClaudeOutcome(ok: false, steps: steps + [ClaudeStep(["step": "machine", "title": "Reaching Omarchy", "state": "failed", "detail": why])!],
+        outcome = ClaudeOutcome(ok: false, steps: steps + [ClaudeStep(["step": "machine", "title": "Reaching \(system)", "state": "failed", "detail": why])!],
                                 alias: "", account: "", makeDefault: false, status: nil)
         page = .finished
     }
@@ -474,6 +494,7 @@ struct ClaudeInstallView: View {
             VStack(alignment: .leading, spacing: 9) {
                 if s.installed { row(.good, "Claude Code \(s.version.isEmpty ? "is installed" : s.version)", s.path) }
                 else { row(.missing, "Claude Code is not installed") }
+                if s.windows && !s.git && !s.installed { row(.missing, "Git for Windows is not installed", "Claude Code works through it: it is installed first.") }
                 ForEach(s.accounts) { a in
                     if !a.token { row(.warn, "\(a.alias) has no token", "Add a subscription with this alias to give it one.") }
                     else if a.account.isEmpty { row(.warn, "\(a.alias): a subscription without a name", "The status line has no account to show for it; add it again with a name.") }
@@ -484,12 +505,12 @@ struct ClaudeInstallView: View {
                 else if s.accounts.isEmpty { row(.missing, "Not signed in", "No token is saved here.") }
                 else { row(.missing, "claude and cc: not signed in", "Only the aliases above have a token.") }
                 if s.statusLineOK { row(.good, "The status line shows the account", "With the folder, git branch, context, limits, cost and model.") }
-                else if s.lineScript && s.lineConfigured { row(.warn, "The status line does not show the account", "~/.claude/statusline.sh is not myLinux's, or an older one.") }
+                else if s.lineScript && s.lineConfigured { row(.warn, "The status line does not show the account", "\(s.windows ? ".claude\\statusline.ps1" : "~/.claude/statusline.sh") is not myLinux's, or an older one.") }
                 else if !s.lineCommand.isEmpty { row(.warn, "Another status line is set", s.lineCommand) }
                 else { row(.missing, "No status line") }
                 if !s.accounts.isEmpty {
                     if !s.aliasesMissing.isEmpty { row(.warn, "New terminals do not have \(s.aliasesMissing.joined(separator: ", "))") }
-                    else if !s.aliasesLoaded { row(.warn, "New terminals do not load the aliases", "~/.bashrc lacks the line that reads them.") }
+                    else if !s.aliasesLoaded { row(.warn, s.windows ? "New terminals do not find the aliases" : "New terminals do not load the aliases", s.windows ? ".local\\bin in your user folder, where they are, is not on your PATH." : "~/.bashrc lacks the line that reads them.") }
                 }
             }
         } footer: {
@@ -558,12 +579,14 @@ struct ClaudeInstallView: View {
                                 .font(.caption).foregroundStyle(replaces ? Color.orange : Color.secondary)
                         }
                     }
-                    GridRow {
-                        Text("myLinux API key")
-                        VStack(alignment: .leading, spacing: 3) {
-                            SecureField(model.status.apiKey ? "saved in this machine" : "mlx_…  (optional)", text: $model.request.apiKey).textFieldStyle(.roundedBorder)
-                            Text("Optional: with it your skills, commands and CLAUDE.md from mylinux.app are installed too.")
-                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if !model.windows {                 // (your skills from mylinux.app come as a shell script: the Linux machines')
+                        GridRow {
+                            Text("myLinux API key")
+                            VStack(alignment: .leading, spacing: 3) {
+                                SecureField(model.status.apiKey ? "saved in this machine" : "mlx_…  (optional)", text: $model.request.apiKey).textFieldStyle(.roundedBorder)
+                                Text("Optional: with it your skills, commands and CLAUDE.md from mylinux.app are installed too.")
+                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                     GridRow {
@@ -573,7 +596,8 @@ struct ClaudeInstallView: View {
                                                             : "Every new terminal loads this token, so claude and cc start signed in.")
                     }
                 }
-                Text("The token goes through the machine's share folder to ~/.config/mylinux/claude-accounts inside, in a file only you read there; it is not kept on the Mac.")
+                Text(model.windows ? "The token goes to Windows through the machine's own channel, not through a shared folder, and is kept in your user folder there (.config\\mylinux\\claude-accounts), in a file only your account reads; it is not kept on the Mac."
+                                   : "The token goes through the machine's share folder to ~/.config/mylinux/claude-accounts inside, in a file only you read there; it is not kept on the Mac.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding(1)                                 // the fields' focus ring is not cut off at the scroll view's edge
@@ -617,7 +641,8 @@ struct ClaudeInstallView: View {
                 ForEach(model.steps) { stepRow($0) }
             }
         } footer: {
-            Text("Installing Claude Code downloads it inside the machine: about a minute. Closing this window does not stop it.")
+            Text(model.windows ? "Installing Claude Code downloads it inside the machine, and Git for Windows before it when that is missing: a few minutes. Closing this window does not stop it."
+                               : "Installing Claude Code downloads it inside the machine: about a minute. Closing this window does not stop it.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack { Spacer(); Button("Close") { close() }.keyboardShortcut(.cancelAction) }
         }
@@ -680,6 +705,10 @@ enum ClaudeInstallWindow {
     @MainActor static func show(_ machine: Profile) {
         NSApp.activate()
         if let (w, _) = open[machine.id] { w.makeKeyAndOrderFront(nil); return }
+        if let why = WindowsLink.notYet(machine) {
+            let alert = NSAlert(); alert.messageText = "Claude Install in \(machine.name)"; alert.informativeText = why
+            alert.runModal(); return
+        }
         let model = ClaudeInstallModel(machine: machine)
         var made: NSWindow?
         let w = window(model, close: { made?.close() })

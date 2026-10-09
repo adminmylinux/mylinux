@@ -923,6 +923,95 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(WindowsDisplay.keptMemory(dir)?.used, 2_147_483_648)
         XCTAssertNil(WindowsDisplay.keptMemory(dir, now: Date().addingTimeInterval(60)), "a figure a minute old is not the machine's now")
     }
+    func testWindowsWizardsTalkThroughTheMachinesPort() throws {
+        // a command file's words, and nothing else
+        XCTAssertEqual(WindowsLink.question("claude status 0123abcd4567ef89\n"), WindowsLink.Question(tool: "claude", what: "status", id: "0123abcd4567ef89"))
+        XCTAssertEqual(WindowsLink.question("codex apply 0123abcd")?.tool, "codex")
+        for bad in ["claude status", "claude run 0123abcd", "apps status 0123abcd", "claude status 0123ABCD", "claude status ../../x", "claude status 0123abcd extra"] {
+            XCTAssertNil(WindowsLink.question(bad), bad)
+        }
+        // the line for the port: the script, the arguments and the input, each one word
+        let q = WindowsLink.Question(tool: "codex", what: "apply", id: "0123abcd4567ef89")
+        let words = WindowsLink.askLine(q, script: "Write-Output 'a b'\n", input: Data(#"{"login":"x y"}"#.utf8)).split(separator: " ").map(String.init)
+        XCTAssertEqual(words.count, 5); XCTAssertEqual(Array(words[0...1]), ["ask", "0123abcd4567ef89"])
+        XCTAssertEqual(Data(base64Encoded: words[2]).map { String(decoding: $0, as: UTF8.self) }, "Write-Output 'a b'\n")
+        XCTAssertEqual(Data(base64Encoded: words[3]).map { String(decoding: $0, as: UTF8.self) }, "codex\napply")
+        XCTAssertEqual(Data(base64Encoded: words[4]).map { String(decoding: $0, as: UTF8.self) }, #"{"login":"x y"}"#)
+        XCTAssertTrue(WindowsLink.askLine(WindowsLink.Question(tool: "claude", what: "status", id: "0123abcd"), script: "x", input: nil).hasSuffix(" -"), "no input is said, not left out")
+        // Windows's lines
+        func say(_ id: String, _ json: String) -> String { "say \(id) \(Data(json.utf8).base64EncodedString())" }
+        if case .said(let id, let kind, let data)? = WindowsLink.answer(say("0123abcd", #"{"kind":"status","data":{"codex":{"installed":true,"version":"0.50.0"}}}"#)) {
+            XCTAssertEqual(id, "0123abcd"); XCTAssertEqual(kind, "status"); XCTAssertEqual(CodexStatus.parse(data)?.version, "0.50.0")
+        } else { XCTFail("a status line") }
+        XCTAssertEqual(WindowsLink.answer("end 0123abcd 1"), .ended(id: "0123abcd", code: 1))
+        for bad in ["memory=1/2", "say 0123abcd not-base64!", say("0123abcd", #"{"kind":"shell","data":{}}"#), say("../x", #"{"kind":"status","data":{}}"#), say("0123abcd", "[1]")] {
+            XCTAssertNil(WindowsLink.answer(bad), bad)
+        }
+
+        // the helper's part, on a folder that stands in for a share
+        let link = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-link-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: link) }
+        let files = WindowsLink.Files(base: link, tool: "claude")
+        XCTAssertNil(files.prepare(script: "the script"))
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: link)[.posixPermissions] as? NSNumber)?.intValue, 0o700, "for the Mac user alone")
+        let bridge = WindowsLink.Bridge(link: link)
+        let id = "0123abcd4567ef89"
+        XCTAssertTrue(files.writeRequest(["token": "sk-ant-oat01-secretsecretsecret", "alias": "cc1"], id: id)); XCTAssertTrue(files.ask("apply", id))
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: files.requestFile(id).path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        // nobody inside to take it: the command and the request stay, so the wizard sees that nobody took it
+        XCTAssertEqual(bridge.outgoing(), []); XCTAssertTrue(FileManager.default.fileExists(atPath: files.commandFile(id).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: files.requestFile(id).path))
+        bridge.heard()
+        let sent = bridge.outgoing()
+        XCTAssertEqual(sent.count, 1); XCTAssertTrue(sent[0].hasPrefix("ask \(id) "))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.commandFile(id).path), "taken")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.requestFile(id).path), "the token is on its way, and nowhere else")
+        XCTAssertEqual(bridge.outgoing(), [], "asked once")
+        // the script's lines become the files the wizard reads
+        bridge.incoming(say(id, #"{"kind":"step","data":{"step":"claude","title":"Installing Claude Code","state":"running","detail":""}}"#))
+        bridge.incoming(say(id, #"{"kind":"step","data":{"step":"claude","title":"Installing Claude Code","state":"done","detail":"version 2.1.0"}}"#))
+        XCTAssertEqual(ClaudeInstall.steps(link, id).map(\.state), ["done"]); XCTAssertEqual(ClaudeInstall.steps(link, id).first?.detail, "version 2.1.0")
+        XCTAssertNil(ClaudeInstall.outcome(link, id))
+        bridge.incoming(say(id, #"{"kind":"result","data":{"ok":true,"steps":[],"alias":"cc1","account":"me","makeDefault":false}}"#))
+        XCTAssertEqual(ClaudeInstall.outcome(link, id)?.alias, "cc1")
+        bridge.incoming("end \(id) 0")
+        XCTAssertEqual(ClaudeInstall.outcome(link, id)?.ok, true, "the end does not undo an outcome")
+        // lines for a question this helper never asked write nothing
+        bridge.incoming(say("ffffffffffffffff", #"{"kind":"result","data":{"ok":true}}"#))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: files.resultFile("ffffffffffffffff").path))
+        // a setup that ends without an outcome is told as one that failed, after the steps it made
+        let id2 = "89abcdef01234567"
+        XCTAssertTrue(files.writeRequest([:], id: id2)); XCTAssertTrue(files.ask("apply", id2)); XCTAssertEqual(bridge.outgoing().count, 1)
+        bridge.incoming(say(id2, #"{"kind":"step","data":{"step":"git","title":"Git","state":"done","detail":""}}"#))
+        bridge.incoming("end \(id2) 1")
+        let failed = try XCTUnwrap(ClaudeInstall.outcome(link, id2))
+        XCTAssertFalse(failed.ok); XCTAssertEqual(failed.steps.map(\.step), ["git", "setup"]); XCTAssertEqual(failed.steps.last?.state, "failed")
+        // a status question has no request, and its answer is the status file
+        let id3 = "0011223344556677"
+        XCTAssertTrue(files.ask("status", id3)); XCTAssertTrue(bridge.outgoing().first?.hasSuffix(" -") == true)
+        bridge.incoming(say(id3, #"{"kind":"status","data":{"system":"windows","git":false,"claude":{"installed":false},"accounts":[{"alias":"cc1","account":"me","token":true,"aliasLine":true}],"aliases":{"names":["cc","cc1"],"loaded":false}}}"#))
+        let status = try XCTUnwrap(ClaudeInstall.status(link, id3))
+        XCTAssertTrue(status.windows); XCTAssertFalse(status.git); XCTAssertEqual(status.nextAlias, "cc2")
+        XCTAssertTrue(status.repairs.contains { $0.contains("Git for Windows") }, "\(status.repairs)")
+        XCTAssertTrue(status.repairs.contains { $0.contains("PATH") }, "\(status.repairs)")
+        // an old agent's silence: a helper that has heard nothing for a while takes nothing
+        XCTAssertFalse(bridge.alive(now: Date().addingTimeInterval(30)))
+    }
+    func testCodexInstallSaysWhatIsMissingAndSendsTheLoginOnlyWhenAsked() throws {
+        let s = try XCTUnwrap(CodexStatus.parse(Data(#"{"system":"windows","codex":{"installed":false,"version":"","path":""},"login":{"file":false,"says":""},"alias":{"cx":false,"loaded":false},"winget":true}"#.utf8)))
+        XCTAssertFalse(s.installed); XCTAssertFalse(s.signedIn); XCTAssertEqual(s.repairs.count, 2)
+        let there = try XCTUnwrap(CodexStatus.parse(Data(#"{"codex":{"installed":true,"version":"0.50.0","path":"C:\\x\\codex.exe"},"login":{"file":true,"says":"Logged in using ChatGPT"},"alias":{"cx":true,"loaded":true}}"#.utf8)))
+        XCTAssertTrue(there.repairs.isEmpty); XCTAssertEqual(there.says, "Logged in using ChatGPT"); XCTAssertTrue(there.winget, "not said: assumed")
+        XCTAssertNil(CodexStatus.parse(Data(#"{"claude":{"installed":true}}"#.utf8)), "another tool's answer")
+        XCTAssertEqual(CodexInstall.request(login: nil)["login"] as? String, "")
+        XCTAssertEqual(CodexInstall.request(login: Data(#"{"tokens":{}}"#.utf8))["login"] as? String, #"{"tokens":{}}"#)
+        let o = try XCTUnwrap(CodexOutcome.parse(Data(#"{"ok":true,"steps":[{"step":"codex","title":"Codex","state":"done","detail":"x"}],"status":{"codex":{"installed":true}}}"#.utf8)))
+        XCTAssertTrue(o.ok); XCTAssertEqual(o.steps.count, 1); XCTAssertEqual(o.status?.installed, true)
+        // the script both wizards send is the launcher's own
+        let script = try XCTUnwrap(WindowsLink.bundledScript() ?? (try? String(contentsOfFile: #filePath.replacingOccurrences(of: "/mac/Tests/myLinuxTests/LauncherTests.swift", with: "/windows/\(WindowsLink.scriptName)"), encoding: .utf8)))
+        for word in ["function Claude-Apply", "function Codex-Apply", "MYLINUX_CLAUDE_ACCOUNT", "'claude status'", "'codex apply'"] { XCTAssertTrue(script.contains(word), word) }
+        XCTAssertFalse(script.contains("accept-source-agreements") || script.contains("accept-package-agreements"), "nothing is agreed to on the user's behalf")
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

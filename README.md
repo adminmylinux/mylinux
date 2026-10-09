@@ -160,14 +160,14 @@ the window (the title bar's − + and Fill Screen buttons, full screen, a drag o
 pixels and 200 % scaling on a Retina display; there is one pointer, Windows's own; the clipboard is shared both ways,
 text and pictures ([`windows/mylinux-agent.ps1`](windows/mylinux-agent.ps1), started at sign-in, speaks the protocol
 of Omarchy's clipboard agent over a virtio serial port); sound goes through the Mac. The title bar's ⌘ menu has
-**Snippets…**, with PowerShell ones for Windows (Claude Code and a `cc` for it, Codex and `cx`, Git, VS Code and
-Node.js from winget, updates, the Mac's shared folders; **Paste** puts one into Windows Terminal), and **Mount a
-Share…**. Every key goes to Windows by default, ⌘ as the Windows key and Option as Alt; the machine's settings can
+**Claude Install…** and **Codex Install…** (wizards on the Mac, below), **Snippets…**, with PowerShell ones for
+Windows (Claude Code and a `cc` for it, Codex and `cx`, Git, VS Code and Node.js from winget, updates, the Mac's
+shared folders; **Paste** puts one into Windows Terminal), and **Mount a Share…**. Every key goes to Windows by default, ⌘ as the Windows key and Option as Alt; the machine's settings can
 leave ⌘ to macOS instead. Dragged from a Retina display to one that is not, or back, the window keeps its size and
 Windows changes its scaling (200 % or 100 %) to match.
 
 What it does not have: a shared folder (Windows reads no 9p; a folder shared on the Mac with File Sharing opens at
-`\\10.0.2.2` in File Explorer), Cloud Folders, Apps… and Claude Install… (snippets do those jobs), a TPM, and 3D
+`\\10.0.2.2` in File Explorer), Cloud Folders and Apps… (snippets and winget do those jobs), a TPM, and 3D
 acceleration (the display driver draws in 2D: fine for desktop work, not for games). Windows runs unactivated until
 you enter a product key. `./run-windows.sh` starts one from the command line (`DISK=`, `RES=`, `GRAB=`, `MEM=`; its
 header has the list).
@@ -548,6 +548,28 @@ fetch (up to 30 seconds). `tools/tests/claude-setup.sh` runs the script in a scr
 writes with myLinux Apps'. The wizard's window has one size for every page (from 0.7.62): a window that followed
 each page's height was resized from inside its own layout pass, which on a Retina display ended the launcher on the
 first Continue.
+
+### Claude Install… and Codex Install… in Windows
+
+A Windows machine's ⌘ menu has both (from 0.7.72, runtime 11.1.1-21). **Claude Install…** is the wizard above with
+Windows's means: it installs Git for Windows from winget (Claude Code works through it) and Claude Code with
+Anthropic's installer, saves a subscription with its `claude setup-token` token as an alias (`cc1`, `cc2`, …: a
+`.cmd` in `.local\bin` of your user folder, which it puts on your PATH; the token in
+`.config\mylinux\claude-accounts\<alias>.env`, readable by your account only), makes it plain `claude`'s and `cc`'s
+login too when you tick that (your own environment variable `CLAUDE_CODE_OAUTH_TOKEN`), and installs a status line
+written in PowerShell that shows the folder, git branch, context, limits, cost, model and the account. **Codex
+Install…** installs Codex (OpenAI's Arm64 build, from winget), adds `cx` (Codex without approvals or sandbox), and
+signs Codex in with this Mac's login when its page says so: the tick **Sign Codex in with this Mac's login**, with
+what that means under it, and a button that then reads **Install and Sign In**. Windows has a browser, so `codex`
+there can also sign in by itself.
+
+Windows reads no Mac folder, so nothing goes through a share: the wizards talk to Windows over the machine's own
+channel (the virtio port the launcher's helper and [`windows/mylinux-agent.ps1`](windows/mylinux-agent.ps1) already
+use for the display's scaling), and the script that does the work inside,
+[`windows/claude_codex_setup.ps1`](windows/claude_codex_setup.ps1), is sent with every question. A token or a login is
+in a folder of the Mac user's own only for the second until it is sent. winget installs from its own source and no
+agreement is accepted for you. A machine that was started by a launcher from before 0.7.72 gets the menu items and
+the agent that answers when it starts again (Machine › Restart).
 
 ### Codex signed in as on the Mac
 

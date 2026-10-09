@@ -232,8 +232,8 @@ enum MachineLink {
     /// launcher → app: ⌘Space was pressed in this app's window (SpaceHotkey): Find and Run
     static let palette = Notification.Name("dev.mylinux.machine.palette")
     /// app → launcher: "hello" (report now), "open" (start it, or open its terminal), "cloudFolders" (save, restart);
-    /// "restart", "cloud", "apps" and "claude" also come from a desktop's QEMU (Machine › Restart, Cloud Folders…, Apps…
-    /// and Claude Install…; with MYLINUX_LINK_SCOPE from Runner.start)
+    /// "restart", "cloud", "apps", "claude" and "codex" also come from a desktop's QEMU (Machine › Restart, Cloud
+    /// Folders…, Apps…, Claude Install… and Codex Install…; with MYLINUX_LINK_SCOPE from Runner.start)
     static let request = Notification.Name("dev.mylinux.machine.request")
 
     private static var scope: String { Paths.support.path }
@@ -295,12 +295,20 @@ enum MachineLink {
                     let alert = NSAlert(); alert.messageText = "Apps in \(p.name)"; alert.informativeText = problem
                     alert.runModal()
                 }
-            case "claude":                                        // Claude Install… in an Omarchy window's ⌘ menu
+            case "claude":                                        // Claude Install… in an Omarchy or a Windows window's ⌘ menu
                 Task { @MainActor in
-                    if p.kind == .omarchy { ClaudeInstallWindow.show(p); return }
+                    if p.kind == .omarchy || p.kind == .windows { ClaudeInstallWindow.show(p); return }
                     NSApp.activate()
                     let alert = NSAlert(); alert.messageText = "Claude Install in \(p.name)"
-                    alert.informativeText = "The wizard is there for Omarchy. In Debian and Alpine, Apps… has Claude Code at the top (a subscription as an alias, with its token); elsewhere, in a terminal: curl -fsSL https://mylinux.app/claude | sh"
+                    alert.informativeText = "The wizard is there for Omarchy and Windows. In Debian and Alpine, Apps… has Claude Code at the top (a subscription as an alias, with its token); elsewhere, in a terminal: curl -fsSL https://mylinux.app/claude | sh"
+                    alert.runModal()
+                }
+            case "codex":                                         // Codex Install… in a Windows window's ⌘ menu
+                Task { @MainActor in
+                    if p.kind == .windows { CodexInstallWindow.show(p); return }
+                    NSApp.activate()
+                    let alert = NSAlert(); alert.messageText = "Codex Install in \(p.name)"
+                    alert.informativeText = "The wizard is there for Windows. In Omarchy, Debian and Alpine, Snippets… and Apps… have Install Codex and Sign Codex in as on the Mac."
                     alert.runModal()
                 }
             default: break
