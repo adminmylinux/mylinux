@@ -37,7 +37,7 @@ enum WindowsSetupStage: Int, CaseIterable {
         case .setup: return "Answer Windows Setup"
         case .installing: return "Windows installs"
         case .firstRun: return "Windows's first-run screens"
-        case .done: return "Start Windows again"
+        case .done: return "Restart the machine"
         }
     }
 }
@@ -73,7 +73,7 @@ final class WindowsSetupModel: ObservableObject {
 struct WindowsSetupHelpView: View {
     @ObservedObject var model: WindowsSetupModel
     /// One size, set by the window (a window that follows its content's height ended the launcher once: 0.7.61).
-    static let size = CGSize(width: 380, height: 620)
+    static let size = CGSize(width: 380, height: 660)
 
     var body: some View {
         ScrollView {
@@ -98,7 +98,8 @@ struct WindowsSetupHelpView: View {
                     Text("If “Why did my PC restart?” comes up instead of these screens (a very busy Mac can do that), stop the machine and start it again.")
                 }
                 step(.done) {
-                    Text("Windows is installed. Shut it down (Start › Power › Shut down, or Stop in myLinux Launcher) and start it again: its display then fills the window and follows its size.")
+                    Text("Windows is installed. Choose Machine › Restart in the Mac's menu bar, or Stop in myLinux Launcher and start it again: its display then fills the window and follows its size.")
+                    Text("Restart in Windows's own Start menu is not enough: the machine itself has to start again.")
                 }
                 Divider()
                 Label("Too small to read? + and Fill Screen at the top right of Windows's window make it larger while it installs.", systemImage: "plus.magnifyingglass")

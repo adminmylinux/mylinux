@@ -149,7 +149,8 @@ pass (it has no TPM and no Secure Boot), lets a local account be made, and runs
 done. Setup takes between a quarter of an hour and 40 minutes (the Mac's load decides) and restarts by itself on the
 way. Its first-run screens come without a network, on purpose: "I don't have internet" there makes a local account,
 and the network card gets its driver the moment they are over (with a network they insist on an account online).
-When the desktop is up, a note says to shut Windows down and start it again. While all this goes on, the launcher
+When the desktop is up, a note says to restart the machine: **Machine › Restart** in the Mac's menu bar, or Restart
+on its page (Restart in Windows's own Start menu keeps the installer's hardware). While all this goes on, the launcher
 keeps a small window of the steps beside Windows's own, the step it is at marked, with the one answer nobody guesses
 ("I don't have internet", where Windows offers "Install driver"); **Show the Steps** on the machine's page brings it
 back.

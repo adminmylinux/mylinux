@@ -41,7 +41,7 @@ if (-not $oem.res -and -not (Test-Path (Join-Path $data 'told'))) {
     $note = [PowerShell]::Create().AddScript({
         Add-Type -AssemblyName System.Windows.Forms
         $front = New-Object Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }
-        [Windows.Forms.MessageBox]::Show($front, "Windows is installed.`n`nShut it down and start it again from myLinux Launcher: from then on its display fills the Mac window and follows its size.", 'myLinux', 'OK', 'Information') | Out-Null
+        [Windows.Forms.MessageBox]::Show($front, "Windows is installed.`n`nRestart the machine: Machine > Restart in the Mac's menu bar, or shut Windows down and start it again from myLinux Launcher. From then on its display fills the Mac window and follows its size.`n`n(Restart in Windows's own Start menu is not enough.)", 'myLinux', 'OK', 'Information') | Out-Null
         $front.Dispose()
     })
     $null = $note.BeginInvoke()             # beside everything below, which does not wait for the answer
