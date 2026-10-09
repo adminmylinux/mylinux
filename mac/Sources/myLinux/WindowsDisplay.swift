@@ -6,6 +6,8 @@ import AppKit
 /// every few seconds besides (the agent inside may open the port later than this starts). windows/mylinux-agent.ps1
 /// sets Windows's scaling to match. Dragged from a Retina display to another kind or back, the window keeps its size
 /// (the runtime's MYLINUX_GUEST_SCALES), Windows gets half or twice the pixels, and what is in it stays as large.
+/// The agent answers every line with what Windows's memory is at; with a file to keep it in (the second argument), the
+/// launcher's sidebar shows that figure and not what QEMU holds on the Mac.
 /// CoreGraphics only: this process is no application, and AppKit's list of screens would not follow a display that
 /// comes or goes.
 enum WindowsDisplay {
@@ -26,8 +28,28 @@ enum WindowsDisplay {
 
     static func log(_ m: String) { FileHandle.standardError.write(Data("windows-display: \(m)\n".utf8)) }
 
-    /// Runs until the process that started it (the script, which becomes QEMU) is gone.
-    static func run(socketPath: String) -> Int32 {
+    /// What Windows says its memory is at ("memory=<bytes in use>/<bytes in all>", windows/mylinux-agent.ps1's answer to
+    /// every line it is sent), as the launcher's sidebar wants it: the two numbers.
+    static func memory(_ line: String) -> (used: Double, total: Double)? {
+        guard line.hasPrefix("memory=") else { return nil }
+        let parts = line.dropFirst("memory=".count).split(separator: "/")
+        guard parts.count == 2, let used = Double(parts[0]), let total = Double(parts[1]), total > 0, used >= 0, used <= total else { return nil }
+        return (used, total)
+    }
+
+    /// The last figure the helper kept for a machine, when it is no older than a few of its beats (`MachineStats`).
+    static func memoryFile(_ machineFolder: URL) -> URL { machineFolder.appendingPathComponent("guest-memory") }
+    static func keptMemory(_ machineFolder: URL, now: Date = Date()) -> (used: Double, total: Double)? {
+        let file = memoryFile(machineFolder)
+        guard let at = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date, now.timeIntervalSince(at) < 20,
+              let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+        return memory(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Runs until the process that started it (the script, which becomes QEMU) is gone. A line goes to Windows every
+    /// three seconds (the display's kind, or "ping" while the window is on no display): its agent answers each with its
+    /// memory figure, which is kept in `statsFile` for the launcher.
+    static func run(socketPath: String, statsFile: String? = nil) -> Int32 {
         let parent = getppid()
         signal(SIGPIPE, SIG_IGN)
         var fd: Int32 = -1
@@ -38,18 +60,38 @@ enum WindowsDisplay {
             if fd < 0 { usleep(500_000) }
         }
         guard fd >= 0 else { log("no port for the display after two minutes"); return 1 }
+        if let statsFile {
+            let port = fd
+            Thread.detachNewThread {                            // what Windows answers, a line at a time
+                var pending = Data(), chunk = [UInt8](repeating: 0, count: 512)
+                while true {
+                    let n = read(port, &chunk, chunk.count)
+                    if n <= 0 { if n < 0 && errno == EINTR { continue }; return }
+                    pending.append(contentsOf: chunk[0..<n])
+                    while let end = pending.firstIndex(of: 0x0A) {
+                        let line = String(decoding: pending[pending.startIndex..<end], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                        pending.removeSubrange(pending.startIndex...end)
+                        if memory(line) != nil { try? (line + "\n").write(toFile: statsFile, atomically: true, encoding: .utf8) }
+                    }
+                    if pending.count > 4096 { pending.removeAll() }
+                }
+            }
+        }
         var last: Int?, tick = 0
         while getppid() == parent {
-            if let now = scale(ofWindowOf: parent), now != last || tick % 3 == 0 {
-                if now != last { log("the window is on a display with \(now) pixel\(now == 1 ? "" : "s") to a point") }
-                let line = Array("scale=\(now)\n".utf8)
+            var changed = false
+            if let now = scale(ofWindowOf: parent), now != last {
+                log("the window is on a display with \(now) pixel\(now == 1 ? "" : "s") to a point"); last = now; changed = true
+            }
+            if changed || tick % 3 == 0 {
+                let line = Array((last.map { "scale=\($0)" } ?? "ping").utf8) + [0x0A]
                 if write(fd, line, line.count) < 0 { log("the port is gone"); break }
-                last = now
             }
             tick += 1
             sleep(1)
         }
         close(fd)
+        if let statsFile { try? FileManager.default.removeItem(atPath: statsFile) }
         return 0
     }
 }

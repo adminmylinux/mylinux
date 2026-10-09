@@ -16,8 +16,8 @@
 #    screens, without a network (the network card's driver waits for their end, so a local account is offered);
 #    setup.ps1 reports "installed" when they are over.
 #  - installed: the display is a virtio card (driver viogpudo), which follows the window's size as Omarchy's does (the
-#    title bar's size buttons, Fill Screen, a drag), with twice the pixels on a Retina display; the pointer is drawn
-#    by the Mac; the clipboard is shared both ways (windows/mylinux-agent.ps1 inside, the launcher's or
+#    title bar's size buttons, Fill Screen, a drag), with twice the pixels on a Retina display; one pointer, Windows's own,
+#    which the window draws over the picture (the Mac's is hidden there); the clipboard is shared both ways (windows/mylinux-agent.ps1 inside, the launcher's or
 #    tools/omarchy-clipboard.py's bridge here); sound through the Mac. Microsoft's ISO is no longer attached. Dragged
 #    to a display of the other kind (Retina or not), the window keeps its size and Windows changes its scaling (the
 #    launcher's helper tells it; from a terminal the scaling stays the start's).
@@ -103,7 +103,9 @@ if [ "$INSTALLED" = 1 ] && [ -z "${DISPLAY_CARD:-}" ]; then
   DISPLAY_DEVS="-device virtio-gpu-pci,id=vgpu,max_outputs=1,xres=$GX,yres=$GY,romfile="
   # gl=es: the window's GL drawing, as Omarchy's has. Windows draws in 2D either way; QEMU's plain drawing tells the
   # guest a wrong size for a zoomed window (the wanted size times the zoom), and Windows followed that
-  DISPLAY_OPTS="cocoa,gl=es,show-cursor=on,zoom-to-fit=off,$KEYS"
+  # show-cursor=off: the Mac's own pointer is hidden over the window. Windows's pointer is there (the display driver
+  # hands it to the window, which draws it over the picture), and with the Mac's shown as well there were two.
+  DISPLAY_OPTS="cocoa,gl=es,show-cursor=off,zoom-to-fit=off,$KEYS"
   HIDPI=true                              # one pixel of Windows is one pixel of the display
   export MYLINUX_DESKTOP_MODE="${GX}x${GY}"
   # the size Windows starts at, in words its agent reads (windows/mylinux-agent.ps1: SMBIOS OEM strings)
@@ -239,6 +241,7 @@ fi
 # the helper for the display's kind: as the clipboard's, it leaves when QEMU is gone
 if [ "$HOSTPORT" = 1 ]; then
   rm -f "$HOSTSOCK"
-  "$MYLINUX_HELPER" --windows-display "$HOSTSOCK" 2>>"${MACHINE}/display.log" &
+  rm -f "$MACHINE/guest-memory"            # (Windows's own memory figure, kept by the helper for the launcher's sidebar)
+  "$MYLINUX_HELPER" --windows-display "$HOSTSOCK" "$MACHINE/guest-memory" 2>>"${MACHINE}/display.log" &
 fi
 exec "$QEMU" "$@"

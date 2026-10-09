@@ -381,7 +381,7 @@ case "$out" in *mylinux.res=*) ko "installing: no start size for the agent" ;; *
 file_absent "dry run: no machine folder made" "$T/win"
 out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 SCALE=2 RES=1600x1000 sh run-windows.sh 2>&1)
 has "installed: the virtio display at twice the points on a Retina display" "$out" "virtio-gpu-pci,id=vgpu,max_outputs=1,xres=3200,yres=2000,romfile="
-has "installed: the window's GL drawing, the Mac's pointer, a window that follows" "$out" "cocoa,gl=es,show-cursor=on,zoom-to-fit=off,full-grab=on"
+has "installed: the window's GL drawing, one pointer (the Mac's hidden), a window that follows" "$out" "cocoa,gl=es,show-cursor=off,zoom-to-fit=off,full-grab=on"
 has "installed: the start size and scale for the agent" "$out" "mylinux.res=3200x2000,value=mylinux.scale=2,value=mylinux.run="
 case "$out" in *wincd*) ko "installed: Microsoft's ISO is not attached" ;; *) ok "installed: Microsoft's ISO is not attached" ;; esac
 mkdir -p "$T/win2"; : > "$T/win2/installed"; echo 0a1b2c3d-1111-2222-3333-444455556666 > "$T/win2/uuid"
@@ -402,7 +402,7 @@ out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 SCALE=1 RES=1600x1000 MYLINUX_HELPE
 has "with the launcher's helper: the port it tells Windows the display's kind through" "$out" "nr=3,chardev=mlhost,name=dev.mylinux.host"
 out=$(cd "$W" && DRYRUN=1 MYLINUX_HELPER=/bin/sh sh run-windows.sh 2>&1)
 case "$out" in *dev.mylinux.host*) ko "installing: no such port" ;; *) ok "installing: no such port" ;; esac
-grep -q 'export MYLINUX_GUEST_SCALES=1' "$W/run-windows.sh" && grep -q -- '--windows-display "$HOSTSOCK"' "$W/run-windows.sh" && ok "the runtime keeps the window's size across displays only when the helper runs" || ko "MYLINUX_GUEST_SCALES and the helper do not go together"
+grep -q 'export MYLINUX_GUEST_SCALES=1' "$W/run-windows.sh" && grep -q -- '--windows-display "$HOSTSOCK" "$MACHINE/guest-memory"' "$W/run-windows.sh" && ok "the runtime keeps the window's size across displays only when the helper runs" || ko "MYLINUX_GUEST_SCALES and the helper do not go together"
 out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 GRAB=all sh run-windows.sh 2>&1); rc=$?
 not_rc0 "unknown GRAB is refused" $rc
 out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 DISK_SIZE_GB=16 sh run-windows.sh 2>&1); rc=$?

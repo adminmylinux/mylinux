@@ -911,6 +911,18 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(WindowsDisplay.scale(pixelWidth: 0, width: 0), 1)
         XCTAssertNil(WindowsDisplay.scale(ofWindowOf: 1), "a process without a window on screen")
     }
+    func testWindowsSaysItsOwnMemoryFigure() throws {
+        let m = try XCTUnwrap(WindowsDisplay.memory("memory=3350000000/8589934592"))
+        XCTAssertEqual(m.used, 3_350_000_000); XCTAssertEqual(m.total, 8_589_934_592)
+        for bad in ["memory=", "memory=1", "memory=9/8", "memory=-1/8", "memory=a/b", "scale=2", "memory=1/0"] { XCTAssertNil(WindowsDisplay.memory(bad), bad) }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-winmem-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        XCTAssertNil(WindowsDisplay.keptMemory(dir), "no helper has written anything")
+        try "memory=2147483648/8589934592\n".write(to: WindowsDisplay.memoryFile(dir), atomically: true, encoding: .utf8)
+        XCTAssertEqual(WindowsDisplay.keptMemory(dir)?.used, 2_147_483_648)
+        XCTAssertNil(WindowsDisplay.keptMemory(dir, now: Date().addingTimeInterval(60)), "a figure a minute old is not the machine's now")
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

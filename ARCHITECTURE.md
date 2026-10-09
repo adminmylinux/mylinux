@@ -208,9 +208,12 @@ did my PC restart?" with it.
 
 `windows/setup.ps1` runs as SYSTEM at every start and every sign-in (a scheduled task of its own once installed, the
 specialize pass the first time), from the tools disc, so a newer launcher's scripts reach an existing machine: it
-installs the drivers with `pnputil`, turns on the display driver's hardware cursor (so the Mac draws the pointer),
+installs the drivers with `pnputil`, turns on the display driver's hardware cursor (the pointer is drawn by the window over the picture, and the Mac's
+own is hidden there: `show-cursor=off`; with both shown there were two pointers),
 keeps the display from sleeping, turns hibernation off, copies the agent to `C:\Program Files\myLinux` and registers
-it to start at sign-in with highest rights (a virtio serial port opens only for an elevated process). It reports
+it to start at sign-in with highest rights (a virtio serial port opens only for an elevated process). An agent that
+was started from the file before (a sign-in without a password is quicker than this script) is stopped and started
+again when a newer file came, so a newer launcher's agent is the one that runs from the first start on. It reports
 through the port `dev.mylinux.setup`, which QEMU writes to `setup.log`.
 
 Three things in it were each found by a test install going wrong:
@@ -250,6 +253,12 @@ C# for the Windows calls:
   binary as a helper (`--windows-display`, `WindowsDisplay.swift`, started by `run-windows.sh` as the clipboard
   bridge is) writes `scale=1` or `scale=2` to the port `dev.mylinux.host` for the display the window's middle is
   on, and the agent sets Windows's scaling. Started from a terminal there is no helper and none of this.
+- **Memory.** Windows has no balloon device for the launcher to ask (its driver and service would be one more thing
+  to install), and what QEMU holds on the Mac is all of the machine's memory soon after a start: the sidebar said
+  100 %. The agent answers each line on `dev.mylinux.host` (the helper sends one every three seconds, `ping` when it
+  has nothing to say) with `memory=<bytes in use>/<bytes in all>` from `GlobalMemoryStatusEx`, Task Manager's
+  figure; the helper keeps the last one in the machine's `guest-memory`, and `MachineStats` reads it while it is
+  fresh.
 - **The clipboard.** The port `dev.tryomarchy.clipboard` with Omarchy's protocol, so the Mac side is the launcher's
   bridge unchanged (`tools/omarchy-clipboard.py` from the command line): text with its line endings converted, and
   PNG pictures. The log (`%LOCALAPPDATA%\myLinux\agent.log`) has kinds and sizes, never contents.

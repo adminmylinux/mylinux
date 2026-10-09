@@ -79,6 +79,8 @@ public static class Display {
     [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(IntPtr packet);
     [DllImport("user32.dll")] static extern int DisplayConfigSetDeviceInfo(IntPtr packet);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+    [StructLayout(LayoutKind.Sequential)] struct MEMORYSTATUSEX { public uint dwLength, dwMemoryLoad; public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile, ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual; }
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX m);
 
     static string logFile;
     static int startWidth, startHeight, startScale;
@@ -108,7 +110,7 @@ public static class Display {
     static void Log(string text) { try { File.AppendAllText(logFile, DateTime.Now.ToString("s") + " display: " + text + "\r\n"); } catch { } }
 
     // What the Mac says about the display the window is on now (the launcher's helper, over the virtio port
-    // dev.mylinux.host): "scale=1" or "scale=2", that display's pixels to a point. Dragged from a Retina display to
+    // dev.mylinux.host): "scale=1" or "scale=2", that display's pixels to a point ("ping" while it cannot tell). Dragged from a Retina display to
     // another kind or back, the window keeps its size and Windows gets half or twice the pixels (followed below, as
     // every size is): its scaling goes with them, and what is on the screen stays as large as it was.
     // Windows keeps its scaling as steps from the one it recommends, and what it recommends goes with the number of
@@ -119,12 +121,21 @@ public static class Display {
     static void Host() {
         while (true) {
             try {
-                // (GENERIC_READ, OPEN_EXISTING, FILE_FLAG_OVERLAPPED: as the clipboard's port is opened)
-                using (var port = CreateFile("\\\\.\\Global\\dev.mylinux.host", 0x80000000, 0, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero)) {
+                // (GENERIC_READ | GENERIC_WRITE, OPEN_EXISTING, FILE_FLAG_OVERLAPPED: as the clipboard's port is opened;
+                // a stream with no buffer of its own, read and written in turn by this one thread)
+                using (var port = CreateFile("\\\\.\\Global\\dev.mylinux.host", 0xC0000000, 0, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero)) {
                     if (!port.IsInvalid) {
-                        using (var reader = new StreamReader(new FileStream(port, FileAccess.Read, 256, true))) {
+                        using (var stream = new FileStream(port, FileAccess.ReadWrite, 1, true))
+                        using (var reader = new StreamReader(stream)) {
                             string line;
                             while ((line = reader.ReadLine()) != null) {
+                                // every word from the Mac (one every three seconds) is answered with what Windows's
+                                // memory is at, as Task Manager counts it: the launcher shows that beside the machine
+                                MEMORYSTATUSEX m = new MEMORYSTATUSEX(); m.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+                                if (GlobalMemoryStatusEx(ref m) && m.ullTotalPhys > 0) {
+                                    byte[] answer = System.Text.Encoding.ASCII.GetBytes("memory=" + (m.ullTotalPhys - m.ullAvailPhys) + "/" + m.ullTotalPhys + "\n");
+                                    stream.Write(answer, 0, answer.Length); stream.Flush();
+                                }
                                 if (line != "scale=1" && line != "scale=2") continue;
                                 int percent = line == "scale=2" ? 200 : 100;
                                 lock (scaling) {

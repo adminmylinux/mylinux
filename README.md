@@ -157,7 +157,7 @@ back.
 
 From that second start on it is a machine like the other desktops. The display is a virtio card whose driver follows
 the window (the title bar's − + and Fill Screen buttons, full screen, a drag of the window's edge), with twice the
-pixels and 200 % scaling on a Retina display; the pointer is drawn by the Mac; the clipboard is shared both ways,
+pixels and 200 % scaling on a Retina display; there is one pointer, Windows's own; the clipboard is shared both ways,
 text and pictures ([`windows/mylinux-agent.ps1`](windows/mylinux-agent.ps1), started at sign-in, speaks the protocol
 of Omarchy's clipboard agent over a virtio serial port); sound goes through the Mac. The title bar's ⌘ menu has
 **Snippets…**, with PowerShell ones for Windows (Claude Code and a `cc` for it, Codex and `cx`, Git, VS Code and

@@ -5,8 +5,9 @@ import Darwin
 /// Every 3 s, off the main thread:
 /// - CPU: its QEMU's share of the machine's virtual CPUs (one `ps` for all machines; -smp gives the count).
 /// - Memory: what the guest itself says it uses (total minus available), from QEMU's balloon statistics on the
-///   control socket (Debian, Alpine and Omarchy have the balloon device); myLinux has none, so there it is the
-///   memory QEMU holds on the Mac, which is the guest's memory as far as the Mac is concerned.
+///   control socket (Debian, Alpine and Omarchy have the balloon device); Windows's agent says it through the
+///   launcher's helper; myLinux has neither, so there it is the memory QEMU holds on the Mac, which is the guest's
+///   memory as far as the Mac is concerned.
 /// - Disk: `df` inside a server over ssh every 30 s; otherwise the Mac's view of the disk file, the space it takes
 ///   (a disk file grows as the guest writes, and space the guest frees is not handed back to the Mac, so this is
 ///   the free space at most).
@@ -80,7 +81,12 @@ final class MachineStats: ObservableObject {
                 var s = Stat(cpu: min(1, proc.cpu / 100 / Double(vcpus)), macCPU: min(1, proc.cpu / 100 / Double(max(1, hostNow.cores))),
                              vcpus: vcpus, memUsed: min(allocated, proc.rss), memTotal: allocated,
                              memFromGuest: false, diskUsed: 0, diskTotal: 0, diskFromGuest: false)
-                if p.kind != .mylinux, p.kind != .tiny, let socket = sockets[p.id], let m = self.balloon(socket, pid: proc.pid) {
+                if p.kind == .windows {
+                    // Windows has no balloon device: its agent says the figure (Task Manager's "in use") and the
+                    // launcher's helper beside the machine keeps it (WindowsDisplay). Without it, as myLinux: what QEMU
+                    // holds on the Mac, which for Windows is all it was given soon after its start.
+                    if let m = WindowsDisplay.keptMemory(p.machineFolder) { s.memUsed = m.used; s.memTotal = m.total; s.memFromGuest = true }
+                } else if p.kind != .mylinux, p.kind != .tiny, let socket = sockets[p.id], let m = self.balloon(socket, pid: proc.pid) {
                     s.memUsed = m.used; s.memTotal = m.total; s.memFromGuest = true
                 }
                 if let d = MachineStats.fileDisk(p.appsDisk) { s.diskUsed = d.used; s.diskTotal = d.total }
