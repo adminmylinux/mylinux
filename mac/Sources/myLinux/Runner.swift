@@ -89,10 +89,17 @@ final class Runner: ObservableObject {
             }
         } else if p.kind.runsDesktop {
             guard settings.runtimePresent else { state = .failed("\(p.kind.title) needs the accelerated QEMU (Settings › QEMU › Download)."); return }
-            // an existing machine has its own disk and boot files; only a new one needs the downloaded guest
-            let machine = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
-            let created = FileManager.default.fileExists(atPath: p.appsDisk) && FileManager.default.fileExists(atPath: machine.appendingPathComponent("boot/vmlinuz-linux").path)
-            guard created || settings.desktopPresent(p.kind) else { state = .failed("\(p.kind.title) is not downloaded yet (Download on this page)."); return }
+            // an existing machine has its own disk and boot files; only a new one needs the downloaded guest. Windows
+            // needs Microsoft's ISO until it is installed, and the firmware always
+            if p.kind == .windows {
+                guard p.windowsInstalled ? FileManager.default.fileExists(atPath: settings.outDir.appendingPathComponent("windows/edk2-aarch64-code.fd").path)
+                                         : settings.desktopPresent(.windows) else {
+                    state = .failed(p.windowsInstalled ? "Windows's firmware is missing (Get Windows… on this page fetches it)."
+                                                       : "Windows is not there to install yet (Get Windows… on this page)."); return
+                }
+            } else {
+                guard p.desktopCreated || settings.desktopPresent(p.kind) else { state = .failed("\(p.kind.title) is not downloaded yet (Download on this page)."); return }
+            }
         } else {
             guard settings.imagePresent else {
                 state = .failed(settings.developerMode ? "No image in \(settings.outDir.path): run ./build.sh or tools/get-image.sh in the checkout."
@@ -157,7 +164,7 @@ final class Runner: ObservableObject {
         state = .starting
         startedAt = Date(); sshAnsweredAt = nil; readyAt = nil; mountingCloud = false
         UserDefaults.standard.set(p.id.uuidString, forKey: QuickStart.lastKey)
-        connectSerial()
+        if p.kind == .windows { awaitControlSocket() } else { connectSerial() }
         sshReady = false
         // myLinux: its cloud folders are mounted through the root console once its shell is up (appendConsole)
         cloudConsolePending = p.kind == .mylinux ? (p.cloudFolders, p.macFolders) : nil
@@ -190,6 +197,20 @@ final class Runner: ObservableObject {
         } else {
             let lines = logTail(lines: 4)
             state = .failed(lines.isEmpty ? "myLinux exited with status \(status)." : lines.joined(separator: "\n"))
+        }
+    }
+
+    /// A Windows machine has no console to wait for: it is running when QEMU has made its control socket (its window
+    /// is up then), which run-windows.sh's own preparations (the tools disc, the machine's app) come before.
+    private func awaitControlSocket() {
+        let path = qmpSocket
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let deadline = Date().addingTimeInterval(90)
+            while Date() < deadline, !FileManager.default.fileExists(atPath: path) {
+                guard let self, self.process?.isRunning == true else { return }
+                usleep(300_000)
+            }
+            DispatchQueue.main.async { if self?.state == .starting { self?.state = .running } }
         }
     }
 

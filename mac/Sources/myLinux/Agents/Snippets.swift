@@ -68,6 +68,7 @@ enum Snippets {
         case .omarchy: return "paste it into a terminal in Omarchy with Ctrl+Shift+V"
         case .arch: return "paste it into Konsole with Ctrl+Shift+V"
         case .kali: return "paste it into a terminal in Kali with Ctrl+Shift+V"
+        case .windows: return "paste it into Terminal in Windows with Ctrl+V"
         case .mylinux: return "paste it into a terminal in myLinux"
         case .debian, .alpine, .tiny: return "paste it into the terminal with ⌘V"
         }
@@ -266,7 +267,7 @@ enum SnippetsWindow {
     private static var open: [UUID: NSWindow] = [:]
 
     /// `paste` types a snippet into the machine; without one, a desktop's (Omarchy's window, run by the launcher) is
-    /// pasted through QEMU: the clipboard, then Ctrl+Shift+V.
+    /// pasted through QEMU: the clipboard, then Ctrl+Shift+V (Ctrl+V in Windows).
     static func show(_ machine: Profile, over parent: NSWindow? = nil, paste: ((String) async -> String?)? = nil) {
         show(id: machine.id, name: machine.name, set: .machine(machine.kind), over: parent, machine: machine,
              paste: paste ?? (machine.kind.runsDesktop && !MachineApp.active ? { await pasteIntoDesktop($0, machine) } : nil))
@@ -277,7 +278,8 @@ enum SnippetsWindow {
     }
 
     /// Omarchy's window: the text on the clipboard (QEMU hands it to Omarchy), then Ctrl+Shift+V into the window in
-    /// front inside (a terminal pastes it), and Omarchy's window in front.
+    /// front inside (a terminal pastes it), and Omarchy's window in front. Windows pastes with Ctrl+V, in its Terminal
+    /// as everywhere else (Terminal asks before it pastes more than one line).
     static func pasteIntoDesktop(_ text: String, _ machine: Profile) async -> String? {
         let r = RunManager.shared.runner(for: machine.id)
         guard r.isActive, FileManager.default.fileExists(atPath: r.qmpSocket) else { return "\(machine.name) is not running in this launcher." }
@@ -286,9 +288,11 @@ enum SnippetsWindow {
         // QEMU looks at the Mac's clipboard as it redraws; give it a moment to offer the text inside
         try? await Task.sleep(nanoseconds: 800_000_000)
         let path = r.qmpSocket
-        let keys = #"{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"ctrl"},{"type":"qcode","data":"shift"},{"type":"qcode","data":"v"}]}}"#
+        let windows = machine.kind == .windows
+        let keys = windows ? #"{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"ctrl"},{"type":"qcode","data":"v"}]}}"#
+            : #"{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"ctrl"},{"type":"qcode","data":"shift"},{"type":"qcode","data":"v"}]}}"#
         let ok = await Task.detached { Runner.qmp(path, json: keys) }.value
-        guard ok else { return "Could not reach \(machine.name)'s QEMU to paste; Copy, then Ctrl+Shift+V in its terminal." }
+        guard ok else { return "Could not reach \(machine.name)'s QEMU to paste; Copy, then \(windows ? "Ctrl+V" : "Ctrl+Shift+V") in its terminal." }
         if let pid = r.qemuPID { NSRunningApplication(processIdentifier: pid)?.activate() }
         return nil
     }

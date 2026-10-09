@@ -11,7 +11,7 @@ step "shell scripts: sh -n"
 find board/overlay tools omarchy -type f \( -name '*.sh' -o -path '*/usr/bin/*' -o -path '*/init.d/*' \) 2>/dev/null | while read -r f; do
   head -1 "$f" | grep -q '^#!.*sh' && { sh -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; }
 done
-for f in run.sh run-omarchy.sh run-server.sh run-debian.sh run-alpine.sh debian_install.sh alpine_install.sh build.sh mac/build-app.sh server-apps/run.sh server-apps/mount-share.sh; do bash -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; done
+for f in run.sh run-omarchy.sh run-windows.sh tools/get-windows.sh tools/desktop-window.sh run-server.sh run-debian.sh run-alpine.sh debian_install.sh alpine_install.sh build.sh mac/build-app.sh server-apps/run.sh server-apps/mount-share.sh; do bash -n "$f" || { echo "SYNTAX: $f"; echo "$f" >> "$FAILED"; }; done
 if [ -s "$FAILED" ]; then : > "$FAILED"; fail=$((fail + 1)); else echo ok; fi
 
 step "python: ast"
@@ -40,7 +40,7 @@ for a in json.load(open("server-apps/catalog.json"))["apps"]:
     if a.get("icon") and not all(c in "0123456789abcdef" for c in a["icon"].lower()): miss.append("a hex icon")
     if miss: print("CATALOG:", a.get("id"), "has no", ", ".join(miss)); bad += 1
 # Snippets…: each with an id, a name, a line about it, systems the launcher knows, and text
-for sf, systems in (("snippets.json", ("mylinux", "omarchy", "debian", "alpine", "arch", "kali")), ("snippets-vnc.json", ("vnc",))):
+for sf, systems in (("snippets.json", ("mylinux", "omarchy", "debian", "alpine", "arch", "kali", "windows")), ("snippets-vnc.json", ("vnc",))):
   seen = set()
   for sn in json.load(open("server-apps/" + sf))["snippets"]:
     miss = [k for k in ("id", "name", "description", "os", "text") if not sn.get(k)]

@@ -22,7 +22,7 @@ enum MachineApp {
         let id = p.id.uuidString.lowercased()
         switch p.kind {
         case .mylinux: return "dev.mylinux.vm.\(id)"
-        case .omarchy, .arch, .kali: return "dev.mylinux.vm.omarchy.\(id)"      // run-omarchy.sh's wrapper, for all three
+        case .omarchy, .arch, .kali, .windows: return "dev.mylinux.vm.omarchy.\(id)"      // the desktops' wrapper (run-omarchy.sh, run-windows.sh)
         case .debian, .alpine, .tiny: return "dev.mylinux.machine.\(id)"
         }
     }
@@ -263,7 +263,13 @@ enum MachineLink {
                 if info["restart"] as? Bool == true, r.isActive || r.state == .inUseElsewhere { r.restart(q) }
             case "restart":
                 if r.isActive || r.canStopElsewhere { r.restart(p) }
-            case "cloud": CloudFoldersWindow.show(p.id)       // ⇧⌘P or Machine › Cloud Folders… in a desktop's window
+            case "cloud":                                     // ⇧⌘P or Machine › Cloud Folders… in a desktop's window
+                if p.kind == .windows {
+                    NSApp.activate()
+                    let alert = NSAlert(); alert.messageText = "Cloud Folders in \(p.name)"
+                    alert.informativeText = "Windows reads no Mac folder directly, so the Mac's cloud folders cannot be attached. Install the cloud drive's own Windows app inside (OneDrive is there already), or share a folder on the Mac and open \\\\10.0.2.2 in File Explorer."
+                    alert.runModal()
+                } else { CloudFoldersWindow.show(p.id) }
             case "snippets": SnippetsWindow.show(p)               // Machine › Snippets… in a desktop's window
             case "share":                                         // Machine › Mount a Share… in a desktop's window
                 if p.kind == .omarchy { MountShareWindow.show(p) }
@@ -273,6 +279,7 @@ enum MachineLink {
                     alert.informativeText = p.kind == .arch
                         ? "In Arch Linux, Dolphin mounts shares: type smb://<server>/<share> in its address bar (Ctrl+L), for example smb://10.0.2.2/Public for this Mac's."
                         : p.kind == .kali ? "In Kali Linux, Thunar mounts shares: type smb://<server>/<share> in its address bar (Ctrl+L), for example smb://10.0.2.2/Public for this Mac's."
+                        : p.kind == .windows ? "In Windows, File Explorer mounts shares: type \\\\<server>\\<share> in its address bar, for example \\\\10.0.2.2\\Public for this Mac's (File Sharing on the Mac, with Windows File Sharing on for your account). Right-click This PC › Map network drive… gives it a drive letter."
                         : "Mounting shares is there in Omarchy, Debian and Alpine; myLinux does not have it yet."
                     alert.runModal()
                 }
@@ -281,6 +288,7 @@ enum MachineLink {
                     let problem: String? = p.kind == .omarchy ? await ServerApps.openInOmarchy(p)
                         : p.kind == .arch ? "Arch Linux installs apps with pacman: in Konsole, sudo pacman -S <name> (pacman -Ss <word> searches)."
                         : p.kind == .kali ? "Kali Linux installs apps with apt: in a terminal, sudo apt install <name> (apt search <word> searches); sudo apt install kali-linux-default brings Kali's full default set of tools."
+                        : p.kind == .windows ? "Windows installs apps with winget: in Terminal, winget install <name> (winget search <word> searches), or from the Microsoft Store. Snippets… in this menu has the common ones."
                         : "myLinux has its own: Super+Space (⌥Space) finds, runs and installs apps."
                     guard let problem else { return }
                     NSApp.activate()

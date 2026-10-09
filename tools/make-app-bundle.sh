@@ -26,6 +26,8 @@ case "${MYLINUX_BUNDLE:-mylinux}" in
   omarchy) APP="$OUT/myLinux-omarchy.app"; HIDPI=true; BUNDLE_ID=dev.mylinux.vm.omarchy ;;
   *) echo "MYLINUX_BUNDLE must be mylinux or omarchy" >&2; exit 1 ;;
 esac
+# run-windows.sh's install phase: the desktops' bundle, but 1x (the firmware's 800x600 picture at a readable size)
+case "${MYLINUX_BUNDLE_HIDPI:-}" in '') ;; true|false) HIDPI=$MYLINUX_BUNDLE_HIDPI ;; *) echo "MYLINUX_BUNDLE_HIDPI must be true or false" >&2; exit 1 ;; esac
 # Which QEMU: the accelerated runtime in $OUT/qemu-runtime (tools/get-qemu-runtime.sh: VirGL, self-contained, no
 # Homebrew needed) when it is there, else Homebrew's. MYLINUX_QEMU=brew insists on Homebrew's. run.sh asks the same
 # question (tools/qemu-flavour.sh) because the two take different machine arguments.

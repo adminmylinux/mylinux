@@ -59,6 +59,7 @@ flowchart LR
 | `app/` | A small Qt demo app (a clock). |
 | `run.sh` | Starts a myLinux machine on the Mac. |
 | `run-omarchy.sh` | Starts an Omarchy machine on the Mac. |
+| `run-windows.sh`, `windows/` | Starts a Windows 11 for Arm machine; the answer file, setup script and agent that go onto its tools disc. |
 | `omarchy/session/` | Session save and restore agent that runs inside Omarchy (installed by the user, systemd user units). |
 | `mac/` | myLinux Launcher, a Swift package; `mac/build-app.sh` bundles it. `mac/spike/` is a leftover experiment. |
 | `tools/` | Host helpers: app bundling and branding, image and runtime downloads, the QEMU runtime build and its patches, clipboard bridges, window placement, the SDK fast loop, checks and tests. |
@@ -170,6 +171,81 @@ The differences from `run.sh`:
   installed and signed in from `.mylinux/claude/status-<id>.json` and follows a setup through
   `progress-<id>.jsonl` and `result-<id>.json`. Each question has its own id, so no file is ever one the guest's 9p
   has seen before, and the request that carries a token is removed by the script before it does anything else.
+
+### 4.3 Windows machines: run-windows.sh
+
+A Windows machine is a folder with a raw disk (`windows.raw`, sparse), `vars.fd` (the firmware's own settings: its
+boot entries), `uuid`, `tools.iso`, `setup.log` and, once Windows is in it, the empty file `installed`. What it is made from
+is in `out/windows`: Microsoft's Arm64 ISO as the user gave it to `tools/get-windows.sh --iso` (checked: an Arm64
+boot loader and an install image are on it; kept as a clone), the Arm64 Windows 11 builds of three virtio drivers
+(NetKVM, viogpudo, vioserial) from one pinned virtio-win driver disc, and QEMU's edk2 firmware.
+
+`run-windows.sh` has two phases, told apart by `installed`:
+
+- **Installing.** The machine starts from Microsoft's ISO with hardware Windows Setup has drivers for: an NVMe disk,
+  a USB keyboard and tablet on `qemu-xhci`, and `ramfb`, the firmware's framebuffer, at 800x600 in a window that
+  scales it. The firmware asks for a key before it starts a disc ("Press any key to boot from CD or DVD"); the script
+  presses Return for the first twelve seconds through a QMP socket of its own, only while the disk has no partition
+  table. `tools.iso` is made by the script with `hdiutil` from `windows/` and the drivers: Windows Setup finds
+  `autounattend.xml` on any drive, and that file sets the LabConfig bypass keys (TPM, Secure Boot, RAM, CPU, storage),
+  `BypassNRO` (a local account without a network) and one specialize-pass command that runs `mylinux\setup.cmd` from
+  the disc. Everything a person decides stays in Setup: language, edition, the licence terms, the account.
+- **Installed.** The ISO is not attached. The display is `virtio-gpu-pci` with the viogpudo driver, the window is
+  the desktops' own (`MYLINUX_DESKTOP_MODE`, the size buttons, `MYLINUX_COMMANDS_MENU="snippets share"`), sized by
+  `tools/desktop-window.sh`, the part of `run-omarchy.sh` that both scripts now source.
+
+Two machine settings were each found by a failure. `gic-version=3` is Apple's own interrupt controller under HVF
+(with QEMU's v2m frame for message interrupts). `highmem-mmio=off` keeps every PCI device's memory below 4 GB: with
+QEMU's high window the virtio network driver hung as it was installed, and Windows's first-run setup looped on "Why
+did my PC restart?" with it.
+
+`windows/setup.ps1` runs as SYSTEM at every start and every sign-in (a scheduled task of its own once installed, the
+specialize pass the first time), from the tools disc, so a newer launcher's scripts reach an existing machine: it
+installs the drivers with `pnputil`, turns on the display driver's hardware cursor (so the Mac draws the pointer),
+keeps the display from sleeping, turns hibernation off, copies the agent to `C:\Program Files\myLinux` and registers
+it to start at sign-in with highest rights (a virtio serial port opens only for an elevated process). It reports
+through the port `dev.mylinux.setup`, which QEMU writes to `setup.log`.
+
+Three things in it were each found by a test install going wrong:
+
+- **The network card's driver waits for the end of Windows's first-run screens.** With a network those screens
+  insist on an account online (a test machine was even shown an organisation's sign-in page there); without one
+  they offer "I don't have internet" and a local account, which `BypassNRO` allows. "Over" is Windows's own word,
+  `OOBEComplete` in kernel32; the registry's `SystemSetupInProgress` is 1 only while Setup installs and 0 again
+  when the first-run screens are up. The run at that start of Windows waits for it, then adds the driver.
+- **"Installed" is said then**, not when the files are on the disk: the line `mylinux-setup: installed` in
+  `setup.log` is what the next start of `run-windows.sh` (and the launcher's page) takes as the end of the install
+  phase, so a machine stopped in the middle of the first-run screens comes back on the installer's hardware.
+- **No hibernation**, so none of Windows's fast startup: with it a shut-down Windows is resumed and not started,
+  which here meant the task at start-up not run, and the hardware and the start size of the start before.
+
+Each machine has an identity of its own (`uuid` in its folder, passed as the system UUID, and a network address
+made from it): QEMU's defaults are the same in every machine anywhere, and Windows's licensing and Microsoft's
+device services tell machines apart by them.
+
+`windows/mylinux-agent.ps1` is the counterpart of `omarchy/session` and `kali/mylinux-desktop`, in PowerShell with
+C# for the Windows calls:
+
+- **The display follows the window.** QEMU tells the virtio display the size the window wants; the driver raises the
+  event `Global\VioGpuResolutionEvent<n>` and answers a D3DKMT escape with that size, and the agent sets the mode.
+  The driver's own helper (`vgpusrv`/`viogpuap`) is not used: it stops looking at the first adapter that is not the
+  virtio one, and Windows lists its basic display first here. The window uses QEMU's GL drawing (`gl=es`) although
+  Windows draws in 2D, because the plain path reports a zoomed window's size multiplied by the zoom.
+- **The start size.** The firmware and Windows's boot loader set modes of their own, and the window mirrors them, so
+  the size Windows should have is handed in as SMBIOS OEM strings (`mylinux.res`, `mylinux.scale`, and `mylinux.run`,
+  a new word at each start so the size is applied once per start). On a Retina display the agent also sets Windows's
+  scaling to 200 % (`DisplayConfigSetDeviceInfo`).
+- **The clipboard.** The port `dev.tryomarchy.clipboard` with Omarchy's protocol, so the Mac side is the launcher's
+  bridge unchanged (`tools/omarchy-clipboard.py` from the command line): text with its line endings converted, and
+  PNG pictures. The log (`%LOCALAPPDATA%\myLinux\agent.log`) has kinds and sizes, never contents.
+
+The agent also says once, in front of whatever is open, that Windows is installed and should be started again (the
+start it was installed in still has the installer's hardware).
+
+The launcher (`Profile.Kind.windows`) treats it as a desktop with no share folder; **Get Windows…**
+(`DesktopImageManager.getWindows`) explains where Windows comes from, opens Microsoft's page and takes the ISO.
+Snippets…'s Paste sends Ctrl+V instead of Ctrl+Shift+V, and with no console to wait for, the machine counts as
+running when QEMU's control socket is there.
 
 ## 5. Inside the myLinux guest
 

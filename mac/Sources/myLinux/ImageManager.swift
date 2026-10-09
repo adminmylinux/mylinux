@@ -253,11 +253,16 @@ final class RuntimeManager: ScriptDownloader {
 /// Omarchy (tools/get-omarchy.sh): downloaded once (1.4 GB) from the Try Omarchy project's signed release. Arch Linux
 /// with Plasma (tools/get-arch.sh): about 2 GB, our build (tools/build-arch-image.sh) from mylinux-releases. Kali
 /// Linux with Xfce (tools/get-kali.sh): about 2 GB, our build (tools/build-kali-image.sh) from Kali's packages.
+/// Windows (tools/get-windows.sh) is not downloaded by the launcher: it is Microsoft's, and Microsoft's page gives
+/// its Arm64 ISO to a person, not to a script. The user downloads it there and chooses the file; the script keeps it
+/// and fetches the virtio drivers and the firmware. A machine installs itself from it with Windows Setup.
 final class DesktopImageManager: ScriptDownloader {
     static let omarchy = DesktopImageManager(.omarchy)
     static let arch = DesktopImageManager(.arch)
     static let kali = DesktopImageManager(.kali)
-    static func shared(_ kind: Profile.Kind) -> DesktopImageManager { kind == .arch ? arch : kind == .kali ? kali : omarchy }
+    static let windows = DesktopImageManager(.windows)
+    static func shared(_ kind: Profile.Kind) -> DesktopImageManager { kind == .arch ? arch : kind == .kali ? kali : kind == .windows ? windows : omarchy }
+    static let microsoftPage = URL(string: "https://www.microsoft.com/software-download/windows11arm64")!
 
     let kind: Profile.Kind
     @Published private(set) var revision: String?
@@ -266,9 +271,10 @@ final class DesktopImageManager: ScriptDownloader {
     init(_ kind: Profile.Kind) { self.kind = kind; super.init() }
 
     /// For the download rows: the size and where it comes from.
-    var size: String { kind == .arch || kind == .kali ? "about 2 GB" : "1.4 GB" }
+    var size: String { kind == .windows ? "about 8 GB" : kind == .arch || kind == .kali ? "about 2 GB" : "1.4 GB" }
     var detail: String {
-        kind == .kali ? "about 2 GB, Kali's Xfce desktop and its top tools, built by myLinux from Kali's packages"
+        kind == .windows ? "the Arm64 ISO you download from Microsoft (about 8 GB), and the virtio drivers (877 MB to fetch, 3 MB kept)"
+        : kind == .kali ? "about 2 GB, Kali's Xfce desktop and its top tools, built by myLinux from Kali's packages"
         : kind == .arch ? "about 2 GB, Arch Linux ARM with KDE Plasma, built by myLinux"
                       : "1.4 GB, from the Try Omarchy project's signed release"
     }
@@ -279,8 +285,41 @@ final class DesktopImageManager: ScriptDownloader {
     }
 
     func download(_ settings: AppSettings = .shared) {
+        if kind == .windows { getWindows(settings); return }
         install("tools/get-\(kind.rawValue).sh", name: kind.title, size: size, installed: present,
                 starting: "Downloading \(kind.title) (\(size))…", settings: settings)
+    }
+
+    /// Windows: says where it comes from, opens Microsoft's page on request, and takes the ISO the user chooses. With
+    /// an ISO kept already, the drivers alone can be fetched again (a newer launcher's pinned version).
+    func getWindows(_ settings: AppSettings = .shared) {
+        guard !busy else { return }
+        NSApp.activate()
+        let kept = settings.windowsISO
+        let alert = NSAlert()
+        alert.messageText = "Windows 11 for Arm comes from Microsoft"
+        alert.informativeText = "Download the “Windows 11 (multi-edition ISO for Arm64)” from Microsoft's page (about 8 GB), then choose the file here. "
+            + "The launcher keeps it for installing and fetches the drivers Windows needs in this machine. "
+            + "Windows is Microsoft's: its licence terms are shown in Windows Setup, and it runs unactivated until you enter a product key."
+            + (kept.map { "\n\nKept now: \($0)." } ?? "")
+        alert.addButton(withTitle: "Choose the ISO…")
+        alert.addButton(withTitle: "Open Microsoft's Page")
+        if kept != nil { alert.addButton(withTitle: "Fetch the Drivers Again") }
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            let panel = NSOpenPanel()
+            panel.title = "Windows 11 for Arm"; panel.message = "The ISO from microsoft.com/software-download/windows11arm64"
+            panel.allowedContentTypes = [.init(filenameExtension: "iso") ?? .data]
+            panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            guard panel.runModal() == .OK, let iso = panel.url else { return }
+            run("tools/get-windows.sh", arguments: ["--iso", iso.path], starting: "Checking the ISO and fetching the drivers…", settings: settings)
+        case .alertSecondButtonReturn:
+            NSWorkspace.shared.open(Self.microsoftPage)
+        case .alertThirdButtonReturn where kept != nil:
+            run("tools/get-windows.sh", starting: "Fetching the drivers…", settings: settings)
+        default: break
+        }
     }
 
     override func finished() { refresh() }

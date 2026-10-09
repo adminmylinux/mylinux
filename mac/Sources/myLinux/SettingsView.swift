@@ -181,6 +181,7 @@ private struct ImagesSettingsPage: View {
     @StateObject private var omarchy = DesktopImageManager.omarchy
     @StateObject private var arch = DesktopImageManager.arch
     @StateObject private var kali = DesktopImageManager.kali
+    @StateObject private var windows = DesktopImageManager.windows
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
     @StateObject private var tiny = ServerImageManager.tiny
@@ -223,6 +224,15 @@ private struct ImagesSettingsPage: View {
         Text("An update is used by machines made from then on; existing machines keep the disk they have.")
             .font(.caption).foregroundStyle(.secondary)
 
+        Text("Windows").font(.headline).padding(.top, 6)
+        Card(padding: 0) {
+            row(icon: MachineIcon.image(.windows), name: "Windows 11 for Arm", size: "8 GB", loader: windows,
+                status: windows.present ? "\(settings.windowsISO ?? "The ISO") · \(windows.revision ?? "drivers")" : nil,
+                action: windows.present ? "Change…" : "Get…", start: { windows.download(settings) })
+        }
+        Text("Windows is Microsoft's: you download its Arm64 ISO from Microsoft and choose the file here. A machine installs itself from it with Windows Setup; once every Windows machine is installed, the ISO is no longer needed.")
+            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+
         Text("Runtime").font(.headline).padding(.top, 6)
         Card(padding: 0) {
             row(icon: nil, symbol: "cpu", name: "QEMU", size: "10 MB", loader: runtime,
@@ -241,7 +251,7 @@ private struct ImagesSettingsPage: View {
             }
             .padding(.top, 6)
         }
-        .onAppear { images.refresh(settings); omarchy.refresh(settings); arch.refresh(settings); kali.refresh(settings); debian.refresh(settings); alpine.refresh(settings); tiny.refresh(settings); runtime.refresh(settings) }
+        .onAppear { images.refresh(settings); omarchy.refresh(settings); arch.refresh(settings); kali.refresh(settings); windows.refresh(settings); debian.refresh(settings); alpine.refresh(settings); tiny.refresh(settings); runtime.refresh(settings) }
     }
 
     private func row(icon: NSImage?, symbol: String = "shippingbox", name: String, size: String, loader: ScriptDownloader,
@@ -599,7 +609,7 @@ struct StorageUsage {
             }
             var downloads = 0.0
             if !dev {
-                for (name, paths) in [("myLinux image", ["Image", "rootfs.cpio.gz"]), ("Omarchy", ["omarchy"]), ("Arch Linux", ["arch"]), ("Kali Linux", ["kali"]), ("Debian", ["debian"]),
+                for (name, paths) in [("myLinux image", ["Image", "rootfs.cpio.gz"]), ("Omarchy", ["omarchy"]), ("Arch Linux", ["arch"]), ("Kali Linux", ["kali"]), ("Windows", ["windows"]), ("Debian", ["debian"]),
                                       ("Alpine", ["alpine"]), ("Tiny Alpine", ["tiny"]), ("QEMU runtime", ["qemu-runtime", "qemu-runtime.prev"])] {
                     let b = paths.reduce(0.0) { $0 + allocated(out.appendingPathComponent($1)) }
                     if b > 0 { downloads += b; items.append(Item(name: name, bytes: b, color: .purple)) }

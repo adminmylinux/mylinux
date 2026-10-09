@@ -154,6 +154,8 @@ struct WelcomeSheet: View {
                 tile(Color(red: 0.14, green: 0.20, blue: 0.36), "shield.lefthalf.filled")
             case .tiny:
                 tile(Color(red: 0.10, green: 0.50, blue: 0.45), "mountain.2.fill")
+            case .windows:                      // not an offer here (it is not a download: + › Windows Machine)
+                tile(Color(red: 0.0, green: 0.47, blue: 0.84), "square.grid.2x2.fill")
             }
         }
         .frame(width: 52, height: 52)
@@ -218,10 +220,10 @@ struct WelcomeSheet: View {
 
     // ---- state ----------------------------------------------------------------------------------------------------
     private func manager(_ kind: Profile.Kind) -> ScriptDownloader {
-        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch; case .tiny: return tiny; case .kali: return kali }
+        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch; case .tiny: return tiny; case .kali: return kali; case .windows: return DesktopImageManager.windows }
     }
     private func present(_ kind: Profile.Kind) -> Bool {
-        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present; case .tiny: return tiny.present; case .kali: return kali.present }
+        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present; case .tiny: return tiny.present; case .kali: return kali.present; case .windows: return DesktopImageManager.windows.present }
     }
     /// Ticked and not downloaded yet.
     private var pending: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && !present($0) } }
@@ -240,6 +242,7 @@ struct WelcomeSheet: View {
         for kind in pending {
             switch kind {
             case .mylinux: images.download(settings)
+            case .windows: break                // not offered here
             case .omarchy, .arch, .kali:
                 // the desktops run only on the accelerated runtime; a release carries it, a local build fetches it
                 if !runtime.present && !runtime.busy && RuntimeManager.bundledTarball == nil { runtime.download(settings) }

@@ -12,13 +12,15 @@ struct Profile: Codable, Identifiable, Hashable {
     /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh. Kali is the third desktop
     /// there (DESKTOP=kali): Kali Linux with its Xfce desktop, built by tools/build-kali-image.sh from Kali's packages. Tiny is a third server
     /// (run-tiny.sh): Tiny Alpine, Alpine's mini root filesystem on myLinux's kernel, no cloud image and no firmware.
+    /// Windows (run-windows.sh) is Windows 11 for Arm, installed by Microsoft's own Setup from the ISO the user downloaded:
+    /// a desktop in the same window as the others, `appsDisk` its disk, no share folder (Windows reads no 9p).
     enum Kind: String, Codable {
-        case mylinux, omarchy, debian, alpine, arch, tiny, kali
+        case mylinux, omarchy, debian, alpine, arch, tiny, kali, windows
         var isServer: Bool { self == .debian || self == .alpine || self == .tiny }
-        /// A desktop on the QEMU runtime started by run-omarchy.sh: Omarchy, or Arch with Plasma.
-        var runsDesktop: Bool { self == .omarchy || self == .arch || self == .kali }
+        /// A desktop on the QEMU runtime: Omarchy, Arch with Plasma and Kali (run-omarchy.sh), and Windows (run-windows.sh).
+        var runsDesktop: Bool { self == .omarchy || self == .arch || self == .kali || self == .windows }
         var title: String {
-            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .tiny: return "Tiny Alpine"; case .kali: return "Kali Linux" }
+            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .tiny: return "Tiny Alpine"; case .kali: return "Kali Linux"; case .windows: return "Windows" }
         }
         /// A server's account inside: "debian" (bash, sudo) or Alpine's own "alpine" (ash until the install script, doas).
         /// Tiny Alpine is Alpine: the same account, install script and snippets.
@@ -87,7 +89,7 @@ struct Profile: Codable, Identifiable, Hashable {
         let tier = macGB < 12 ? 0 : macGB < 24 ? 1 : 2       // 8 GB · 16 GB · 24 GB and more
         switch kind {
         case .mylinux: return [3, 4, 6][tier]
-        case .omarchy, .arch, .kali: return [4, 6, 8][tier]
+        case .omarchy, .arch, .kali, .windows: return [4, 6, 8][tier]
         case .debian: return [2, 2, 4][tier]
         case .alpine, .tiny: return [2, 2, 4][tier]      // idles in 60 MB (Tiny in 40); Claude Code and Codex's server need the room
         }
@@ -108,7 +110,22 @@ struct Profile: Codable, Identifiable, Hashable {
         return name == "myLinux" ? "myLinux" : "myLinux (\(name))"
     }
     /// The script that starts this kind of machine, relative to the scripts folder.
-    var script: String { kind.runsDesktop ? "run-omarchy.sh" : kind.isServer ? "run-\(kind.rawValue).sh" : "run.sh" }
+    var script: String { kind == .windows ? "run-windows.sh" : kind.runsDesktop ? "run-omarchy.sh" : kind.isServer ? "run-\(kind.rawValue).sh" : "run.sh" }
+    /// A desktop machine that has been started before: its disk and what its first start put beside it (a Linux
+    /// desktop's kernel, a Windows machine's firmware settings). Only a new one needs the download.
+    var desktopCreated: Bool {
+        let beside = machineFolder.appendingPathComponent(kind == .windows ? "vars.fd" : "boot/vmlinuz-linux").path
+        return FileManager.default.fileExists(atPath: appsDisk) && FileManager.default.fileExists(atPath: beside)
+    }
+    /// Windows is installed in this machine: its own setup script said so (setup.log, through a virtio port), and
+    /// run-windows.sh keeps the word as a file from the next start on. Until then a start is Windows Setup, at the
+    /// installer's 800x600.
+    var windowsInstalled: Bool {
+        guard kind == .windows else { return false }
+        if FileManager.default.fileExists(atPath: machineFolder.appendingPathComponent("installed").path) { return true }
+        guard let log = try? String(contentsOf: machineFolder.appendingPathComponent("setup.log"), encoding: .utf8) else { return false }
+        return log.split(whereSeparator: \.isNewline).contains { $0.hasPrefix("mylinux-setup: installed") }
+    }
     /// A server's folder (its disk, SSH key, console password and seed live there).
     var machineFolder: URL { URL(fileURLWithPath: appsDisk).deletingLastPathComponent() }
     /// The SSH terminal to a server: keyed by the machine's id, so a second request brings the same window
@@ -143,7 +160,7 @@ struct Profile: Codable, Identifiable, Hashable {
         }
         if kind.runsDesktop {
             if appsDisk.isEmpty { p.append("Choose where the machine's disk lives.") }
-            if !(8...2000).contains(appsSizeGB) { p.append("Disk size must be 8–2000 GB.") }
+            if !((kind == .windows ? 32 : 8)...2000).contains(appsSizeGB) { p.append("Disk size must be \(kind == .windows ? 32 : 8)–2000 GB.") }
             if shareDir.contains(",") { p.append("The share folder's path must not contain a comma.") }
             if sshPort != 0 && !(1024...65535).contains(sshPort) { p.append("The SSH port must be 1024–65535.") }
             if cpus < 0 || cpus > ProcessInfo.processInfo.processorCount { p.append("This Mac has \(ProcessInfo.processInfo.processorCount) processor cores.") }
@@ -191,7 +208,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
-            if kind != .omarchy { env["DESKTOP"] = kind.rawValue }      // arch, kali
+            if kind != .omarchy && kind != .windows { env["DESKTOP"] = kind.rawValue }      // arch, kali
             let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             env.merge(appBundleEnvironment) { $1 }
@@ -264,6 +281,13 @@ final class ProfileStore: ObservableObject {
             var p = Profile(name: name, appsDisk: dir.appendingPathComponent("\(kind.rawValue).raw").path,
                             shareDir: dir.appendingPathComponent("Mac", isDirectory: true).path)
             p.kind = kind; p.memoryGB = Profile.recommendedMemoryGB(kind); p.appsSizeGB = 32; p.sshPort = 2223; p.clipboard = false; p.sound = false
+            return p
+        }
+        if kind == .windows {
+            // no share folder: Windows reads no 9p. Every key to it, Command as the Windows key and Option as Alt, as
+            // on a PC keyboard; 64 GB is what Windows 11 asks for (the file grows as it fills)
+            var p = Profile(name: name, appsDisk: dir.appendingPathComponent("windows.raw").path, shareDir: "")
+            p.kind = kind; p.memoryGB = Profile.recommendedMemoryGB(kind); p.appsSizeGB = 64; p.grab = "full"
             return p
         }
         if kind.runsDesktop {

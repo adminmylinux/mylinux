@@ -838,6 +838,41 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the same QEMU wrapper as Omarchy's and Arch's")
         XCTAssertEqual(p.kind.snippetOS, "kali"); XCTAssertEqual(Profile.recommendedMemoryGB(.kali, macGB: 36), 8)
     }
+    func testWindowsIsADesktopWithItsOwnScript() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-win-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var p = ProfileStore.newProfile(named: "W", kind: .windows, folder: dir)
+        XCTAssertTrue(p.kind.runsDesktop); XCTAssertFalse(p.isServer); XCTAssertEqual(p.kind.title, "Windows")
+        XCTAssertEqual(p.script, "run-windows.sh")
+        XCTAssertEqual(p.appsDisk, dir.appendingPathComponent("windows.raw").path); XCTAssertEqual(p.shareDir, "", "Windows reads no Mac folder")
+        XCTAssertEqual(p.grab, "full", "⌘ is the Windows key"); XCTAssertEqual(p.appsSizeGB, 64); XCTAssertTrue(p.clipboard)
+        let env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s", qmpSocket: "/tmp/q")
+        XCTAssertEqual(env["DISK"], p.appsDisk); XCTAssertEqual(env["DISK_SIZE_GB"], "64"); XCTAssertEqual(env["GRAB"], "full"); XCTAssertEqual(env["QMP"], "/tmp/q")
+        XCTAssertNil(env["DESKTOP"]); XCTAssertNil(env["SHARE_DIR"]); XCTAssertNil(env["EXTRA_SHARES"])
+        XCTAssertEqual(env["APP_ICON"], "tools/icons/machine-windows.icns")
+        XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+        p.appsSizeGB = 16; XCTAssertFalse(p.problems.isEmpty, "Windows 11 needs more than 16 GB"); p.appsSizeGB = 64
+        XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the desktops' QEMU wrapper")
+        XCTAssertEqual(p.kind.snippetOS, "windows"); XCTAssertEqual(Profile.recommendedMemoryGB(.windows, macGB: 36), 8)
+        XCTAssertTrue(Snippets.pasteHint(.windows).contains("Ctrl+V"))
+        // installed or not: the firmware's settings say the machine was started, Windows's own word that it is installed
+        XCTAssertFalse(p.desktopCreated); XCTAssertFalse(p.windowsInstalled)
+        try Data().write(to: dir.appendingPathComponent("vars.fd")); try Data().write(to: URL(fileURLWithPath: p.appsDisk))
+        try "mylinux-setup: setup from D:\\mylinux as SYSTEM\r\n".write(to: dir.appendingPathComponent("setup.log"), atomically: true, encoding: .utf8)
+        XCTAssertTrue(p.desktopCreated); XCTAssertFalse(p.windowsInstalled, "Setup is still at it")
+        try "mylinux-setup: setup from D:\\mylinux as SYSTEM\r\nmylinux-setup: installed\r\n".write(to: dir.appendingPathComponent("setup.log"), atomically: true, encoding: .utf8)
+        XCTAssertTrue(p.windowsInstalled, "said by setup.ps1, before run-windows.sh has kept it")
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("setup.log"))
+        try Data().write(to: dir.appendingPathComponent("installed"))
+        XCTAssertTrue(p.windowsInstalled)
+        XCTAssertFalse(ProfileStore.newProfile(named: "K", kind: .kali, folder: dir).windowsInstalled)
+        // the built-in snippets have a Windows set, each for Windows alone
+        let data = try Data(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("server-apps/snippets.json"))
+        let mine = try XCTUnwrap(Snippets.decode(data)).filter { $0.os.contains("windows") }
+        XCTAssertGreaterThanOrEqual(mine.count, 5); XCTAssertTrue(mine.allSatisfy { $0.os == ["windows"] }, "a shell snippet is no PowerShell one")
+        XCTAssertTrue(mine.contains { $0.id == "claude-install-windows" && $0.text.contains("claude.ai/install.ps1") })
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

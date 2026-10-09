@@ -91,7 +91,7 @@ struct ContentView: View {
             images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
             // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
-            DesktopImageManager.omarchy.refresh(settings); DesktopImageManager.arch.refresh(settings); DesktopImageManager.kali.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings); ServerImageManager.tiny.refresh(settings)
+            DesktopImageManager.omarchy.refresh(settings); DesktopImageManager.arch.refresh(settings); DesktopImageManager.kali.refresh(settings); DesktopImageManager.windows.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings); ServerImageManager.tiny.refresh(settings)
             // (no machines and nothing downloaded: a new install, or one whose data was cleared; not a remembered flag,
             // which outlives the data and kept a fresh start from showing it)
             if !settings.developerMode, store.profiles.isEmpty, !images.present, !DesktopImageManager.omarchy.present, !DesktopImageManager.arch.present, !DesktopImageManager.kali.present,
@@ -133,6 +133,9 @@ struct ContentView: View {
             }
             Button { selection = store.add(copying: selected?.kind == .kali ? selected : nil, kind: .kali).id } label: {
                 Label("Kali Linux Machine", systemImage: "shield.lefthalf.filled")
+            }
+            Button { selection = store.add(copying: selected?.kind == .windows ? selected : nil, kind: .windows).id } label: {
+                Label("Windows Machine", systemImage: "macwindow")
             }
             Button { selection = store.add(copying: selected?.kind == .debian ? selected : nil, kind: .debian).id } label: {
                 Label("Debian Server", systemImage: "server.rack")

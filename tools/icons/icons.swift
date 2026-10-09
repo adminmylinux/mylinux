@@ -233,6 +233,18 @@ render("machine-kali", to: out) { ctx in
     }
 }
 
+render("machine-windows", to: out) { ctx in
+    // the blue Windows 11 uses, with a framed window of four panes (drawn here, not Microsoft's own logo, a trademark)
+    body(ctx, gradient: [0x3AA0F0, 0x0A78D4, 0x064E8E], glow: 0xB5DDFF)
+    let frame = CGRect(x: 292, y: 292, width: 440, height: 440)
+    ctx.setStrokeColor(rgb(0xFFFFFF)); ctx.setLineWidth(46); ctx.setLineCap(.butt)
+    ctx.addPath(CGPath(roundedRect: frame, cornerWidth: 64, cornerHeight: 64, transform: nil)); ctx.strokePath()
+    ctx.setLineWidth(34)
+    ctx.move(to: CGPoint(x: 512, y: frame.minY)); ctx.addLine(to: CGPoint(x: 512, y: frame.maxY))
+    ctx.move(to: CGPoint(x: frame.minX, y: 512)); ctx.addLine(to: CGPoint(x: frame.maxX, y: 512))
+    ctx.strokePath()
+}
+
 render("machine-tiny", to: out) { ctx in
     // Alpine's peaks again, filled and on a green of its own: the small one of the two
     body(ctx, gradient: [0x2FB3A0, 0x1A8F80, 0x0E5A52], glow: 0xA8F0E2)
@@ -264,4 +276,4 @@ func badged(_ name: String) {
         ctx.restoreGState()
     }
 }
-for kind in ["omarchy", "debian", "alpine", "arch", "tiny", "kali"] { badged("machine-" + kind) }
+for kind in ["omarchy", "debian", "alpine", "arch", "tiny", "kali", "windows"] { badged("machine-" + kind) }

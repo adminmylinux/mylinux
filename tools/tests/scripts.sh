@@ -20,7 +20,7 @@ has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in out
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$W/"; cp "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/omarchy-update-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$REPO/run-windows.sh" "$W/"; cp -R "$REPO/windows" "$W/"; cp "$REPO/tools/desktop-window.sh" "$REPO/tools/get-windows.sh" "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/omarchy-update-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -283,10 +283,10 @@ grep -q '"$MYLINUX_HELPER" --omarchy-clipboard "$CLIPSOCK"' "$REPO/run-omarchy.s
 grep -q 'xcodebuild -license check' "$REPO/run-omarchy.sh" && ok "an unaccepted Xcode licence counts as no python3" || ko "the python3 guard ignores the Xcode licence"
 echo "no python3 on the start and download paths"
 # a Mac without Xcode's command line tools has only a python3 stub, which fails and pops an install dialog
-for f in run.sh run-server.sh tools/get-debian.sh tools/get-alpine.sh tools/get-edk2.sh tools/get-omarchy.sh tools/get-image.sh tools/get-qemu-runtime.sh; do
+for f in run.sh run-server.sh tools/get-debian.sh tools/get-alpine.sh tools/get-edk2.sh tools/get-omarchy.sh tools/get-windows.sh tools/desktop-window.sh tools/get-image.sh tools/get-qemu-runtime.sh; do
   grep -n 'python3' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -q . && ko "$f calls python3" || ok "$f does not call python3"
 done
-for f in run-omarchy.sh tools/make-app-bundle.sh; do
+for f in run-omarchy.sh run-windows.sh tools/make-app-bundle.sh; do
   bad=$(grep -n 'python3 ' "$REPO/$f" | grep -v '^[0-9]*:\s*#' | grep -v 'have_python' | grep -v 'echo ' | grep -v '\[ -x ' || true)
   [ -z "$bad" ] && ok "$f calls python3 only behind have_python" || ko "$f calls python3 unguarded: $bad"
 done
@@ -346,6 +346,83 @@ not_rc0 "a new machine without the downloaded guest fails" $rc
 has "and says how to get it" "$out" "get-omarchy.sh"
 file_absent "and leaves no half-made disk" "$T/om2/omarchy.ext4"
 out=$(cd "$W" && MYLINUX_QEMU=brew DRYRUN=1 RES=1600x1000 sh run-omarchy.sh 2>&1); has "Omarchy always uses the runtime" "$out" "virtio-gpu-gl-pci"
+echo "run-windows.sh (DRYRUN, with the fake runtime) and tools/get-windows.sh"
+out=$(cd "$W" && DRYRUN=1 sh run-windows.sh 2>&1); rc=$?
+not_rc0 "a Windows machine without what get-windows.sh keeps is refused" $rc
+has "and names the fix" "$out" "get-windows.sh"
+WG="$W/out/windows"; mkdir -p "$WG/drivers/NetKVM" "$WG/drivers/viogpudo" "$WG/drivers/vioserial"
+printf 'fw' > "$WG/edk2-aarch64-code.fd"
+out=$(cd "$W" && DRYRUN=1 sh run-windows.sh 2>&1); rc=$?
+not_rc0 "nothing to install from: refused" $rc
+has "and says where Windows comes from" "$out" "microsoft.com/software-download/windows11arm64"
+printf 'iso' > "$WG/windows.iso"
+for f in NetKVM/netkvm.inf viogpudo/viogpudo.inf vioserial/vioser.inf; do printf 'inf' > "$WG/drivers/$f"; done
+out=$(cd / && DRYRUN=1 DISK="$T/win/windows.raw" NAME="Windows test" sh "$W/run-windows.sh" 2>&1); rc=$?
+is_rc "installing: dry run works from another directory" $rc 0
+has "installing: says so" "$out" "INSTALLED=0"
+has "the two machine settings Windows needs" "$out" "virt,gic-version=3,highmem-mmio=off"
+printf '%s\n' "$out" | grep -qE '^virtio-net-pci,netdev=n0,mac=52:54:00:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2},romfile=$' && ok "a network address of the machine's own" || ko "a network address of the machine's own"
+has "the firmware's variables are the machine's own" "$out" "format=raw,file=$T/win/vars.fd"
+has "an NVMe disk, which Windows Setup has a driver for" "$out" "nvme,drive=sys,serial=mylinux-windows,bootindex=1"
+has "installing: the firmware's framebuffer" "$out" "ramfb"
+has "installing: a small picture scaled to the window" "$out" "cocoa,show-cursor=off,zoom-to-fit=on,full-grab=on"
+has "installing: Microsoft's ISO first in the boot order" "$out" "drive=wincd,bootindex=0"
+has "the tools disc is the machine's" "$out" "file=$T/win/tools.iso,media=cdrom"
+has "setup.ps1 reports into the machine's folder" "$out" "path=$T/win/setup.log"
+has "the port it reports through" "$out" "name=dev.mylinux.setup"
+has "the clipboard port" "$out" "nr=2,chardev=clip,name=dev.tryomarchy.clipboard"
+has "sound in and out" "$out" "hda-duplex,bus=hda.0,audiodev=audio"
+case "$out" in *mylinux.res=*) ko "installing: no start size for the agent" ;; *) ok "installing: no start size for the agent" ;; esac
+file_absent "dry run: no machine folder made" "$T/win"
+out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 SCALE=2 RES=1600x1000 sh run-windows.sh 2>&1)
+has "installed: the virtio display at twice the points on a Retina display" "$out" "virtio-gpu-pci,id=vgpu,max_outputs=1,xres=3200,yres=2000,romfile="
+has "installed: the window's GL drawing, the Mac's pointer, a window that follows" "$out" "cocoa,gl=es,show-cursor=on,zoom-to-fit=off,full-grab=on"
+has "installed: the start size and scale for the agent" "$out" "mylinux.res=3200x2000,value=mylinux.scale=2,value=mylinux.run="
+case "$out" in *wincd*) ko "installed: Microsoft's ISO is not attached" ;; *) ok "installed: Microsoft's ISO is not attached" ;; esac
+mkdir -p "$T/win2"; : > "$T/win2/installed"; echo 0a1b2c3d-1111-2222-3333-444455556666 > "$T/win2/uuid"
+rm -rf "$WG/windows.iso" "$WG/drivers"
+out=$(cd "$W" && DRYRUN=1 SCALE=1 RES=1600x1000 DISK="$T/win2/windows.raw" sh run-windows.sh 2>&1); rc=$?
+is_rc "an installed machine starts without the ISO and the drivers" $rc 0
+has "and is told apart by its own file" "$out" "INSTALLED=1"
+has "the machine's identity is the one it was given at its first start" "$out" "0a1b2c3d-1111-2222-3333-444455556666"
+has "and its network address comes from it" "$out" "mac=52:54:00:0a:1b:2c,romfile="
+out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 SCALE=1 RES=1600x1000 DISPLAY_CARD=basic sh run-windows.sh 2>&1); has "DISPLAY_CARD=basic: the framebuffer for an installed Windows" "$out" "ramfb"
+out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 SCALE=1 RES=1600x1000 GRAB=opt CLIPBOARD=0 AUDIO=0 FORWARD=2244:22 QMP="$T/wq.sock" sh run-windows.sh 2>&1)
+has "GRAB=opt: Option is the Windows key" "$out" "swap-opt-cmd=on"
+has "FORWARD" "$out" "hostfwd=tcp:127.0.0.1:2244-:22"
+has "QMP socket for a clean stop" "$out" "unix:$T/wq.sock,server=on,wait=off"
+case "$out" in *tryomarchy.clipboard*|*intel-hda*) ko "CLIPBOARD=0 AUDIO=0: neither device" ;; *) ok "CLIPBOARD=0 AUDIO=0: neither device" ;; esac
+out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 GRAB=all sh run-windows.sh 2>&1); rc=$?
+not_rc0 "unknown GRAB is refused" $rc
+out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 DISK_SIZE_GB=16 sh run-windows.sh 2>&1); rc=$?
+not_rc0 "a disk too small for Windows is refused" $rc
+grep -q 'cache=writeback' "$W/run-windows.sh" && ! grep -q 'cache=unsafe' "$W/run-windows.sh" && ok "Windows's disk is written through to the Mac's disk" || ko "Windows's disk cache"
+(cd "$W" && sh tools/get-windows.sh --iso "$T/nothing.iso" >/dev/null 2>&1); rc=$?
+not_rc0 "get-windows.sh: a missing file is refused" $rc
+if [ "$(uname -sm)" = "Darwin arm64" ]; then
+  printf 'not a disc' > "$T/text.iso"
+  out=$(cd "$W" && sh tools/get-windows.sh --iso "$T/text.iso" 2>&1); rc=$?
+  not_rc0 "get-windows.sh: a file that is no disc image is refused" $rc
+  mkdir -p "$T/x64/efi/boot" "$T/x64/sources"; printf x > "$T/x64/efi/boot/bootx64.efi"; printf x > "$T/x64/sources/install.wim"
+  hdiutil makehybrid -quiet -iso -joliet -default-volume-name WINX64 -o "$T/x64.iso" "$T/x64"
+  out=$(cd "$W" && sh tools/get-windows.sh --iso "$T/x64.iso" 2>&1); rc=$?
+  not_rc0 "get-windows.sh: Windows for x64 is refused" $rc
+  has "and says which one runs here" "$out" "windows11arm64"
+  file_absent "a refused ISO is not kept" "$WG/windows.iso"
+  mkdir -p "$T/a64/efi/boot" "$T/a64/sources"; printf x > "$T/a64/efi/boot/bootaa64.efi"; printf x > "$T/a64/sources/install.wim"
+  hdiutil makehybrid -quiet -iso -joliet -default-volume-name WINA64 -o "$T/a64.iso" "$T/a64"
+  # (the driver disc offered is not the pinned one: nothing of it is installed, the ISO is kept all the same)
+  out=$(cd "$W" && MYLINUX_VIRTIO_ISO="$T/a64.iso" sh tools/get-windows.sh --iso "$T/a64.iso" 2>&1); rc=$?
+  not_rc0 "get-windows.sh: a driver disc that is not the pinned one is refused" $rc
+  has "and says why" "$out" "pinned checksum"
+  file_exists "an Arm64 installer is kept" "$WG/windows.iso"
+  file_is "with its disc's name" "$WG/WINDOWS-ISO" "WINA64"
+  file_absent "no drivers from an unchecked disc" "$WG/drivers"
+  file_absent "staging folder is gone" "$W/out/.staging-windows"
+fi
+(cd "$W" && sh tools/get-windows.sh --remove >/dev/null 2>&1); rc=$?
+is_rc "get-windows.sh --remove" $rc 0
+file_absent "--remove: Windows's files gone" "$WG"
 (cd "$W" && sh tools/get-omarchy.sh --remove >/dev/null 2>&1); rc=$?
 is_rc "get-omarchy.sh --remove" $rc 0
 (cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1)

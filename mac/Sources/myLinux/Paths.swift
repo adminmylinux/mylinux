@@ -111,13 +111,21 @@ final class AppSettings: ObservableObject {
     /// A desktop guest (tools/get-omarchy.sh, tools/get-arch.sh): kernel, initramfs and the compressed factory disk.
     func desktopPresent(_ kind: Profile.Kind) -> Bool {
         let dir = outDir.appendingPathComponent(kind.rawValue, isDirectory: true)
-        return ["vmlinuz-linux", "initramfs-linux.img", "rootfs.ext4.zst"].allSatisfy {
+        // Windows (tools/get-windows.sh): Microsoft's ISO as the user gave it, the virtio drivers and the firmware
+        let files = kind == .windows ? ["windows.iso", "drivers/NetKVM/netkvm.inf", "drivers/viogpudo/viogpudo.inf", "drivers/vioserial/vioser.inf", "edk2-aarch64-code.fd"]
+                                     : ["vmlinuz-linux", "initramfs-linux.img", "rootfs.ext4.zst"]
+        return files.allSatisfy {
             ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
         }
     }
     func desktopRevision(_ kind: Profile.Kind) -> String? {
         (try? String(contentsOf: outDir.appendingPathComponent("\(kind.rawValue)/\(kind.rawValue.uppercased())-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// The Windows ISO the user gave: its disc's own name (CCCOMA_A64FRE_EN-US_DV9), or nil when there is none.
+    var windowsISO: String? {
+        guard FileManager.default.fileExists(atPath: outDir.appendingPathComponent("windows/windows.iso").path) else { return nil }
+        return (try? String(contentsOf: outDir.appendingPathComponent("windows/WINDOWS-ISO"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Windows 11 for Arm"
     }
     var omarchyPresent: Bool { desktopPresent(.omarchy) }
     /// A server's cloud image and UEFI firmware (tools/get-debian.sh, tools/get-alpine.sh), in <out>/<distro>.

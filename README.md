@@ -129,6 +129,44 @@ locks or blanks the screen, and the root file system grows to the machine's disk
 launcher it is **Kali Linux Machine**. The image is myLinux's own build from Kali's packages, not an official Kali
 image.
 
+### Windows machines (Windows 11 for Arm)
+
+A desktop that is not Linux: Windows 11 for Arm, running natively on Apple silicon on the same accelerated QEMU
+runtime as the others (nothing is emulated). Windows is Microsoft's, and myLinux does not download it: you download
+the "Windows 11 (multi-edition ISO for Arm64)" from
+[microsoft.com/software-download/windows11arm64](https://www.microsoft.com/software-download/windows11arm64) (about
+8 GB) and give the file to the launcher (**+ › Windows Machine**, then **Get Windows…** on its page, or Settings ›
+Images & runtime) or to `tools/get-windows.sh --iso <file>`. That checks that it is an Arm64 installer, keeps it, and
+fetches what Windows lacks for this machine: the virtio drivers for the network card, the display and the serial
+ports (the [virtio-win](https://github.com/virtio-win/virtio-win-pkg-scripts) project's driver disc, one pinned
+version checked against a pinned SHA-256; 877 MB to download, 3 MB kept) and the UEFI firmware.
+
+The first start is Windows Setup itself, in a small window (800 × 600): you choose the language, an edition ("I don't
+have a product key", or yours) and the one empty disk, and Microsoft's licence terms are shown and accepted there.
+An answer file ([`windows/autounattend.xml`](windows/autounattend.xml)) only turns off the checks this machine cannot
+pass (it has no TPM and no Secure Boot), lets a local account be made, and runs
+[`windows/setup.ps1`](windows/setup.ps1), which installs the drivers and myLinux's agent and tells the Mac when it is
+done. Setup takes between a quarter of an hour and 40 minutes (the Mac's load decides) and restarts by itself on the
+way. Its first-run screens come without a network, on purpose: "I don't have internet" there makes a local account,
+and the network card gets its driver the moment they are over (with a network they insist on an account online).
+When the desktop is up, a note says to shut Windows down and start it again.
+
+From that second start on it is a machine like the other desktops. The display is a virtio card whose driver follows
+the window (the title bar's − + and Fill Screen buttons, full screen, a drag of the window's edge), with twice the
+pixels and 200 % scaling on a Retina display; the pointer is drawn by the Mac; the clipboard is shared both ways,
+text and pictures ([`windows/mylinux-agent.ps1`](windows/mylinux-agent.ps1), started at sign-in, speaks the protocol
+of Omarchy's clipboard agent over a virtio serial port); sound goes through the Mac. The title bar's ⌘ menu has
+**Snippets…**, with PowerShell ones for Windows (Claude Code and a `cc` for it, Codex and `cx`, Git, VS Code and
+Node.js from winget, updates, the Mac's shared folders; **Paste** puts one into Windows Terminal), and **Mount a
+Share…**. Every key goes to Windows by default, ⌘ as the Windows key and Option as Alt; the machine's settings can
+leave ⌘ to macOS instead.
+
+What it does not have: a shared folder (Windows reads no 9p; a folder shared on the Mac with File Sharing opens at
+`\\10.0.2.2` in File Explorer), Cloud Folders, Apps… and Claude Install… (snippets do those jobs), a TPM, and 3D
+acceleration (the display driver draws in 2D: fine for desktop work, not for games). Windows runs unactivated until
+you enter a product key. `./run-windows.sh` starts one from the command line (`DISK=`, `RES=`, `GRAB=`, `MEM=`; its
+header has the list).
+
 ### Debian server machines
 
 The third kind of machine is a plain Debian server with no window at all: the latest stable Debian (trixie) from
@@ -685,7 +723,8 @@ patches/                    Qt Wayland compositor patch (wl_seat v5, data device
 tools/                      build, SDK, apps-disk, automation helpers
 mac/                        the Mac launcher app (SwiftUI; mac/build-app.sh bundles it)
 run.sh / build.sh           run on the Mac / build inside Debian
-run-omarchy.sh               the Omarchy desktop machine
+run-omarchy.sh               the Omarchy desktop machine (and Arch's and Kali's)
+run-windows.sh              the Windows machine; windows/ is what goes onto its tools disc
 run-server.sh               the server machines: run-debian.sh and run-alpine.sh set DISTRO
 ```
 

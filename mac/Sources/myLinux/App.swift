@@ -44,6 +44,7 @@ struct MyLinuxApp: App {
                 Button("New Omarchy Machine") { _ = store.add(kind: .omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Arch Linux Machine") { _ = store.add(kind: .arch) }
                 Button("New Kali Linux Machine") { _ = store.add(kind: .kali) }
+                Button("New Windows Machine") { _ = store.add(kind: .windows) }
                 Button("New Debian Server") { _ = store.add(kind: .debian) }.keyboardShortcut("n", modifiers: [.command, .option])
                 Button("New Alpine Server") { _ = store.add(kind: .alpine) }
                 Button("New Tiny Alpine Server") { _ = store.add(kind: .tiny) }
@@ -99,6 +100,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if !kind.isServer { p.grab = "opt"; p.name = kind.title }
                 store.update(p)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { RunManager.shared.runner(for: p.id).start(p) }
+            }
+            // MYLINUX_TEST_PASTE=<file> (with MYLINUX_TEST_PASTE_WAIT seconds, default 70): the file's text pasted into
+            // the first of these machines as Snippets…'s Paste does, and how that went
+            if let file = ProcessInfo.processInfo.environment["MYLINUX_TEST_PASTE"], let text = try? String(contentsOfFile: file, encoding: .utf8),
+               let kind = list.split(separator: ",").first.flatMap({ Profile.Kind(rawValue: String($0.split(separator: ":")[0])) }) {
+                let wait = Double(ProcessInfo.processInfo.environment["MYLINUX_TEST_PASTE_WAIT"] ?? "70") ?? 70
+                DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                    guard let p = ProfileStore.shared.profiles.first(where: { $0.kind == kind }) else { return }
+                    Task { @MainActor in print("paste: \(await SnippetsWindow.pasteIntoDesktop(text, p) ?? "sent")"); fflush(stdout) }
+                }
             }
             // MYLINUX_TEST_TOUR=<folder>: once the machines are up (MYLINUX_TEST_TOUR_WAIT seconds, default 70), photograph
             // the Overview and each machine's page into the folder, then quit (the machines keep running)

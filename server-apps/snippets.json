@@ -191,6 +191,69 @@
    ],
    "description": "The full set a Kali installation has (kali-linux-default, several GB); the image comes with the top ten",
    "text": "sudo apt update && sudo apt install -y kali-linux-default"
+  },
+  {
+   "id": "claude-install-windows",
+   "name": "Install Claude Code",
+   "os": [
+    "windows"
+   ],
+   "description": "Claude Code with Anthropic's own installer, Git for Windows before it (Claude Code works through it), and claude on your PATH",
+   "text": "& {\n  if (-not (Get-Command git -ErrorAction SilentlyContinue) -and -not (Test-Path \"$env:ProgramFiles\\Git\\cmd\\git.exe\")) { winget install --id Git.Git -e --source winget }\n  $bin = \"$env:USERPROFILE\\.local\\bin\"\n  $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n  if (($p -split ';') -notcontains $bin) { [Environment]::SetEnvironmentVariable('Path', ((\"$p\".TrimEnd(';'), $bin | Where-Object { $_ }) -join ';'), 'User') }\n  if (($env:Path -split ';') -notcontains $bin) { $env:Path += \";$bin\" }\n  irm https://claude.ai/install.ps1 | iex\n  claude --version\n}"
+  },
+  {
+   "id": "cc-alias-windows",
+   "name": "cc for Claude Code",
+   "os": [
+    "windows"
+   ],
+   "description": "cc starts Claude Code, updated first, without permission prompts (a cc.cmd beside claude)",
+   "text": "& {\n  New-Item -ItemType Directory -Force \"$env:USERPROFILE\\.local\\bin\" | Out-Null\n  $bin = \"$env:USERPROFILE\\.local\\bin\"\n  $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n  if (($p -split ';') -notcontains $bin) { [Environment]::SetEnvironmentVariable('Path', ((\"$p\".TrimEnd(';'), $bin | Where-Object { $_ }) -join ';'), 'User') }\n  if (($env:Path -split ';') -notcontains $bin) { $env:Path += \";$bin\" }\n  Set-Content -Encoding ascii \"$bin\\cc.cmd\" \"@echo off`r`nclaude update`r`nclaude --dangerously-skip-permissions %*\"\n  'cc is ready: it updates Claude Code, then starts it without permission prompts'\n}"
+  },
+  {
+   "id": "codex-install-windows",
+   "name": "Install Codex",
+   "os": [
+    "windows"
+   ],
+   "description": "OpenAI's coding agent in the terminal, its Arm64 build from winget; open a new terminal, and codex signs you in",
+   "text": "winget install --id OpenAI.Codex -e --source winget"
+  },
+  {
+   "id": "cx-alias-windows",
+   "name": "cx for Codex",
+   "os": [
+    "windows"
+   ],
+   "description": "cx starts Codex without approvals or sandbox (a cx.cmd on your PATH)",
+   "text": "& {\n  New-Item -ItemType Directory -Force \"$env:USERPROFILE\\.local\\bin\" | Out-Null\n  $bin = \"$env:USERPROFILE\\.local\\bin\"\n  $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n  if (($p -split ';') -notcontains $bin) { [Environment]::SetEnvironmentVariable('Path', ((\"$p\".TrimEnd(';'), $bin | Where-Object { $_ }) -join ';'), 'User') }\n  if (($env:Path -split ';') -notcontains $bin) { $env:Path += \";$bin\" }\n  Set-Content -Encoding ascii \"$bin\\cx.cmd\" \"@echo off`r`ncodex --dangerously-bypass-approvals-and-sandbox %*\"\n  'cx is ready: it starts Codex without approvals or sandbox'\n}"
+  },
+  {
+   "id": "dev-tools-windows",
+   "name": "Git, VS Code and Node.js",
+   "os": [
+    "windows"
+   ],
+   "description": "The usual developer tools in their Arm64 builds, from winget; VS Code asks you to accept Microsoft's licence",
+   "text": "& {\n  foreach ($id in 'Git.Git', 'Microsoft.VisualStudioCode', 'OpenJS.NodeJS.LTS') { winget install --id $id -e --source winget }\n}"
+  },
+  {
+   "id": "update-system-windows",
+   "name": "Update Windows and the apps",
+   "os": [
+    "windows"
+   ],
+   "description": "Opens Windows Update, which looks for updates, and brings every app winget knows up to date",
+   "text": "& {\n  Start-Process ms-settings:windowsupdate-action\n  winget upgrade --all\n}"
+  },
+  {
+   "id": "mac-files-windows",
+   "name": "Open the Mac's shared folders",
+   "os": [
+    "windows"
+   ],
+   "description": "The folders your Mac shares, in File Explorer. On the Mac first: System Settings › General › Sharing › File Sharing, and in its Options, Windows File Sharing for your account. Windows asks for your Mac user name and password",
+   "text": "explorer.exe \\\\10.0.2.2"
   }
  ]
 }

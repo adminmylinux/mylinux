@@ -12,6 +12,7 @@ struct MachineView: View {
     @StateObject private var omarchyImage = DesktopImageManager.omarchy
     @StateObject private var archImage = DesktopImageManager.arch
     @StateObject private var kaliImage = DesktopImageManager.kali
+    @StateObject private var windowsImage = DesktopImageManager.windows
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
     @StateObject private var tiny = ServerImageManager.tiny
@@ -20,7 +21,10 @@ struct MachineView: View {
     /// Omarchy or Arch: a desktop on the QEMU runtime (run-omarchy.sh)
     private var isDesktop: Bool { draft.kind.runsDesktop }
     /// A desktop's download: Omarchy's guest or Arch's.
-    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : draft.kind == .kali ? kaliImage : omarchyImage }
+    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : draft.kind == .kali ? kaliImage : draft.kind == .windows ? windowsImage : omarchyImage }
+    private var isWindows: Bool { draft.kind == .windows }
+    /// A desktop that needs nothing downloaded any more: started before (a Windows machine: Windows installed in it).
+    private var desktopReady: Bool { isWindows ? draft.windowsInstalled : draft.desktopCreated }
     private var isServer: Bool { draft.isServer }
     private var guestName: String { draft.kind.title }
     /// A server's download: Debian's image or Alpine's.
@@ -41,10 +45,9 @@ struct MachineView: View {
         switch draft.kind {
         case .mylinux:
             return images.present ? nil : (settings.developerMode ? "Build the image first (./build.sh)" : "Download myLinux first")
-        case .omarchy, .arch, .kali:
-            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
+        case .omarchy, .arch, .kali, .windows:
             if !runtime.present { return "Download the accelerated QEMU first" }
-            return created || desktopImage.present ? nil : "Download \(guestName) first"
+            return desktopReady || desktopImage.present ? nil : isWindows ? "Get Windows first" : "Download \(guestName) first"
         case .debian, .alpine, .tiny:
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent(draft.kind.firstStartFile).path)
             if !settings.qemuAvailable || tinyNeedsRuntime { return "Download the accelerated QEMU first" }
@@ -60,11 +63,10 @@ struct MachineView: View {
         case .mylinux:
             guard !images.present, !settings.developerMode else { return nil }
             return ("myLinux", images, { images.download(settings) })
-        case .omarchy, .arch, .kali:
+        case .omarchy, .arch, .kali, .windows:
             if !runtime.present { return ("QEMU", runtime, { runtime.download(settings) }) }
-            let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent("boot/vmlinuz-linux").path)
             let image = desktopImage
-            return created || image.present ? nil : (guestName, image, { image.download(settings) })
+            return desktopReady || image.present ? nil : (guestName, image, { image.download(settings) })
         case .debian, .alpine, .tiny:
             if !settings.qemuAvailable || tinyNeedsRuntime { return ("QEMU", runtime, { runtime.download(settings) }) }
             let created = FileManager.default.fileExists(atPath: draft.appsDisk) && FileManager.default.fileExists(atPath: draft.machineFolder.appendingPathComponent(draft.kind.firstStartFile).path)
@@ -85,7 +87,7 @@ struct MachineView: View {
                 if MachineStatus.running(runner) {
                     Section {} header: { live }
                 }
-                if isServer { serverDownloads } else if isDesktop { desktopDownloads }
+                if isServer { serverDownloads } else if isDesktop { desktopDownloads; windowsInstallNote }
                 Section {} header: { fold("Machine configuration", "slider.horizontal.3", configSummary, $openConfig) }
                 if openConfig {
                     Group { if isServer { serverConfiguration } else { desktopConfiguration } }.disabled(!editable)
@@ -166,7 +168,7 @@ struct MachineView: View {
                                 .font(.callout).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                         }
                     } else {
-                        Button { d.start() } label: { Label("Download \(d.name)", systemImage: "arrow.down.circle.fill") }
+                        Button { d.start() } label: { Label(d.name == "Windows" ? "Get Windows…" : "Download \(d.name)", systemImage: "arrow.down.circle.fill") }
                             .buttonStyle(.borderedProminent)
                             .help("Downloads once; then Start is here")
                     }
@@ -378,6 +380,11 @@ struct MachineView: View {
                         help: "The whole \(guestName) install. Its SSH key, console password and cloud-init seed live in the same folder.")
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
                         help: "Mounted inside as /mnt/mac and linked from the home folder under its own name. Leave empty for none.")
+            } else if isWindows {
+                PathRow(title: "Disk", path: $draft.appsDisk, isDirectory: false,
+                        help: "The whole Windows install. The firmware's settings (vars.fd) and the tools disc live in the same folder, so keep them together.")
+                Text("Windows reads no Mac folder directly. To reach Mac files, share a folder on the Mac (System Settings › General › Sharing › File Sharing, with Windows File Sharing on for your account) and open \\\\10.0.2.2 in File Explorer.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else if isDesktop {
                 PathRow(title: "Disk", path: $draft.appsDisk, isDirectory: false,
                         help: "The whole \(guestName) install. Its kernel lives in the boot folder beside it, so keep the two together.")
@@ -390,7 +397,7 @@ struct MachineView: View {
                 PathRow(title: "Share folder", path: $draft.shareDir, isDirectory: true,
                         help: "Visible as /mnt/share inside myLinux, and where its settings live.")
             }
-            do {
+            if !isWindows {
                 LabeledContent("Cloud folders") {
                     HStack(spacing: 8) {
                         Text(cloudSummary).foregroundStyle(.secondary)
@@ -465,7 +472,7 @@ struct MachineView: View {
 
     @ViewBuilder private var desktopConfiguration: some View {
         Section(isDesktop ? "Keyboard" : "Keyboard and mouse") {
-            Picker(isOmarchy ? "Super key" : isDesktop ? "Meta key" : "Mac keys", selection: $draft.grab) {
+            Picker(isOmarchy ? "Super key" : isWindows ? "Windows key" : isDesktop ? "Meta key" : "Mac keys", selection: $draft.grab) {
                 Text(isDesktop ? "Option (macOS keeps its ⌘ shortcuts)" : "Option is ⌘ inside myLinux").tag("opt")
                 Text(isDesktop ? "Command (every key goes to \(guestName))" : "Send every key to myLinux").tag("full")
                 Text(isDesktop ? "None (Mac shortcuts untouched)" : "Leave Mac shortcuts alone").tag("none")
@@ -511,7 +518,7 @@ struct MachineView: View {
             LabeledContent(isDesktop ? "Disk size" : "Apps disk size") {
                 HStack {
                     Picker("", selection: $draft.appsSizeGB) {
-                        ForEach(isDesktop ? [16, 32, 64, 128, 256, 512] : [8, 16, 32, 64, 128, 256], id: \.self) { Text("\($0) GB").tag($0) }
+                        ForEach(isWindows ? [32, 64, 128, 256, 512] : isDesktop ? [16, 32, 64, 128, 256, 512] : [8, 16, 32, 64, 128, 256], id: \.self) { Text("\($0) GB").tag($0) }
                     }
                     .labelsHidden().frame(width: 110)
                     Text(diskNote).font(.caption).foregroundStyle(.secondary)
@@ -551,9 +558,20 @@ struct MachineView: View {
     }
 
     /// What a desktop machine (Omarchy, Arch) needs before its first start, each with its own download.
+    /// A Windows machine before Windows is in it: what the first start is, and what to choose there.
+    @ViewBuilder private var windowsInstallNote: some View {
+        if isWindows && !draft.windowsInstalled {
+            Section("Installing Windows") {
+                Text("The first start is Windows Setup, in a small window (800 × 600), for a quarter of an hour to 40 minutes; it restarts by itself a few times. In Setup choose “I don't have a product key” (or enter yours), an edition, and the one empty disk; Microsoft's licence terms are shown there. The first-run screens have no network yet: choose “I don't have internet” there to make a local account (the network comes up when they are over). When the desktop is there, a note says so: shut Windows down and start it again here, and from then on its display fills the window and follows its size.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     @ViewBuilder private var desktopDownloads: some View {
         let image = desktopImage
-        let needRuntime = !runtime.present, needGuest = !image.present && !FileManager.default.fileExists(atPath: draft.appsDisk)
+        let needRuntime = !runtime.present
+        let needGuest = !image.present && (isWindows ? !draft.windowsInstalled : !FileManager.default.fileExists(atPath: draft.appsDisk))
         if needRuntime || needGuest || runtime.busy || image.busy || runtime.lastError != nil || image.lastError != nil {
             Section("Before the first start") {
                 if needRuntime || runtime.busy {
@@ -563,14 +581,14 @@ struct MachineView: View {
                 if let e = runtime.lastError { Banner(text: e, kind: .error) }
                 if needGuest || image.busy {
                     downloadRow(title: guestName, detail: image.detail, busy: image.busy, progress: image.progress,
-                                start: { image.download(settings) }, cancel: { image.cancel() })
+                                start: { image.download(settings) }, cancel: { image.cancel() }, verb: isWindows ? "Get…" : "Download")
                 }
                 if let e = image.lastError { Banner(text: e, kind: .error) }
             }
         }
     }
 
-    private func downloadRow(title: String, detail: String, busy: Bool, progress: String, start: @escaping () -> Void, cancel: @escaping () -> Void) -> some View {
+    private func downloadRow(title: String, detail: String, busy: Bool, progress: String, start: @escaping () -> Void, cancel: @escaping () -> Void, verb: String = "Download") -> some View {
         LabeledContent(title) {
             HStack {
                 if busy {
@@ -579,13 +597,20 @@ struct MachineView: View {
                     Button("Cancel", action: cancel)
                 } else {
                     Text(detail).font(.caption).foregroundStyle(.secondary)
-                    Button("Download", action: start)
+                    Button(verb, action: start)
                 }
             }
         }
     }
 
     private var grabHelp: String {
+        if isWindows {
+            switch draft.grab {
+            case "full": return "Windows receives every key, as from a PC keyboard: ⌘ is the Windows key and Option is Alt, and even ⌘Space and ⌘Tab go to Windows. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives it to Windows."
+            case "none": return "macOS keeps all its shortcuts; Windows only sees combinations macOS does not claim."
+            default: return "The Option key is the Windows key: Option alone opens Start. macOS keeps its ⌘ shortcuts; Windows's own are Ctrl ones (Ctrl+C and Ctrl+V)."
+            }
+        }
         if draft.kind == .kali {
             switch draft.grab {
             case "full": return "Kali receives every key, ⌘ as Super, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives Kali every key again."
@@ -646,7 +671,8 @@ struct MachineView: View {
             let gb = size.int64Value / (1024 * 1024 * 1024)
             return "the disk already exists (\(gb) GB); the size applies to new disks"
         }
-        return isDesktop ? "unpacked from the download on first start, growing as it fills" : "created on first start, growing as it fills"
+        return isWindows ? "created on first start; Windows Setup installs onto it, and it grows as it fills"
+            : isDesktop ? "unpacked from the download on first start, growing as it fills" : "created on first start, growing as it fills"
     }
 }
 
