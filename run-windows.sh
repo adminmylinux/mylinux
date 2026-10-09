@@ -9,7 +9,7 @@
 # serial port) and the file "installed".
 # Two phases, told apart by that file:
 #  - installing (no "installed" yet): the machine starts from Microsoft's ISO with hardware Windows Setup has drivers
-#    for (an NVMe disk, a USB keyboard and pointer, the firmware's own framebuffer at 800x600). You choose language,
+#    for (an NVMe disk, a USB keyboard and pointer, the firmware's own framebuffer at 1024x768). You choose language,
 #    edition and account and accept Microsoft's licence terms in Setup; the answer file only turns off the checks this
 #    machine cannot pass (no TPM, no Secure Boot here), lets a local account be made, and runs setup.cmd, which installs
 #    the drivers and myLinux's helpers. A quarter of an hour to 40 minutes, with restarts by itself on the way, then Windows's first-run
@@ -106,11 +106,12 @@ if [ "$INSTALLED" = 1 ] && [ -z "${DISPLAY_CARD:-}" ]; then
   # the size Windows starts at, in words its agent reads (windows/mylinux-agent.ps1: SMBIOS OEM strings)
   SMBIOS="-smbios type=11,value=mylinux.res=${GX}x${GY},value=mylinux.scale=$SCALE,value=mylinux.run=$$-$(date +%s)"
 else
-  # Windows Setup, and Windows before its virtio driver: the firmware's framebuffer, 800x600, scaled to the window
-  RES="${RES:-800x600}"; SCALE=1; GX=800; GY=600
+  # Windows Setup, and Windows before its virtio driver: the firmware's framebuffer (1024x768 in a machine made with
+  # windows/vars.fd.gz, 800x600 in an older one), scaled to the window when the title bar's + or Fill Screen enlarge it
+  RES="${RES:-1024x768}"; SCALE=1; GX=1024; GY=768
   DISPLAY_DEVS="-device ramfb"
   DISPLAY_OPTS="cocoa,show-cursor=off,zoom-to-fit=on,$KEYS"
-  HIDPI=false                             # 800x600 points, not a quarter of that on a Retina display
+  HIDPI=false                             # 1024x768 points, not a quarter of that on a Retina display
   SMBIOS=""
 fi
 export MYLINUX_SIZE_BUTTONS=1             # the window's size buttons: − + Fill Screen and full screen
@@ -123,8 +124,18 @@ if [ "${DRYRUN:-0}" != 1 ]; then
   mkdir -p "$MACHINE"
   [ -f "$DISK" ] || echo "creating $DISK ($DISK_SIZE_GB GB, sparse) ..."
   grow_file "$DISK" "$DISK_SIZE_GB" || die "could not create the disk"
-  # the firmware's variables (its boot entries): a writable flash of its own, the size of the code flash
-  [ -f "$MACHINE/vars.fd" ] || dd if=/dev/zero of="$MACHINE/vars.fd" bs=1m count=64 2>/dev/null || die "could not create vars.fd"
+  # the firmware's variables (its boot entries): a writable flash of its own, the size of the code flash. A new machine's
+  # come from windows/vars.fd.gz (tools/make-windows-vars.py), where the firmware's screen is 1024x768, the largest it has
+  # for Windows Setup to draw on; an empty one (800x600) if that cannot be unpacked
+  # (and on a display too low for a 1024x768 window below its menu bar: a small Mac at its larger text sizes)
+  roomy() { ( die() { exit 1; }; RES=1024x768; SCALE=1; . "$REPO/tools/desktop-window.sh" >/dev/null 2>&1; [ "$RES" = 1024x768 ] ); }
+  if [ ! -f "$MACHINE/vars.fd" ]; then
+    if roomy && gunzip -c windows/vars.fd.gz > "$MACHINE/vars.fd.new" 2>/dev/null && [ "$(stat -f %z "$MACHINE/vars.fd.new")" = 67108864 ]; then
+      mv "$MACHINE/vars.fd.new" "$MACHINE/vars.fd"
+    else
+      rm -f "$MACHINE/vars.fd.new"; dd if=/dev/zero of="$MACHINE/vars.fd" bs=1m count=64 2>/dev/null || die "could not create vars.fd"
+    fi
+  fi
   case "$(cat "$MACHINE/uuid" 2>/dev/null)" in ????????-????-????-????-????????????) ;; *) uuidgen | tr 'A-F' 'a-f' > "$MACHINE/uuid" ;; esac
   # the tools disc: made again when what goes on it changed (a newer launcher's scripts reach Windows at its next start)
   if [ -d "$G/drivers" ]; then

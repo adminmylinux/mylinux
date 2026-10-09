@@ -360,6 +360,11 @@ for f in NetKVM/netkvm.inf viogpudo/viogpudo.inf vioserial/vioser.inf; do printf
 out=$(cd / && DRYRUN=1 DISK="$T/win/windows.raw" NAME="Windows test" sh "$W/run-windows.sh" 2>&1); rc=$?
 is_rc "installing: dry run works from another directory" $rc 0
 has "installing: says so" "$out" "INSTALLED=0"
+has "installing: the firmware's larger screen" "$out" "RES=1024x768"
+[ "$(gunzip -c "$REPO/windows/vars.fd.gz" | wc -c | tr -d ' ')" = 67108864 ] && ok "a new machine's firmware settings unpack to the flash's size" || ko "windows/vars.fd.gz is not a 64 MB flash"
+# PlatformConfig (UTF-16), its end, then 1024 and 768 as the firmware keeps them
+gunzip -c "$REPO/windows/vars.fd.gz" | head -c 262144 | xxd -p | tr -d '\n' | grep -q '50006c006100740066006f0072006d0043006f006e0066006900670000000004000000030000' && ok "and set the firmware's screen to 1024x768" || ko "windows/vars.fd.gz does not set 1024x768"
+grep -q 'gunzip -c windows/vars.fd.gz' "$W/run-windows.sh" && ok "run-windows.sh starts a new machine from them" || ko "run-windows.sh does not use windows/vars.fd.gz"
 has "the two machine settings Windows needs" "$out" "virt,gic-version=3,highmem-mmio=off"
 printf '%s\n' "$out" | grep -qE '^virtio-net-pci,netdev=n0,mac=52:54:00:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2},romfile=$' && ok "a network address of the machine's own" || ko "a network address of the machine's own"
 has "the firmware's variables are the machine's own" "$out" "format=raw,file=$T/win/vars.fd"

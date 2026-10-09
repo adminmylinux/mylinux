@@ -873,6 +873,31 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(mine.count, 5); XCTAssertTrue(mine.allSatisfy { $0.os == ["windows"] }, "a shell snippet is no PowerShell one")
         XCTAssertTrue(mine.contains { $0.id == "claude-install-windows" && $0.text.contains("claude.ai/install.ps1") })
     }
+    func testWindowsInstallStagesComeFromTheMachinesFiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-winstage-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let p = ProfileStore.newProfile(named: "W", kind: .windows, folder: dir)
+        let log = dir.appendingPathComponent("setup.log"), disk = URL(fileURLWithPath: p.appsDisk)
+        func stage() -> WindowsSetupStage { let s = WindowsSetupStage.of(p); WindowsSetupStage.remember(s, for: p); return s }
+        XCTAssertEqual(stage(), .setup, "no disk yet")
+        try Data(count: 2048).write(to: disk)
+        XCTAssertEqual(stage(), .setup, "an empty disk: Setup is at its questions")
+        var gpt = Data(count: 2048); gpt.replaceSubrange(512..<520, with: Data("EFI PART".utf8)); try gpt.write(to: disk)
+        XCTAssertEqual(stage(), .installing, "partitioned: Windows is being copied")
+        try "mylinux-setup: setup from E:\\mylinux as SYSTEM\r\nmylinux-setup: first-run screens next\r\n".write(to: log, atomically: true, encoding: .utf8)
+        XCTAssertEqual(stage(), .firstRun)
+        // the machine stopped at those screens and started again: QEMU begins setup.log anew
+        try "".write(to: log, atomically: true, encoding: .utf8)
+        XCTAssertEqual(stage(), .firstRun, "remembered by the launcher's own mark")
+        try "mylinux-setup: installed\r\n".write(to: log, atomically: true, encoding: .utf8)
+        XCTAssertEqual(stage(), .done)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("first-run").path), "the mark goes when it has served")
+        // a disk made again (the old one deleted): back at Setup's questions, whatever was remembered
+        try FileManager.default.removeItem(at: log); try Data().write(to: dir.appendingPathComponent("first-run")); try Data(count: 2048).write(to: disk)
+        XCTAssertEqual(stage(), .setup)
+        XCTAssertEqual(WindowsSetupStage.allCases.map(\.title).count, 4)
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

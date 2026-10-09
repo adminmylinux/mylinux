@@ -630,6 +630,8 @@ final class RunManager: ObservableObject {
                     if !p.shareDir.isEmpty { CodexLogin.sweep(p.shareDir) }
                     DispatchQueue.main.async {
                         r.refreshExternal(inUse: inUse)
+                        // Windows being installed: the steps, beside the machine's window (WindowsSetupHelp)
+                        if p.kind == .windows { MainActor.assumeIsolated { WindowsSetupHelp.follow(p, running: inUse) } }
                         if cloudAsked { self.cloudRequest(p.id, store: store) }
                         if codexAsked { CodexLogin.answer(p) }
                     }

@@ -183,7 +183,9 @@ boot loader and an install image are on it; kept as a clone), the Arm64 Windows 
 `run-windows.sh` has two phases, told apart by `installed`:
 
 - **Installing.** The machine starts from Microsoft's ISO with hardware Windows Setup has drivers for: an NVMe disk,
-  a USB keyboard and tablet on `qemu-xhci`, and `ramfb`, the firmware's framebuffer, at 800x600 in a window that
+  a USB keyboard and tablet on `qemu-xhci`, and `ramfb`, the firmware's framebuffer, at 1024x768 (the largest this firmware's ramfb driver has; a new machine's
+  `vars.fd` is unpacked from `windows/vars.fd.gz`, which `tools/make-windows-vars.py` makes by setting the firmware's
+  preferred resolution from its own shell) in a window that
   scales it. The firmware asks for a key before it starts a disc ("Press any key to boot from CD or DVD"); the script
   presses Return for the first twelve seconds through a QMP socket of its own, only while the disk has no partition
   table. `tools.iso` is made by the script with `hdiutil` from `windows/` and the drivers: Windows Setup finds
@@ -245,7 +247,11 @@ start it was installed in still has the installer's hardware).
 The launcher (`Profile.Kind.windows`) treats it as a desktop with no share folder; **Get Windows…**
 (`DesktopImageManager.getWindows`) explains where Windows comes from, opens Microsoft's page and takes the ISO.
 Snippets…'s Paste sends Ctrl+V instead of Ctrl+Shift+V, and with no console to wait for, the machine counts as
-running when QEMU's control socket is there.
+running when QEMU's control socket is there. While a machine that is not installed yet runs, `WindowsSetupHelp`
+keeps a panel of the install's steps beside its window (one that does not take the keyboard from Windows). The step
+it marks comes from the machine's files: no partition table on the disk (Setup is at its questions), one (Windows is
+being copied), `first-run screens next` in `setup.log` (kept as the file `first-run`, since QEMU begins `setup.log`
+anew at every start), `installed`.
 
 ## 5. Inside the myLinux guest
 

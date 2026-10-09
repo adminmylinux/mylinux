@@ -471,6 +471,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `myLinux --show-windows-help <png>` (a scratch MYLINUX_SUPPORT_DIR): the steps window of a Windows install for a
+        // stand-in machine, photographed at each stage (<png> with -0 … -3) as the machine's files say them;
+        // MYLINUX_TEST_SCREEN=<n> puts it on that display (0 is the one with the menu bar)
+        if let i = args.firstIndex(of: "--show-windows-help"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let path = args[i + 1]
+            let folder = Paths.support.appendingPathComponent("help-test", isDirectory: true)
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let p = ProfileStore.newProfile(named: "Windows", kind: .windows, folder: folder)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                WindowsSetupHelp.show(p, byUser: true)
+                guard let w = NSApp.windows.first(where: { $0.isVisible && $0.title.hasSuffix("Installing Windows") }),
+                      let model = WindowsSetupHelp.model(for: p.id) else { print("no window"); fflush(stdout); exit(1) }
+                if let n = ProcessInfo.processInfo.environment["MYLINUX_TEST_SCREEN"].flatMap(Int.init), n < NSScreen.screens.count {
+                    let v = NSScreen.screens[n].visibleFrame
+                    w.setFrameOrigin(NSPoint(x: v.midX - w.frame.width / 2, y: v.midY - w.frame.height / 2))
+                }
+                var disk = Data(count: 1024); disk.replaceSubrange(512..<520, with: Data("EFI PART".utf8))
+                let log = folder.appendingPathComponent("setup.log")
+                let stages: [() -> Void] = [
+                    {},
+                    { try? disk.write(to: URL(fileURLWithPath: p.appsDisk)) },
+                    { try? "mylinux-setup: first-run screens next\r\n".write(to: log, atomically: true, encoding: .utf8) },
+                    { try? "mylinux-setup: first-run screens next\r\nmylinux-setup: installed\r\n".write(to: log, atomically: true, encoding: .utf8) },
+                ]
+                for (n, make) in stages.enumerated() {
+                    make(); model.refresh()
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    print("stage \(n): \(model.stage) scale \(w.screen?.backingScaleFactor ?? 0) window \(Int(w.frame.width))x\(Int(w.frame.height))"); fflush(stdout)
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    cap.arguments = ["-x", "-o", "-l", String(w.windowNumber), path.replacingOccurrences(of: ".png", with: "-\(n).png")]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
+            }
+            return
+        }
         // `myLinux --show-mount-share <png>` (a scratch MYLINUX_SUPPORT_DIR): the Mount a Share dialog for a stand-in Omarchy
         if let i = args.firstIndex(of: "--show-mount-share"), i + 1 < args.count, ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let path = args[i + 1]

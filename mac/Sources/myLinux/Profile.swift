@@ -119,7 +119,7 @@ struct Profile: Codable, Identifiable, Hashable {
     }
     /// Windows is installed in this machine: its own setup script said so (setup.log, through a virtio port), and
     /// run-windows.sh keeps the word as a file from the next start on. Until then a start is Windows Setup, at the
-    /// installer's 800x600.
+    /// installer's 1024x768.
     var windowsInstalled: Bool {
         guard kind == .windows else { return false }
         if FileManager.default.fileExists(atPath: machineFolder.appendingPathComponent("installed").path) { return true }

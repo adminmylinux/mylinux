@@ -33,7 +33,7 @@ Set-Content -Path $log -Value ("{0} agent started" -f (Get-Date -Format s))
 $oem = @{}
 try { foreach ($word in (Get-CimInstance Win32_ComputerSystem).OEMStringArray) { if ($word -match '^mylinux\.(\w+)=(.+)$') { $oem[$Matches[1]] = $Matches[2] } } } catch { }
 
-# The start of the machine in which Windows was installed still has the installer's hardware (the firmware's 800x600
+# The start of the machine in which Windows was installed still has the installer's hardware (the firmware's 1024x768
 # framebuffer): said once, with what to do about it, in front of whatever is open (a box of a hidden program opens
 # behind the others otherwise), and before the slower parts below.
 if (-not $oem.res -and -not (Test-Path (Join-Path $data 'told'))) {

@@ -141,7 +141,7 @@ fetches what Windows lacks for this machine: the virtio drivers for the network 
 ports (the [virtio-win](https://github.com/virtio-win/virtio-win-pkg-scripts) project's driver disc, one pinned
 version checked against a pinned SHA-256; 877 MB to download, 3 MB kept) and the UEFI firmware.
 
-The first start is Windows Setup itself, in a small window (800 × 600): you choose the language, an edition ("I don't
+The first start is Windows Setup itself, in a window of 1024 × 768 (the title bar's + and Fill Screen enlarge it): you choose the language, an edition ("I don't
 have a product key", or yours) and the one empty disk, and Microsoft's licence terms are shown and accepted there.
 An answer file ([`windows/autounattend.xml`](windows/autounattend.xml)) only turns off the checks this machine cannot
 pass (it has no TPM and no Secure Boot), lets a local account be made, and runs
@@ -149,7 +149,10 @@ pass (it has no TPM and no Secure Boot), lets a local account be made, and runs
 done. Setup takes between a quarter of an hour and 40 minutes (the Mac's load decides) and restarts by itself on the
 way. Its first-run screens come without a network, on purpose: "I don't have internet" there makes a local account,
 and the network card gets its driver the moment they are over (with a network they insist on an account online).
-When the desktop is up, a note says to shut Windows down and start it again.
+When the desktop is up, a note says to shut Windows down and start it again. While all this goes on, the launcher
+keeps a small window of the steps beside Windows's own, the step it is at marked, with the one answer nobody guesses
+("I don't have internet", where Windows offers "Install driver"); **Show the Steps** on the machine's page brings it
+back.
 
 From that second start on it is a machine like the other desktops. The display is a virtio card whose driver follows
 the window (the title bar's − + and Fill Screen buttons, full screen, a drag of the window's edge), with twice the
