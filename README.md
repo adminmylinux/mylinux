@@ -162,7 +162,8 @@ of Omarchy's clipboard agent over a virtio serial port); sound goes through the 
 **Snippets…**, with PowerShell ones for Windows (Claude Code and a `cc` for it, Codex and `cx`, Git, VS Code and
 Node.js from winget, updates, the Mac's shared folders; **Paste** puts one into Windows Terminal), and **Mount a
 Share…**. Every key goes to Windows by default, ⌘ as the Windows key and Option as Alt; the machine's settings can
-leave ⌘ to macOS instead.
+leave ⌘ to macOS instead. Dragged from a Retina display to one that is not, or back, the window keeps its size and
+Windows changes its scaling (200 % or 100 %) to match.
 
 What it does not have: a shared folder (Windows reads no 9p; a folder shared on the Mac with File Sharing opens at
 `\\10.0.2.2` in File Explorer), Cloud Folders, Apps… and Claude Install… (snippets do those jobs), a TPM, and 3D

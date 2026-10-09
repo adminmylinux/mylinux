@@ -18,7 +18,9 @@
 #  - installed: the display is a virtio card (driver viogpudo), which follows the window's size as Omarchy's does (the
 #    title bar's size buttons, Fill Screen, a drag), with twice the pixels on a Retina display; the pointer is drawn
 #    by the Mac; the clipboard is shared both ways (windows/mylinux-agent.ps1 inside, the launcher's or
-#    tools/omarchy-clipboard.py's bridge here); sound through the Mac. Microsoft's ISO is no longer attached.
+#    tools/omarchy-clipboard.py's bridge here); sound through the Mac. Microsoft's ISO is no longer attached. Dragged
+#    to a display of the other kind (Retina or not), the window keeps its size and Windows changes its scaling (the
+#    launcher's helper tells it; from a terminal the scaling stays the start's).
 # Environment: RES=WxH window size in points (default: fills the display; a Retina display gives Windows twice that in
 #              pixels, SCALE=1|2 overrides), DISK=path of the disk (default $MYLINUX_OUT/windows-machine/windows.raw),
 #              DISK_SIZE_GB=64, NAME=window title, MEM=8G, CPUS=6,
@@ -74,6 +76,7 @@ case "${CLIPBOARD:-1}" in 0|1) ;; *) die "CLIPBOARD must be 0 or 1" ;; esac
 case "${DISPLAY_CARD:-}" in ''|basic) ;; *) die "DISPLAY_CARD is basic or not set" ;; esac
 CLIPSOCK="/tmp/mylinux-$(id -u)-clip-$$.sock"      # short: unix socket paths are limited to 104 bytes
 KEYSOCK="/tmp/mylinux-$(id -u)-wkey-$$.sock"
+HOSTSOCK="/tmp/mylinux-$(id -u)-host-$$.sock"
 NETDEV="user,id=n0"
 for fw in $(printf '%s' "${FORWARD:-}" | tr ',' ' '); do
   case "$fw" in [0-9]*:[0-9]*) NETDEV="$NETDEV,hostfwd=tcp:127.0.0.1:${fw%%:*}-:${fw##*:}" ;; *) die "FORWARD entries look like hostport:guestport (got '$fw')" ;; esac
@@ -105,6 +108,12 @@ if [ "$INSTALLED" = 1 ] && [ -z "${DISPLAY_CARD:-}" ]; then
   export MYLINUX_DESKTOP_MODE="${GX}x${GY}"
   # the size Windows starts at, in words its agent reads (windows/mylinux-agent.ps1: SMBIOS OEM strings)
   SMBIOS="-smbios type=11,value=mylinux.res=${GX}x${GY},value=mylinux.scale=$SCALE,value=mylinux.run=$$-$(date +%s)"
+  # The window on another display: the launcher's helper tells Windows which kind it is on now (the virtio port
+  # dev.mylinux.host: "scale=1" or "scale=2", that display's pixels to a point), the agent sets Windows's scaling by
+  # it, and the runtime keeps the window's size when it comes onto a display of the other kind (MYLINUX_GUEST_SCALES),
+  # so Windows gets half or twice the pixels and looks the same. Started from a terminal there is no helper: the
+  # scaling stays the start's, and the window takes the mode's size on the other display, as the Linux desktops' does.
+  HOSTPORT=0; [ -n "${MYLINUX_HELPER:-}" ] && [ -x "$MYLINUX_HELPER" ] && HOSTPORT=1
 else
   # Windows Setup, and Windows before its virtio driver: the firmware's framebuffer (1024x768 in a machine made with
   # windows/vars.fd.gz, 800x600 in an older one), scaled to the window when the title bar's + or Fill Screen enlarge it
@@ -112,7 +121,7 @@ else
   DISPLAY_DEVS="-device ramfb"
   DISPLAY_OPTS="cocoa,show-cursor=off,zoom-to-fit=on,$KEYS"
   HIDPI=false                             # 1024x768 points, not a quarter of that on a Retina display
-  SMBIOS=""
+  SMBIOS=""; HOSTPORT=0
 fi
 export MYLINUX_SIZE_BUTTONS=1             # the window's size buttons: − + Fill Screen and full screen
 # the ⌘ menu in the title bar (⌘P opens it): the launcher's commands that fit Windows
@@ -185,6 +194,11 @@ if [ "${CLIPBOARD:-1}" = 1 ]; then
   set -- "$@" -chardev "socket,id=clip,path=$CLIPSOCK,server=on,wait=off" \
     -device "virtserialport,bus=ser.0,nr=2,chardev=clip,name=dev.tryomarchy.clipboard"
 fi
+if [ "$HOSTPORT" = 1 ]; then
+  set -- "$@" -chardev "socket,id=mlhost,path=$HOSTSOCK,server=on,wait=off" \
+    -device "virtserialport,bus=ser.0,nr=3,chardev=mlhost,name=dev.mylinux.host"
+  export MYLINUX_GUEST_SCALES=1
+fi
 if [ "${AUDIO:-1}" = 1 ]; then
   set -- "$@" -audiodev sdl,id=audio -device intel-hda,id=hda,romfile= -device hda-duplex,bus=hda.0,audiodev=audio
 fi
@@ -221,5 +235,10 @@ if [ "${CLIPBOARD:-1}" = 1 ]; then
   if [ -n "${MYLINUX_HELPER:-}" ] && [ -x "$MYLINUX_HELPER" ]; then "$MYLINUX_HELPER" --omarchy-clipboard "$CLIPSOCK" 2>>"${MACHINE}/clipboard.log" &
   elif have_python; then python3 tools/omarchy-clipboard.py "$CLIPSOCK" 2>>"${MACHINE}/clipboard.log" &
   else echo "$ME: clipboard sharing needs the launcher app or python3; the machine starts without it" | tee -a "${MACHINE}/clipboard.log" >&2; fi
+fi
+# the helper for the display's kind: as the clipboard's, it leaves when QEMU is gone
+if [ "$HOSTPORT" = 1 ]; then
+  rm -f "$HOSTSOCK"
+  "$MYLINUX_HELPER" --windows-display "$HOSTSOCK" 2>>"${MACHINE}/display.log" &
 fi
 exec "$QEMU" "$@"

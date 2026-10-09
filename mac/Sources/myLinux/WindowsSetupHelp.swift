@@ -73,7 +73,7 @@ final class WindowsSetupModel: ObservableObject {
 struct WindowsSetupHelpView: View {
     @ObservedObject var model: WindowsSetupModel
     /// One size, set by the window (a window that follows its content's height ended the launcher once: 0.7.61).
-    static let size = CGSize(width: 380, height: 565)
+    static let size = CGSize(width: 380, height: 620)
 
     var body: some View {
         ScrollView {
@@ -95,6 +95,7 @@ struct WindowsSetupHelpView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor.opacity(0.45)))
                     Text("No driver is needed, and “Install driver” is not the way. myLinux installs the network driver by itself when these screens are done, so the network is there on the desktop. With a network here, Windows insists on an account online.")
                     Text("Then your name, a password (or none) and the privacy choices. A Microsoft account can be added later, in Windows's Settings › Accounts.")
+                    Text("If “Why did my PC restart?” comes up instead of these screens (a very busy Mac can do that), stop the machine and start it again.")
                 }
                 step(.done) {
                     Text("Windows is installed. Shut it down (Start › Power › Shut down, or Stop in myLinux Launcher) and start it again: its display then fills the window and follows its size.")

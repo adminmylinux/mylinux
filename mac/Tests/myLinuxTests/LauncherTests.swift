@@ -898,6 +898,13 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(stage(), .setup)
         XCTAssertEqual(WindowsSetupStage.allCases.map(\.title).count, 4)
     }
+    func testWindowsIsToldTheKindOfDisplayItsWindowIsOn() {
+        XCTAssertEqual(WindowsDisplay.scale(pixelWidth: 3456, width: 1728), 2, "a Retina display")
+        XCTAssertEqual(WindowsDisplay.scale(pixelWidth: 2560, width: 2560), 1)
+        XCTAssertEqual(WindowsDisplay.scale(pixelWidth: 3840, width: 2560), 1, "a 4K display at a size between: Windows keeps 100%")
+        XCTAssertEqual(WindowsDisplay.scale(pixelWidth: 0, width: 0), 1)
+        XCTAssertNil(WindowsDisplay.scale(ofWindowOf: 1), "a process without a window on screen")
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

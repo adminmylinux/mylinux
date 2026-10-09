@@ -78,6 +78,7 @@ public static class Display {
     [DllImport("user32.dll")] static extern int QueryDisplayConfig(uint flags, ref uint paths, IntPtr pathArray, ref uint modes, IntPtr modeArray, IntPtr topology);
     [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(IntPtr packet);
     [DllImport("user32.dll")] static extern int DisplayConfigSetDeviceInfo(IntPtr packet);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
 
     static string logFile;
     static int startWidth, startHeight, startScale;
@@ -105,6 +106,38 @@ public static class Display {
         } finally { Marshal.FreeHGlobal(paths); Marshal.FreeHGlobal(modes); Marshal.FreeHGlobal(packet); }
     }
     static void Log(string text) { try { File.AppendAllText(logFile, DateTime.Now.ToString("s") + " display: " + text + "\r\n"); } catch { } }
+
+    // What the Mac says about the display the window is on now (the launcher's helper, over the virtio port
+    // dev.mylinux.host): "scale=1" or "scale=2", that display's pixels to a point. Dragged from a Retina display to
+    // another kind or back, the window keeps its size and Windows gets half or twice the pixels (followed below, as
+    // every size is): its scaling goes with them, and what is on the screen stays as large as it was.
+    // Windows keeps its scaling as steps from the one it recommends, and what it recommends goes with the number of
+    // pixels: the scaling is set at the Mac's word and once more when the new size has come (either may be first).
+    static readonly object scaling = new object();
+    static int hostScale;                                               // the Mac's last word as a percentage, 0 before any
+    static DateTime hostScaleAt = DateTime.MinValue;
+    static void Host() {
+        while (true) {
+            try {
+                // (GENERIC_READ, OPEN_EXISTING, FILE_FLAG_OVERLAPPED: as the clipboard's port is opened)
+                using (var port = CreateFile("\\\\.\\Global\\dev.mylinux.host", 0x80000000, 0, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero)) {
+                    if (!port.IsInvalid) {
+                        using (var reader = new StreamReader(new FileStream(port, FileAccess.Read, 256, true))) {
+                            string line;
+                            while ((line = reader.ReadLine()) != null) {
+                                if (line != "scale=1" && line != "scale=2") continue;
+                                int percent = line == "scale=2" ? 200 : 100;
+                                lock (scaling) {
+                                    if (percent != hostScale) { hostScale = percent; hostScaleAt = DateTime.Now; Scale(percent); }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception) { }
+            Thread.Sleep(5000);                                          // no such port (a start without the helper), or it went away
+        }
+    }
 
     // the virtio display among Windows's adapters, wherever in the list it is: its device name (\\.\DISPLAYn)
     static string Find() {
@@ -159,11 +192,12 @@ public static class Display {
                         uint ignored; Ask(adapter, 2, (uint)(startWidth | (startHeight << 16)), out ignored); startWidth = 0;
                     }
                     Sync(device, adapter);
-                    if (first && startScale > 0) { Thread.Sleep(1500); Scale(startScale * 100); }       // and its scaling, once the size is there
+                    if (first && startScale > 0) { Thread.Sleep(1500); lock (scaling) { Scale(startScale * 100); } }    // and its scaling, once the size is there
                     while (true) {
                         changed.WaitOne();
                         Thread.Sleep(150);                               // a drag sends many sizes: the last one counts
                         Sync(device, adapter);
+                        lock (scaling) { if (hostScale > 0 && (DateTime.Now - hostScaleAt).TotalSeconds < 15) Scale(hostScale); }
                         if (Find() != device) break;                     // the display was taken away or changed
                     }
                 }
@@ -177,6 +211,7 @@ public static class Display {
     public static void Start(string log, int width, int height, int scale) {
         logFile = log; startWidth = width; startHeight = height; startScale = scale;
         Thread t = new Thread(Run); t.IsBackground = true; t.Start();
+        Thread h = new Thread(Host); h.IsBackground = true; h.Start();
     }
 }
 }

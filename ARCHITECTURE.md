@@ -162,6 +162,11 @@ The differences from `run.sh`:
 - The window's title bar has size and full screen buttons and a Session menu. They come from
   `tools/qemu-runtime-patches/qemu-cocoa-size-buttons.patch`, this project's own patch to QEMU's Cocoa UI. The
   Session menu runs `tools/omarchy-session-mac.sh`, which drops a command file into the share folder.
+- The same patch places the window: it opens on the display its size was chosen for (`MYLINUX_WINDOW_DISPLAY`) and is
+  centred there again at each change of the guest's mode, until the user moves it (a drag of the title bar, or onto
+  another display). From then on it stays where it was put and a mode change keeps its top left corner; before
+  runtime 11.1.1-20 it was taken back to the display it opened on, so a window that follows its guest could not be
+  dragged to another display.
 - Inside Omarchy, `omarchy/session/omarchy-session` (installed once by the user with `install-session.sh`) saves
   the window layout, each window's command line and a terminal's working directory every minute and at logout, and
   reopens them at login. It also picks up the command files from the Session menu.
@@ -237,6 +242,14 @@ C# for the Windows calls:
   the size Windows should have is handed in as SMBIOS OEM strings (`mylinux.res`, `mylinux.scale`, and `mylinux.run`,
   a new word at each start so the size is applied once per start). On a Retina display the agent also sets Windows's
   scaling to 200 % (`DisplayConfigSetDeviceInfo`).
+- **Another display.** A Mac window dragged from a Retina display to one that is not keeps its size in points and
+  has half the pixels. The runtime does that for Windows (`MYLINUX_GUEST_SCALES`: no resize to the mode's size on the
+  new display, as the Linux desktops' windows get), QEMU tells the display the new number of pixels as for any
+  resize, and Windows's scaling has to follow or everything is twice as large. The size alone does not say which
+  kind of display it is (Fill Screen from a half-size window doubles it too), so the Mac says it: the launcher's own
+  binary as a helper (`--windows-display`, `WindowsDisplay.swift`, started by `run-windows.sh` as the clipboard
+  bridge is) writes `scale=1` or `scale=2` to the port `dev.mylinux.host` for the display the window's middle is
+  on, and the agent sets Windows's scaling. Started from a terminal there is no helper and none of this.
 - **The clipboard.** The port `dev.tryomarchy.clipboard` with Omarchy's protocol, so the Mac side is the launcher's
   bridge unchanged (`tools/omarchy-clipboard.py` from the command line): text with its line endings converted, and
   PNG pictures. The log (`%LOCALAPPDATA%\myLinux\agent.log`) has kinds and sizes, never contents.

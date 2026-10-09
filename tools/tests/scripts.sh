@@ -397,6 +397,12 @@ has "GRAB=opt: Option is the Windows key" "$out" "swap-opt-cmd=on"
 has "FORWARD" "$out" "hostfwd=tcp:127.0.0.1:2244-:22"
 has "QMP socket for a clean stop" "$out" "unix:$T/wq.sock,server=on,wait=off"
 case "$out" in *tryomarchy.clipboard*|*intel-hda*) ko "CLIPBOARD=0 AUDIO=0: neither device" ;; *) ok "CLIPBOARD=0 AUDIO=0: neither device" ;; esac
+case "$out" in *dev.mylinux.host*) ko "no helper: no port for the display's kind" ;; *) ok "no helper: no port for the display's kind" ;; esac
+out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 SCALE=1 RES=1600x1000 MYLINUX_HELPER=/bin/sh sh run-windows.sh 2>&1)
+has "with the launcher's helper: the port it tells Windows the display's kind through" "$out" "nr=3,chardev=mlhost,name=dev.mylinux.host"
+out=$(cd "$W" && DRYRUN=1 MYLINUX_HELPER=/bin/sh sh run-windows.sh 2>&1)
+case "$out" in *dev.mylinux.host*) ko "installing: no such port" ;; *) ok "installing: no such port" ;; esac
+grep -q 'export MYLINUX_GUEST_SCALES=1' "$W/run-windows.sh" && grep -q -- '--windows-display "$HOSTSOCK"' "$W/run-windows.sh" && ok "the runtime keeps the window's size across displays only when the helper runs" || ko "MYLINUX_GUEST_SCALES and the helper do not go together"
 out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 GRAB=all sh run-windows.sh 2>&1); rc=$?
 not_rc0 "unknown GRAB is refused" $rc
 out=$(cd "$W" && DRYRUN=1 INSTALLED_DRYRUN=1 RES=1600x1000 DISK_SIZE_GB=16 sh run-windows.sh 2>&1); rc=$?

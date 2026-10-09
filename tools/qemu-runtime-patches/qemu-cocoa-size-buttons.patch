@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,7 +117,37 @@
+@@ -117,7 +117,44 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
@@ -30,6 +30,13 @@
 +static NSSize mylinux_mode_size;
 +/* the window's first second (the toolbar goes in, macOS places it): nothing it does to its size is the user's */
 +static bool mylinux_settling;
++/*
++ * The window was moved by the user (a drag of its title bar, or onto another display): it stays where it was put.
++ * A change of the guest's mode keeps its top left corner from then on; until then the window is centred at every
++ * mode change on the display it opened on, which is what took a window dragged to another display straight back.
++ */
++static bool mylinux_user_placed;
++static bool mylinux_guest_scales(void);
 +static bool mylinux_size_buttons(void);
 +static bool mylinux_follows_mode(NSWindow *window);
 +static void mylinux_desktop_reached(NSWindow *window, int w, int h);
@@ -38,7 +45,7 @@
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
  static QemuEvent cbevent;
-@@ -696,12 +726,16 @@
+@@ -696,12 +733,30 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
  
@@ -47,17 +54,31 @@
          CGFloat width = screen.width / [[self window] backingScaleFactor];
          CGFloat height = screen.height / [[self window] backingScaleFactor];
  
++        NSRect was = [[self window] frame];
 +        mylinux_self_sizing = true;
          [[self window] setContentSize:NSMakeSize(width, height)];
 -        [[self window] center];
-+        mylinux_center([self window]);
++        if (mylinux_user_placed) {
++            /* (setContentSize keeps the bottom left corner) and inside the screen, when it fits there */
++            NSRect now = [[self window] frame], v = [[[self window] screen] visibleFrame];
++            CGFloat x = was.origin.x, y = NSMaxY(was) - now.size.height;
++            if (now.size.width <= v.size.width) {
++                x = MAX(NSMinX(v), MIN(x, NSMaxX(v) - now.size.width));
++            }
++            if (now.size.height <= v.size.height) {
++                y = MAX(NSMinY(v), MIN(y, NSMaxY(v) - now.size.height));
++            }
++            [[self window] setFrameOrigin:NSMakePoint(x, y)];
++        } else {
++            mylinux_center([self window]);
++        }
 +        mylinux_mode_size = [[[self window] contentView] frame].size;     /* as macOS let it be (a screen caps it) */
 +        mylinux_desktop_reached([self window], screen.width, screen.height);
 +        mylinux_self_sizing = false;
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -981,6 +1015,11 @@
+@@ -981,6 +1036,11 @@
      unsigned int keycode;
      NSUInteger modifiers = [event modifierFlags];
  
@@ -69,7 +90,7 @@
      /*
       * Check -[NSEvent modifierFlags] here.
       *
-@@ -1126,6 +1165,30 @@
+@@ -1126,6 +1186,30 @@
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
  
@@ -100,7 +121,7 @@
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
              if (![self isKeyboardCaptured] &&
-@@ -1147,9 +1210,12 @@
+@@ -1147,9 +1231,12 @@
                              [self selectConsoleLocked:key - '0' - 1]; /* ascii math */
                              return true;
  
@@ -114,7 +135,7 @@
                              return true;
                      }
                  }
-@@ -1375,6 +1441,9 @@
+@@ -1375,6 +1462,9 @@
   */
  - (BOOL) isKeyboardCaptured
  {
@@ -124,7 +145,7 @@
      return isMouseGrabbed ||
             (full_grab_enabled && [[self window] isKeyWindow]);
  }
-@@ -1405,17 +1474,46 @@
+@@ -1405,17 +1495,46 @@
  
  
  /*
@@ -172,7 +193,7 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1423,6 +1521,10 @@
+@@ -1423,6 +1542,10 @@
  - (void)removePause;
  - (void)restartQEMU:(id)sender;
  - (void)powerDownQEMU:(id)sender;
@@ -183,7 +204,7 @@
  - (void)ejectDeviceMedia:(id)sender;
  - (void)changeDeviceMedia:(id)sender;
  - (BOOL)verifyQuit;
-@@ -1475,7 +1577,7 @@
+@@ -1475,7 +1598,7 @@
          }
  
          // create a window
@@ -192,7 +213,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1591,9 @@
+@@ -1489,8 +1612,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -203,12 +224,21 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1656,62 @@
+@@ -1553,28 +1677,75 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
-+    /* moved to another display (the launcher places it): the mode's size again, in that display's points */
-+    if (!mylinux_self_sizing && mylinux_follows_mode([cocoaView window])) {
++    /*
++     * moved to another display, and not by the window's own code: the user's place for it. The mode's size again,
++     * in that display's points; not for a guest that changes its own scaling with the display (MYLINUX_GUEST_SCALES,
++     * Windows) once it follows the window: there the window keeps its size, and the guest is told the new number of
++     * pixels (updateUIInfo below) and takes it.
++     */
++    if (!mylinux_self_sizing) {
++        mylinux_user_placed = true;
++    }
++    if (!mylinux_self_sizing && mylinux_follows_mode([cocoaView window]) &&
++        !(mylinux_guest_scales() && ([[cocoaView window] styleMask] & NSWindowStyleMaskResizable))) {
 +        [cocoaView resizeWindow];
 +    }
      [cocoaView updateScale];
@@ -217,7 +247,11 @@
  
  - (void)windowDidChangeBackingProperties:(NSNotification *)notification
  {
-+    if (!mylinux_self_sizing && mylinux_follows_mode([cocoaView window])) {
++    if (!mylinux_self_sizing) {
++        mylinux_user_placed = true;
++    }
++    if (!mylinux_self_sizing && mylinux_follows_mode([cocoaView window]) &&
++        !(mylinux_guest_scales() && ([[cocoaView window] styleMask] & NSWindowStyleMaskResizable))) {
 +        [cocoaView resizeWindow];
 +    }
      [cocoaView updateScale];
@@ -267,7 +301,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1719,23 @@
+@@ -1582,6 +1753,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -291,7 +325,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1829,526 @@
+@@ -1675,12 +1863,533 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -317,6 +351,7 @@
 +    return v && *v ? v : NULL;
 +}
 +static bool mylinux_size_buttons(void) { return mylinux_env("MYLINUX_SIZE_BUTTONS") != NULL; }
++static bool mylinux_guest_scales(void) { return mylinux_env("MYLINUX_GUEST_SCALES") != NULL; }
 +/*
 + * The window starts fixed, as it always did: a guest's early console takes the window's size for its own, and a
 + * first-boot screen drawn in a window of another size comes out wrong. When the guest reaches its desktop's mode
@@ -713,6 +748,12 @@
 +    return nil;
 +}
 +
++/* the user takes the window by its title bar (AppKit says so for a drag only, not for a move the code makes) */
++- (void)windowWillMove:(NSNotification *)notification
++{
++    mylinux_user_placed = true;
++}
++
 +- (void)sizeButtonSetContentSize:(NSSize)size
 +{
 +    NSWindow *window = [cocoaView window];
@@ -818,7 +859,7 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1756,6 +2424,88 @@
+@@ -1756,6 +2465,88 @@
      });
  }
  
@@ -907,7 +948,7 @@
  /* Ejects the media.
   * Uses sender's tag to figure out the device to eject.
   */
-@@ -1935,7 +2685,27 @@
+@@ -1935,7 +2726,27 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
