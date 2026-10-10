@@ -112,8 +112,11 @@ final class LauncherUpdater: ObservableObject {
     static func cannotReplace() -> String? {
         if isDevelopmentBuild { return "This launcher was built from a checkout: update it there (git pull, mac/build-app.sh)." }
         let path = Bundle.main.bundlePath
-        if path.contains("/AppTranslocation/") || path.hasPrefix("/Volumes/") {
-            return "Move myLinux Launcher to the Applications folder first, then update."
+        if path.hasPrefix("/Volumes/") { return "Move myLinux Launcher to the Applications folder first, then update." }
+        if path.contains("/AppTranslocation/") {
+            // macOS runs a downloaded app from a temporary copy until Finder has moved it: an app copied into
+            // Applications by a tool (cp, ditto) stays that way, and a temporary copy cannot be replaced
+            return "macOS is running myLinux Launcher from a temporary copy, because it was not put into the Applications folder with Finder. Quit it, drag it out of Applications and back in with Finder (or drag it there again from the DMG), start it, then update."
         }
         if !FileManager.default.isWritableFile(atPath: (path as NSString).deletingLastPathComponent) {
             return "This Mac's user cannot write to \((path as NSString).deletingLastPathComponent); update with the DMG from mylinux.app instead."

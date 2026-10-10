@@ -1034,6 +1034,12 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(w, CLI.Words(plain: ["tiny"], values: ["name": "tester 1", "memory": "1", "disk": "20gb"], flags: ["wait"], rest: ["uname", "-a", "--name"]))
         XCTAssertNil(CLI.words(["tiny", "--name"]), "a --name without its value")
         XCTAssertNil(CLI.words(["--wait=yes"]), "a flag takes no value")
+        // a download's progress as an agent can pass it on: the percentage, or the words; never curl's bar
+        XCTAssertEqual(CLI.progress("#################                                  24.3%"), "24.3%")
+        XCTAssertEqual(CLI.progress("\r######## 51%"), "51%"); XCTAssertEqual(CLI.progress("Unpacking Omarchy…"), "Unpacking Omarchy…")
+        XCTAssertEqual(CLI.progress("  Looking for a saved   Debian… "), "Looking for a saved Debian…")
+        XCTAssertNil(CLI.progress("#=#=#   -=O=-  ")); XCTAssertNil(CLI.progress(""))
+        XCTAssertTrue(CLI.usage.contains("mylinux delete <name> --yes [--stop]"))
         XCTAssertTrue(CLI.usage.contains("mylinux create <kind>"))
     }
     @MainActor func testTheCommandLineMakesAMachineAsAsked() throws {
@@ -1079,6 +1085,18 @@ final class OmarchyProfileTests: XCTestCase {
         }
         XCTAssertEqual(ask("erase").code, 2); XCTAssertEqual(ask("erase", "tester1", "--yes").code, 2, "one machine is delete's")
         XCTAssertEqual(store.profiles.count, before, "nothing went")
+        // a server's own command is given with the command's path, to be run as it stands
+        XCTAssertTrue(((m["ssh"] as? [String: Any])?["command"] as? String ?? "").hasSuffix("mylinux\" ssh \"\(one)\" -- <command>"), "\(m["ssh"] ?? "")")
+        // the skill, written where the agents that are on a Mac keep theirs, and nowhere else
+        if let text = CLI.Skill.text() {
+            let mac = dir.appendingPathComponent("mac-with-claude")
+            XCTAssertEqual(CLI.Skill.install(text: text, home: mac).written, [], "no agent there: nothing is made")
+            try FileManager.default.createDirectory(at: mac.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+            let done = CLI.Skill.install(text: text, home: mac)
+            XCTAssertEqual(done.written, [mac.appendingPathComponent(".claude/skills/mylinux/SKILL.md").path]); XCTAssertTrue(done.problems.isEmpty)
+            XCTAssertEqual(CLI.Skill.install("codex", text: text, home: mac).written.count, 1, "an agent that is named gets it")
+            XCTAssertTrue(text.contains("delete NAME --yes") && text.contains("--stop") && text.contains("`failed`"))
+        }
         // deleted on --yes, into the Trash (nothing of it was on disk yet)
         XCTAssertEqual(ask("delete", one, "--yes").code, 0); XCTAssertNil(CLIService.find(one, store: store))
         // and every machine at once

@@ -564,9 +564,9 @@ A question Omarchy does not take the answer to is asked in the window after all.
 The command is a client of the launcher that is running (it starts the launcher when it is not): a machine made on
 the command line is in the launcher's list like any other. [`mac/Sources/myLinux/CLI.swift`](mac/Sources/myLinux/CLI.swift).
 
-**For an agent**: `mylinux skill install` puts a skill, [`skills/mylinux/SKILL.md`](skills/mylinux/SKILL.md), where
+**For an agent**: **File › Install the Agents' Skill…** in the launcher, or `mylinux skill install`, puts a skill, [`skills/mylinux/SKILL.md`](skills/mylinux/SKILL.md), where
 Claude Code and Codex look for theirs (`~/.claude/skills/mylinux`, `~/.codex/skills/mylinux`; `--agent claude` for one).
-In a new session of the agent, say what you want:
+Then say what you want in the agent (a session that was open before may have to be started again to know the skill):
 
     /mylinux install tiny alpine 1gb/20gb called tester1
 

@@ -55,6 +55,8 @@ struct MyLinuxApp: App {
                 Divider()
                 Button("Download Linux…") { NotificationCenter.default.post(name: WelcomeSheet.showNotification, object: nil) }
                 Button("Quick Connect…") { QuickConnect.shared.show() }.keyboardShortcut("k")
+                // the skill that teaches Claude Code and Codex the launcher's command (mylinux skill install, from a menu)
+                Button("Install the Agents' Skill…") { CLI.Skill.installFromMenu() }
     }
 }
 

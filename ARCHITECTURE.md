@@ -475,7 +475,11 @@ pointer while it is fullscreen or after ⌘⌃G.
   `Runner.start(showTerminal: false)`), and answers at once. `status` describes a machine with its job and a `ready`
   that means "can be used"; `--wait`, `wait` and `ssh` are the client's own (it asks `status` again, or replaces
   itself with `/usr/bin/ssh` and the machine's own key and known hosts). `skills/mylinux/SKILL.md` is the skill
-  `mylinux skill install` writes for Claude Code and Codex, with the command's path filled in. `erase machines`
+  `mylinux skill install` (and File › Install the Agents' Skill…, `CLI.Skill.installFromMenu`) writes for Claude Code
+  and Codex, with the command's path filled in. A machine that failed answers `status`, `start` and `restart` with
+  `ok: false`, its error and exit status 1 (`said`), a download's progress is given as its percentage or its words
+  (`CLI.progress`: curl's bar is not passed on), `delete --stop` shuts the machine down first as `erase --stop`
+  does (in the client), and a start that waits for macOS's question about the microphone says so in `job`. `erase machines`
   removes every profile with its files into the Trash; `erase everything` is `StartOver.clearAll(toTrash:)`, Settings'
   Clear All Data with the data folder moved to the Trash by the helper instead of deleted. Both say what would go
   and do nothing without `--yes`, and refuse while a machine runs (`--stop`: the client shuts each down and waits).

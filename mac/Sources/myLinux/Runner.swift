@@ -72,7 +72,7 @@ final class Runner: ObservableObject {
         // checks once, when the machine starts. Ask first, and start after it is granted.
         if !p.isServer, p.grab == "full", !KeyboardGrab.permitted {
             KeyboardGrab.askPermission()
-            state = .failed("Sending every key to the machine needs Accessibility permission for myLinux Launcher. Turn it on in System Settings › Privacy & Security › Accessibility, then press Start again.")
+            state = .failed("Sending every key to the machine needs Accessibility permission for myLinux Launcher. Turn it on in System Settings › Privacy & Security › Accessibility, then start the machine again (or give it another keyboard setting: Keyboard on its page, --keys mac or none on the command line).")
             return
         }
         guard settings.qemuAvailable else { state = .failed(AppSettings.qemuMissingText); return }

@@ -9,9 +9,12 @@ myLinux Launcher runs virtual machines on this Mac. This is its command:
 
     {{MYLINUX}}
 
-Call it with that full path, in quotes (it has a space in it). Every answer is JSON on standard output. The exit
-status is 0 when it went well; otherwise the JSON has `"ok": false` and an `"error"` in plain words: tell the user
-that error, do not guess around it. `{{MYLINUX}} help` lists every command.
+Call it with that full path, in quotes (it has a space in it). Every answer is JSON on standard output, except
+`ssh` (the command's own output and exit status) and `help` (text). The exit status is 0 when it went well;
+otherwise the JSON has `"ok": false` and an `"error"` in plain words: tell the user that error, do not guess around
+it. A machine that failed answers `status`, `start` and `wait` that way too, with the machine in `"machine"`.
+`{{MYLINUX}} help` lists every command. The launcher is started when it is not running; the first time on a Mac
+that can take a minute, and the command says so and waits.
 
 ## From what the user says to a command
 
@@ -33,7 +36,16 @@ that error, do not guess around it. `{{MYLINUX}} help` lists every command.
 | install windows unattended, I accept Microsoft's licence terms, user viktor | `create windows --unattended --accept-microsoft-license --user viktor --wait --timeout 3600` |
 
 "1gb/20gb" is memory, then disk. Sizes are whole gigabytes. A size the user did not give is left out: the launcher
-has a good default for each kind. A name with spaces goes in quotes.
+has a good default for each kind. A name with spaces goes in quotes. A name the user did not give is left out too:
+the launcher names the machine after its kind (Omarchy, Omarchy 2) and the answer says the name; tell the user.
+When the user names no machine ("start it", "stop the server"), look at `list`: one machine that fits is the one,
+otherwise ask which.
+
+More that `create` takes: `--cpus N`, `--ssh-port PORT` (a server gets a free one by itself), `--no-start` (made, not
+started), and for a desktop `--keys all|mac|none` (every key to the machine, ⌘ kept by the Mac, or as typed).
+`--keys all` is what a new Omarchy or Windows has, and it needs macOS's Accessibility permission for myLinux
+Launcher: without it the start fails with an error that says so. Tell the user to allow it in System Settings ›
+Privacy & Security › Accessibility and `start` the machine again, or make the machine with `--keys mac`.
 
 ## Kinds
 
@@ -71,6 +83,12 @@ has a good default for each kind. A name with spaces goes in quotes.
 desktop: it is running; an Omarchy made with `--unattended`: its desktop is up; Windows: installed and signed in). The default is 900 seconds; a first Omarchy, Arch or Kali
 needs a download and an unattended Windows installs for a while, so give those `--timeout 3600`. When the wait runs out (exit status 4) nothing is wrong: the work
 goes on. Look at `status` (`job` says what is being downloaded and how far it is), tell the user, and `wait` again.
+`wait NAME [--timeout SECONDS]` is the same wait as a command of its own.
+
+A machine's `state` is one of `stopped`, `downloading` (what it needs is fetched and unpacked first; `job` says
+what), `starting`, `running`, `stopping`, `failed` (with `error`). `ready` is the word to go by: a machine can be
+`running` and not ready yet. A start can also wait for the user: `job.what` says so when macOS is asking them
+something on the Mac's screen (the microphone, for a desktop's first start).
 
 ## Using a server
 
@@ -101,8 +119,9 @@ Claude Code wants memory: in 1 GB it runs, and 2 GB or more is better. Say so if
 
 - Use the name the user gave. If a machine with that name is there already, say so and ask; do not make a second
   one under another name.
-- Delete only a machine the user named in this conversation and asked you to delete. `delete` moves it and its disk
-  to the Trash; say that it can be put back from there.
+- Delete only a machine the user named in this conversation and asked you to delete. `delete NAME --yes` moves it
+  and its disk to the Trash; say that it can be put back from there. A machine that is running is refused: add
+  `--stop`, which shuts it down first. Being asked to delete that machine covers shutting it down.
 - Do not stop or restart a machine you did not start unless the user asks: they may be working in it.
 - `erase machines --yes` moves **every** machine and its disk to the Trash. `erase everything --yes` makes the
   launcher as on a new Mac: the machines, the downloaded systems, the settings, the saved remote passwords and
@@ -113,4 +132,5 @@ Claude Code wants memory: in 1 GB it runs, and 2 GB or more is better. Say so if
   names them: ask the user before adding `--stop`, which shuts them down first. Afterwards say what went and that
   it can be put back from the Trash until the Trash is emptied.
 - Report what the JSON says: the machine's name, its state, and for a server how to reach it
-  (`{{MYLINUX}} ssh NAME`). Do not print the path of its SSH key unless asked.
+  (`{{MYLINUX}} ssh NAME`). The JSON names the machine's SSH key file, for tools: do not print that path, or the
+  key, unless asked.

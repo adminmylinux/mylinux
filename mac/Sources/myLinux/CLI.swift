@@ -32,7 +32,8 @@ enum CLI {
 
           mylinux kinds                           the kinds of machine, and whether each is downloaded
           mylinux list                            every machine and its state
-          mylinux create <kind> [--name NAME] [--memory GB] [--disk GB] [--cpus N] [--ssh-port PORT] [--no-start] [--wait]
+          mylinux create <kind> [--name NAME] [--memory GB] [--disk GB] [--cpus N] [--ssh-port PORT] [--no-start]
+                                                  [--wait [--timeout SECONDS]]
                                                   [--keys all|mac|none]  a desktop's keyboard: every key to it, ⌘ kept by the Mac, or as typed
                                                   a new machine, downloaded when needed, and started
                                                   kinds: tiny (Tiny Alpine), alpine, debian, omarchy, arch, kali, mylinux, windows
@@ -42,13 +43,13 @@ enum CLI {
                                                   omarchy: --unattended --password PW [--user NAME] [--keyboard Norwegian|nb-NO]
                                                   [--timezone Europe/Oslo] [--hostname NAME] [--full-name "NAME"] [--email ADDRESS]
                                                   answers its first-start questions: straight to the desktop
-          mylinux start <name> [--wait]           start it (downloads what it needs first)
+          mylinux start <name> [--wait [--timeout SECONDS]]   start it (downloads what it needs first)
           mylinux stop <name> [--wait]            shut it down
           mylinux restart <name>
           mylinux status <name>                   its state; "ready" is true when it can be used
           mylinux wait <name> [--timeout SECONDS] until it is ready (default 900 seconds)
           mylinux ssh <name> [-- command…]        a server's shell, or one command in it (tiny, alpine, debian)
-          mylinux delete <name> --yes             the machine and its disk, into the Trash
+          mylinux delete <name> --yes [--stop]    the machine and its disk, into the Trash (--stop shuts it down first)
           mylinux erase machines --yes [--stop]   every machine and its disk, into the Trash (--stop shuts running ones down first)
           mylinux erase everything --yes [--stop] as a new install: the machines, the downloads, the settings, the saved
                                                   remote passwords and macOS's permissions; the data folder goes to the
@@ -57,7 +58,8 @@ enum CLI {
           mylinux skill show | path
           mylinux version
 
-        Sizes are whole gigabytes: 1, 1g, 20gb. A name with spaces goes in quotes.
+        Sizes are whole gigabytes: 1, 1g, 20gb. A name with spaces goes in quotes. Every answer is JSON, but for ssh
+        (the command's own output and exit status), help and skill show (text).
         """
 
     // ---- words -------------------------------------------------------------------------------------------------------
@@ -138,8 +140,19 @@ enum CLI {
         open.arguments = ["-g", "-a", Bundle.main.bundlePath]
         guard (try? open.run()) != nil else { return false }
         open.waitUntilExit()
-        for _ in 0..<30 where ask(["ping"], timeout: 1) == nil { }
+        // (a first start of a new copy is checked by macOS before it runs: that alone can take a minute)
+        err("mylinux: starting myLinux Launcher…")
+        for _ in 0..<120 where ask(["ping"], timeout: 1) == nil { }
         return ask(["ping"], timeout: 1) != nil
+    }
+
+    /// A download's progress line as a person would read it: the percentage when the line has one (curl's bar is
+    /// drawn with # and = around it), else its words; nil when nothing is left.
+    static func progress(_ line: String) -> String? {
+        if let r = line.range(of: #"[0-9]+(\.[0-9]+)?%"#, options: .regularExpression) { return String(line[r]) }
+        let words = String(line.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 && !"#=>".unicodeScalars.contains($0) })
+            .split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        return words.range(of: #"\p{L}{2}"#, options: .regularExpression) == nil ? nil : words      // (curl's "-=O=-" is no word)
     }
 
     /// Asks `status` until the machine is ready, has failed, or the time is up.
@@ -149,12 +162,14 @@ enum CLI {
         while true {
             if let r = ask(["status", name]) {
                 last = r
-                guard r.code == 0, let m = r.json["machine"] as? [String: Any] else { return r }
+                guard let m = r.json["machine"] as? [String: Any] else { return r }      // no such machine, say
                 let state = m["state"] as? String ?? ""
-                if stopped { if state == "stopped" || state == "failed" { return r } }
-                else {
+                if stopped {
+                    // (a machine that failed is not running either: what was asked for)
+                    if state == "stopped" || state == "failed" { return Reply(code: 0, json: ["ok": true, "machine": m]) }
+                } else {
                     if m["ready"] as? Bool == true { return r }
-                    if state == "failed" || m["error"] != nil { return Reply(code: 1, json: r.json.merging(["ok": false]) { _, b in b }) }
+                    if state == "failed" || m["error"] != nil { return r.code != 0 ? r : Reply(code: 1, json: r.json.merging(["ok": false]) { _, b in b }) }
                 }
             }
             if Date() >= end {
@@ -197,6 +212,15 @@ enum CLI {
             var c = all.map { strdup($0) } + [nil]
             execv("/usr/bin/ssh", &c)
             return finish(.failed("ssh could not be started"))
+        case "delete":
+            // --stop: the machine is shut down first and waited for; then the launcher is asked
+            if w.flags.contains("stop"), w.flags.contains("yes"), let name = w.plain.first,
+               let m = ask(["status", name])?.json["machine"] as? [String: Any], ["running", "starting", "downloading", "stopping"].contains(m["state"] as? String ?? "") {
+                _ = ask(["stop", name])
+                if wait(name, timeout: 180, stopped: true).code != 0 { return finish(.failed("\(name) did not shut down: it was not deleted")) }
+            }
+            guard let r = ask(args) else { return finish(.failed("no answer from the launcher", code: 3)) }
+            return finish(r)
         case "erase":
             // --stop: what runs is shut down first, one machine at a time, and waited for; then the launcher is asked
             if w.flags.contains("stop"), w.flags.contains("yes"), let machines = ask(["list"])?.json["machines"] as? [[String: Any]] {
@@ -244,6 +268,43 @@ enum CLI {
             }
         }
 
+        /// What to do once the skill is in place.
+        static let next = "Say what you want in the agent: /mylinux install tiny alpine 1gb/20gb called tester1. A session that was open before the skill was there may have to be started again to know it."
+        /// Writes the skill where the agents look for theirs ("all": each agent that is on this Mac): the files written, and what went wrong.
+        static func install(_ which: String = "all", text: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> (written: [String], problems: [String]) {
+            var written: [String] = [], problems: [String] = []
+            for f in folders where which == "all" || f.agent == which {
+                let dir = home.appendingPathComponent(f.path, isDirectory: true)
+                // "all" leaves an agent that is not on this Mac alone (its folder would be the first thing there)
+                if which == "all", !FileManager.default.fileExists(atPath: dir.deletingLastPathComponent().deletingLastPathComponent().path) { continue }
+                do {
+                    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    try text.write(to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+                    written.append(dir.appendingPathComponent("SKILL.md").path)
+                } catch { problems.append("\(dir.path): \(error.localizedDescription)") }
+            }
+            return (written, problems)
+        }
+        /// File › Install the Agents' Skill…: the same as `mylinux skill install`, said in a dialog.
+        @MainActor static func installFromMenu() {
+            let alert = NSAlert()
+            // (a test's launcher, with a data folder of its own, writes into that folder, never into this Mac's agents)
+            let home = ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"].map { URL(fileURLWithPath: $0).appendingPathComponent("home") }
+                ?? FileManager.default.homeDirectoryForCurrentUser
+            if let text = text() {
+                let (written, problems) = install(text: text, home: home)
+                if !problems.isEmpty { alert.alertStyle = .warning; alert.messageText = "The skill could not be written"; alert.informativeText = problems.joined(separator: "\n") }
+                else if written.isEmpty {
+                    alert.messageText = "No coding agent found on this Mac"
+                    alert.informativeText = "The skill goes where Claude Code (~/.claude) and Codex (~/.codex) keep theirs, and neither folder is there. Install one of them, start it once, and choose this again."
+                } else {
+                    alert.messageText = "The mylinux skill is installed"
+                    alert.informativeText = "Claude Code and Codex can now make, start and use machines here. " + next + "\n\n" + written.joined(separator: "\n")
+                }
+            } else { alert.alertStyle = .warning; alert.messageText = "This launcher has no skill file" }
+            alert.runModal()
+        }
+
         static func run(_ w: Words) -> Int32 {
             guard let text = text(), let url = bundled else { CLI.out(CLI.text(["ok": false, "error": "this app has no skill file"])); return 1 }
             switch w.plain.first ?? "show" {
@@ -251,24 +312,12 @@ enum CLI {
             case "show": CLI.out(text); return 0
             case "install":
                 let which = w.values["agent"] ?? "all"
-                let chosen = folders.filter { which == "all" || $0.agent == which }
-                guard !chosen.isEmpty else { CLI.err("mylinux skill install --agent claude|codex|all"); return 2 }
-                let home = FileManager.default.homeDirectoryForCurrentUser
-                var written: [String] = [], problems: [String] = []
-                for f in chosen {
-                    let dir = home.appendingPathComponent(f.path, isDirectory: true)
-                    // "all" leaves an agent that is not on this Mac alone (its folder would be the first thing there)
-                    if which == "all", !FileManager.default.fileExists(atPath: dir.deletingLastPathComponent().deletingLastPathComponent().path) { continue }
-                    do {
-                        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                        try text.write(to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-                        written.append(dir.appendingPathComponent("SKILL.md").path)
-                    } catch { problems.append("\(dir.path): \(error.localizedDescription)") }
-                }
+                guard which == "all" || folders.contains(where: { $0.agent == which }) else { CLI.err("mylinux skill install --agent claude|codex|all"); return 2 }
+                let (written, problems) = install(which, text: text)
                 var j: [String: Any] = ["ok": problems.isEmpty && !written.isEmpty, "written": written, "command": command]
                 if !problems.isEmpty { j["error"] = problems.joined(separator: "; ") }
                 else if written.isEmpty { j["error"] = "neither ~/.claude nor ~/.codex is on this Mac (name one: --agent claude)" }
-                else { j["next"] = "Start a new session of the agent, then say what you want: /mylinux install tiny alpine 1gb/20gb called tester1" }
+                else { j["next"] = Skill.next }
                 CLI.out(CLI.text(j)); return problems.isEmpty && !written.isEmpty ? 0 : 1
             default: CLI.err("mylinux skill install | show | path"); return 2
             }
@@ -364,7 +413,16 @@ enum CLI {
             let r = RunManager.shared.runner(for: id)
             r.clearFailure()
             r.start(fresh, settings: settings, showTerminal: false)
-            if case .failed(let why) = r.state { fail(why) } else { jobs[id] = nil }
+            if case .failed(let why) = r.state { fail(why); return }
+            if r.state == .stopped {
+                // not started yet: macOS asks first whether the launcher may use the microphone (Runner.start), and the
+                // machine starts after the answer. Said, so the wait is not a machine that stays "stopped" for no reason
+                jobs[id] = Job(phase: "starting", what: "waiting for the answer to macOS's question about the microphone, on the Mac's screen")
+                for _ in 0..<600 where r.state == .stopped { try? await Task.sleep(nanoseconds: 500_000_000) }
+                if r.state == .stopped { fail("not started: macOS's question about the microphone was not answered (answer it on the Mac's screen, then start again)"); return }
+                if case .failed(let why) = r.state { fail(why); return }
+            }
+            jobs[id] = nil
         }
     }
 
@@ -387,7 +445,7 @@ enum CLI {
             else {
                 var job: [String: Any] = ["phase": j.phase]
                 if !j.what.isEmpty { job["what"] = j.what }
-                if let m = j.manager, !m.progress.isEmpty { job["progress"] = m.progress }
+                if let m = j.manager, let progress = CLI.progress(m.progress) { job["progress"] = progress }
                 d["job"] = job
                 if state == "stopped" { state = j.phase == "starting" ? "starting" : "downloading" }
             }
@@ -398,7 +456,7 @@ enum CLI {
             let t = p.terminalProfile
             let argv = SshTerminal.arguments(for: t)
             var ssh: [String: Any] = ["host": "127.0.0.1", "port": p.sshPort, "user": t.username, "key": t.keyFile, "argv": argv,
-                                      "command": "mylinux ssh \"\(p.name)\" -- <command>"]
+                                      "command": "\"\(CLI.Skill.command)\" ssh \"\(p.name)\" -- <command>"]
             if p.isServer {
                 // a server this launcher did not start itself (taken over from the launcher before it, or started
                 // while this one was not running) has not been asked yet whether its SSH answers: asked now, once,
@@ -445,6 +503,12 @@ enum CLI {
             }
             return (p, nil)
         }
+        /// A machine as the answer to a question about it: its failure is the answer's own (ok false, the error, exit 1).
+        func said(_ p: Profile) -> CLI.Reply {
+            let d = describe(p, settings: settings)
+            guard d["state"] as? String == "failed" else { return .ok(["machine": d]) }
+            return CLI.Reply(code: 1, json: ["ok": false, "error": d["error"] as? String ?? "\(p.name) failed", "machine": d])
+        }
         switch command {
         case "ping": return .ok(["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"])
         case "kinds":
@@ -462,7 +526,7 @@ enum CLI {
         case "list": return .ok(["machines": store.profiles.map { describe($0, settings: settings) }])
         case "status":
             let (p, problem) = machine(); guard let p else { return problem! }
-            return .ok(["machine": describe(p, settings: settings)])
+            return said(p)
         case "create":
             guard let word = w.plain.first, let kind = CLI.kind(word) else {
                 return .failed("which kind? tiny, alpine, debian, omarchy, arch, kali, mylinux or windows (mylinux kinds)", code: 2)
@@ -564,7 +628,7 @@ enum CLI {
             let (p, problem) = machine(); guard let p else { return problem! }
             let r = RunManager.shared.runner(for: p.id)
             if !(r.isActive || r.state == .inUseElsewhere || Runner.diskInUse(p.appsDisk)) { begin(p.id, iso: w.values["iso"], store: store, settings: settings) }
-            return .ok(["machine": describe(p, settings: settings)])
+            return said(p)
         case "stop":
             let (p, problem) = machine(); guard let p else { return problem! }
             let r = RunManager.shared.runner(for: p.id)
@@ -575,12 +639,14 @@ enum CLI {
             let (p, problem) = machine(); guard let p else { return problem! }
             let r = RunManager.shared.runner(for: p.id)
             if r.isActive || r.canStopElsewhere { r.restart(p) } else { begin(p.id, store: store, settings: settings) }
-            return .ok(["machine": describe(p, settings: settings)])
+            return said(p)
         case "delete":
             let (p, problem) = machine(); guard let p else { return problem! }
             guard w.flags.contains("yes") else { return .failed("deleting \"\(p.name)\" moves the machine and its disk to the Trash: say so with --yes", code: 2) }
             let r = RunManager.shared.runner(for: p.id)
-            guard !r.isActive, r.state != .inUseElsewhere, !Runner.diskInUse(p.appsDisk) else { return .failed("\"\(p.name)\" is running: mylinux stop \"\(p.name)\" --wait, then delete") }
+            guard !r.isActive, r.state != .inUseElsewhere, !Runner.diskInUse(p.appsDisk) else {
+                return .failed("\"\(p.name)\" is running: add --stop to shut it down first (mylinux delete \"\(p.name)\" --yes --stop). Nothing was deleted")
+            }
             jobs[p.id] = nil
             if let left = store.remove(p.id, trashFiles: true) { return .ok(["deleted": p.name, "note": left]) }
             return .ok(["deleted": p.name, "note": "the machine's files are in the Trash"])
