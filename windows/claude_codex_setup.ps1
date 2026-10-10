@@ -9,7 +9,8 @@
 #                                            with its long-lived token, the status line that shows its account, and
 #                                            Claude, the desktop app, installed and pinned to the taskbar
 #     claude_codex_setup.ps1 codex status    Codex and its version, whether it is signed in, the alias cx
-#     claude_codex_setup.ps1 codex apply     Codex installed (winget), the alias cx, and the login of the Mac this
+#     claude_codex_setup.ps1 codex apply     Codex installed (winget), the alias cx, on request OpenAI's desktop app
+#                                            (the Microsoft Store's, its terms accepted by the user), and the login of the Mac this
 #                                            machine runs on (~/.codex/auth.json there) put in place
 #
 # Nothing is read from a share and nothing is left on a disk on the way: the launcher sends this file with every
@@ -342,7 +343,9 @@ function Install-Claude {
         catch { return @{ ok = $false; detail = "could not download $ClaudeInstaller (is the machine online?)`n" + [string]$_.Exception.Message } }
         Add-BinToPath | Out-Null
         Refresh-Path
-        $r = Run $PowerShellExe "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$inst`"" 900
+        # (a download of 250 MB that Windows then checks: in a machine that has just been installed, and is busy with
+        # its own first hour, that took more than a quarter of an hour)
+        $r = Run $PowerShellExe "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$inst`"" 2400
         $path = Find-Program 'claude'
         if (-not $path) { return @{ ok = $false; detail = "Claude Code's installer did not finish`n" + (Tail $r.out) } }
         $version = ''
@@ -420,6 +423,13 @@ function Install-Desktop {
     $r = Winget 'Anthropic.Claude'
     # winget is done when Claude's own installer has started; the shortcut is there when that one is
     for ($i = 0; $i -lt 120 -and -not (Test-Path -LiteralPath $DesktopLink); $i++) { Start-Sleep -Seconds 2 }
+    # installed, and its installer did not get to its shortcut (a machine too busy at the time, or an install a
+    # second run finds there): the app's own updater makes it
+    $squirrel = Join-Path $env:LOCALAPPDATA 'AnthropicClaude'
+    if (-not (Test-Path -LiteralPath $DesktopLink) -and (Test-Path -LiteralPath (Join-Path $squirrel 'Update.exe')) -and (Test-Path -LiteralPath (Join-Path $squirrel 'claude.exe'))) {
+        Run (Join-Path $squirrel 'Update.exe') '--createShortcut=claude.exe --shortcut-locations=StartMenu' 180 | Out-Null
+        for ($i = 0; $i -lt 15 -and -not (Test-Path -LiteralPath $DesktopLink); $i++) { Start-Sleep -Seconds 2 }
+    }
     if (Test-Path -LiteralPath $DesktopLink) { return @{ ok = $true; detail = [string](Desktop-State).version } }
     return @{ ok = $false; detail = "Claude did not install`n" + (Tail $r.out) }
 }
@@ -589,6 +599,25 @@ function Cx-Current {
     if (-not (Test-Path -LiteralPath $file)) { return $false }
     return [IO.File]::ReadAllText($file).Contains('--no-daemon')
 }
+# OpenAI's desktop app with Codex in it: the ChatGPT app, from the Microsoft Store (OpenAI's page for Windows gives
+# winget install --id 9PLM9XGG6VKS -s msstore). The Store asks for its terms to be accepted, and that is the user's to
+# do: installed only when the request says they have (storeTerms).
+$CodexStoreId = '9PLM9XGG6VKS'
+function CodexApp-State {
+    $found = @(Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'OpenAI.*' } | Select-Object -First 1)
+    if ($found.Count -eq 0) { return [ordered]@{ installed = $false; version = ''; package = '' } }
+    return [ordered]@{ installed = $true; version = [string]$found[0].Version; package = [string]$found[0].Name }
+}
+function Install-CodexApp {
+    $winget = Find-Program 'winget'
+    if (-not $winget) { return @{ ok = $false; detail = 'winget is not there yet: open Microsoft Store once and let App Installer update, then try again' } }
+    $r = Run $winget "install --id $CodexStoreId --source msstore --accept-source-agreements --accept-package-agreements --disable-interactivity" 1800
+    # (the Store goes on for a moment after winget has answered)
+    for ($i = 0; $i -lt 30 -and -not (CodexApp-State).installed; $i++) { Start-Sleep -Seconds 2 }
+    $state = CodexApp-State
+    if ($state.installed) { return @{ ok = $true; detail = "version $($state.version); it asks you to sign in when you open it" } }
+    return @{ ok = $false; detail = "the app did not install`n" + (Tail $r.out) }
+}
 function Codex-Status {
     $path = Find-Program 'codex'
     $version = ''; $said = ''
@@ -610,6 +639,7 @@ function Codex-Status {
         codex = [ordered]@{ installed = [bool]$path; version = $version; path = (Short $path) }
         login = [ordered]@{ file = $file; accepted = $accepted; says = $said }
         alias = [ordered]@{ cx = (Test-Path -LiteralPath (Join-Path $Bin 'cx.cmd')); current = (Cx-Current); loaded = (Bin-OnPath) }
+        desktop = (CodexApp-State)
         winget = [bool](Find-Program 'winget')
     }
 }
@@ -679,6 +709,21 @@ function Codex-Apply {
         } catch {
             Step 'login' 'Signing Codex in as on the Mac' 'failed' ([string]$_.Exception.Message)
             $ok = $false
+        }
+    }
+    # 4. the desktop app (ChatGPT, with Codex in it): when asked for, and only with the Store's terms accepted by the user
+    if ((Key $request 'desktop') -eq $true) {
+        $store = CodexApp-State
+        if ($store.installed) {
+            Step 'app' 'The desktop app' 'done' "already installed, version $($store.version)"
+        } elseif ((Key $request 'storeTerms') -ne $true) {
+            Step 'app' 'Installing the desktop app' 'failed' "it comes from the Microsoft Store, whose terms are the user's to accept: when they have said so, add --accept-store-terms"
+            $ok = $false
+        } else {
+            Step 'app' 'Installing the desktop app' 'running' 'ChatGPT, with Codex in it, from the Microsoft Store'
+            $made = Install-CodexApp
+            Step 'app' 'Installing the desktop app' $(if ($made.ok) { 'done' } else { 'failed' }) $made.detail
+            $ok = $ok -and $made.ok
         }
     }
     return [ordered]@{ ok = $ok; steps = @($script:Steps); status = (Codex-Status) }

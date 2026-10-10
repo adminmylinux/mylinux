@@ -561,6 +561,22 @@ with, that gives them ([`omarchy/answers`](omarchy/answers)); Omarchy's own setu
 the answers, the password among them, are removed from the Mac at that start and from the disk when the setup ends.
 A question Omarchy does not take the answer to is asked in the window after all.
 
+What the Claude Install… and Codex Install… wizards do in an Omarchy or a Windows machine, the command does too
+(from 0.7.82): `mylinux claude NAME` and `mylinux codex NAME` say what is there, and `--install` puts in place what
+is missing and waits for it.
+
+```sh
+mylinux claude omarchy --install --token-file ~/my/tokens --token-name CLAUDE_TOKEN --account gmail
+mylinux codex omarchy --install --login-from-mac
+mylinux codex windows --install --desktop --accept-store-terms
+```
+
+A subscription's token is named, never given: a file of `NAME=value` lines on the Mac and the name of one line,
+which the launcher reads itself and hands to the machine as the wizard does (the command line, and an agent running
+it, never see it). `--login-from-mac` copies this Mac's own Codex login into the machine, and `--desktop` installs
+OpenAI's desktop app for Windows (ChatGPT, with Codex in it) from the Microsoft Store, whose terms are yours to
+accept: hence `--accept-store-terms`. [`mac/Sources/myLinux/Agents/AgentCommands.swift`](mac/Sources/myLinux/Agents/AgentCommands.swift).
+
 The command is a client of the launcher that is running (it starts the launcher when it is not): a machine made on
 the command line is in the launcher's list like any other. [`mac/Sources/myLinux/CLI.swift`](mac/Sources/myLinux/CLI.swift).
 

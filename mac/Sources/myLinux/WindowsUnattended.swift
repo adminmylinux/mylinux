@@ -174,7 +174,8 @@ enum WindowsUnattended {
     /// said "installed" in the start it was installed in, which still has the installer's hardware: it is restarted
     /// once, into the machine it will be from then on.
     @MainActor static func follow(_ p: Profile, runner: Runner, now: Date = Date()) {
-        guard inProgress(p), runner.state == .running, p.windowsInstalled else { seenInstalled[p.id] = nil; return }
+        // (also a machine this launcher took over while it installed: the launcher was updated or started again meanwhile)
+        guard inProgress(p), runner.state == .running || runner.canStopElsewhere, p.windowsInstalled else { seenInstalled[p.id] = nil; return }
         guard let since = seenInstalled[p.id] else { seenInstalled[p.id] = now; return }
         guard now.timeIntervalSince(since) >= settleSeconds else { return }
         seenInstalled[p.id] = nil

@@ -44,6 +44,8 @@ INSTALLERS = {
     "statusline": 'mkdir -p "$HOME/.claude"\nprintf \'#!/bin/sh\\necho "$MYLINUX_CLAUDE_ACCOUNT"\\n\' > "$HOME/.claude/statusline.sh"\n'
                   'printf \'{"statusLine": {"type": "command", "command": "~/.claude/statusline.sh", "refreshInterval": 10}}\\n\' > "$HOME/.claude/settings.json"\n'
                   'echo "statusLine set"\n',
+    "codex": 'mkdir -p "$HOME/.local/bin"\nprintf \'#!/bin/sh\\necho "codex-cli 0.200.1"\\n\' > "$HOME/.local/bin/codex"\nchmod 755 "$HOME/.local/bin/codex"\n'
+             'echo "Codex installed, asking nobody: ${CODEX_NON_INTERACTIVE:-0}" > "$HOME/.codex-installer-ran"\n',
     "skills": 'mkdir -p "$HOME/.claude" "$HOME/.config/mylinux"\nprintf %s "$MYLINUX_API_KEY" > "$HOME/.config/mylinux/api-key"\necho "skills for ${MYLINUX_API_KEY:+a key}" > "$HOME/.claude/skills-ran"\n',
 }
 CURL = """#!/bin/sh
@@ -59,6 +61,7 @@ while [ $# -gt 0 ]; do
 done
 case "$url" in
   https://claude.ai/install.sh) what=claude ;;
+  https://chatgpt.com/codex/install.sh) what=codex ;;
   */install/statusline) what=statusline ;;
   */install/skills) what=skills ;;
   *) echo "curl: unexpected $url" >&2; exit 22 ;;
@@ -293,6 +296,41 @@ def main() -> int:
         s = d.status()
         check("the browser login is seen, the other status line is not taken for ours", s["default"]["browser"] is True and
               s["statusLine"] == {"script": False, "showsAccount": False, "configured": False, "command": "npx ccusage statusline"}, s)
+
+        print("claude-setup: Codex (mylinux codex NAME --install), without Claude Code's own steps")
+        login = json.dumps({"OPENAI_API_KEY": None, "tokens": {"access_token": "eyJ-ACCESS-" + "a" * 40, "refresh_token": "rt-REFRESH-" + "b" * 30}})
+        x = Box(root, "codex")
+        s = x.status()
+        check("nothing of Codex is there", s["codex"] == {"installed": False, "version": "", "path": "", "login": False, "cx": False}, s["codex"])
+        result, progress, _ = x.apply({"claude": False, "statusLine": False, "defaultAliases": DEFAULT_ALIASES, "codex": {"install": True, "login": login}})
+        steps = {y["step"]: y for y in result["steps"]}
+        check("it ends well, with Codex's steps alone", result["ok"] is True and list(steps) == ["codex", "codex-login", "codex-alias"]
+              and all(y["state"] == "done" for y in result["steps"]), result["steps"])
+        check("Codex came from OpenAI's installer, which asked nobody", x.fetched() == ["codex"]
+              and (x.home / ".codex-installer-ran").read_text().strip().endswith(": 1") and steps["codex"]["detail"] == "version 0.200.1", (x.fetched(), steps["codex"]))
+        auth = x.home / ".codex/auth.json"
+        check("the Mac's login is Codex's login here, for its owner only", auth.read_text() == login and mode(auth) == "0o600", mode(auth))
+        check("nothing of the login in what is read back", "ACCESS" not in progress and "REFRESH" not in progress and "ACCESS" not in json.dumps(result)
+              and "REFRESH" not in json.dumps(result))
+        check("cx is an alias of new terminals", "alias cx=" in (x.home / ".config/mylinux/aliases.sh").read_text() and "# >>> myLinux Apps >>>" in (x.home / ".bashrc").read_text())
+        check("the status after it", result["status"]["codex"] == {"installed": True, "version": "0.200.1", "path": "~/.local/bin/codex", "login": True, "cx": True},
+              result["status"]["codex"])
+        check("Claude Code was left alone", not (x.home / ".local/bin/claude").exists() and not (x.home / ".claude").exists())
+        result, _, _ = x.apply({"claude": False, "statusLine": False, "codex": {"install": True}})
+        check("a second run finds it there and changes nothing", result["ok"] is True and x.fetched() == ["codex"]
+              and {y["step"]: y["detail"] for y in result["steps"]}["codex"] == "already installed, version 0.200.1"
+              and (x.home / ".config/mylinux/aliases.sh").read_text().count("alias cx=") == 1, result["steps"])
+        result, _, _ = x.apply({"claude": False, "codex": {"install": True, "login": "[1, 2"}})
+        check("a login that is not one is refused, and the one there stays", result["ok"] is False and "not a login file" in result["steps"][0]["detail"]
+              and auth.read_text() == login, result)
+        y = Box(root, "codex-offline")
+        result, _, _ = y.apply({"claude": False, "statusLine": False, "codex": {"install": True}}, STUB_FAIL="codex")
+        check("Codex's installer out of reach: told", result["ok"] is False and {z["step"]: z["state"] for z in result["steps"]}["codex"] == "failed", result)
+        # with a subscription in the same request: Claude Code's steps, then Codex's
+        z = Box(root, "both")
+        result, _, _ = z.apply({"alias": "cc1", "account": "gmail", "token": TOKEN, "makeDefault": True, "defaultAliases": DEFAULT_ALIASES, "codex": {"install": True}})
+        check("Claude Code and Codex in one request", result["ok"] is True and [q["step"] for q in result["steps"]] == ["claude", "account", "aliases", "statusline", "codex", "codex-alias"]
+              and (z.home / ".config/mylinux/aliases.sh").read_text().count("alias cx=") == 1, [q["step"] for q in result["steps"]])
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print(f"claude-setup: {'all passed' if fails == 0 else str(fails) + ' failed'}")

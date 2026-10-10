@@ -1019,7 +1019,11 @@ final class OmarchyProfileTests: XCTestCase {
         // the script both wizards send is the launcher's own
         let script = try XCTUnwrap(WindowsLink.bundledScript() ?? (try? String(contentsOfFile: #filePath.replacingOccurrences(of: "/mac/Tests/myLinuxTests/LauncherTests.swift", with: "/windows/\(WindowsLink.scriptName)"), encoding: .utf8)))
         for word in ["function Claude-Apply", "function Codex-Apply", "MYLINUX_CLAUDE_ACCOUNT", "'claude status'", "'codex apply'", "--no-daemon", "function Pin-Desktop"] { XCTAssertTrue(script.contains(word), word) }
-        XCTAssertFalse(script.contains("accept-source-agreements") || script.contains("accept-package-agreements"), "nothing is agreed to on the user's behalf")
+        // nothing is agreed to on the user's behalf: terms are accepted in one place, the Microsoft Store's for OpenAI's
+        // desktop app, and only when the request says the user has accepted them
+        let accepting = script.split(separator: "\n").filter { $0.contains("accept-source-agreements") || $0.contains("accept-package-agreements") }
+        XCTAssertEqual(accepting.count, 1); XCTAssertTrue(accepting.first?.contains("--source msstore") ?? false)
+        XCTAssertTrue(script.contains("(Key $request 'storeTerms') -ne $true"), "without the user's word the app is not installed")
     }
     func testTheCommandLinesWordsAreRead() {
         // sizes are whole gigabytes, however they are written
@@ -1307,6 +1311,61 @@ final class OmarchyProfileTests: XCTestCase {
         // and none of them goes to the Trash with a machine
         XCTAssertNil(w.apply(to: win)); ProfileStore.forgetAnswers(in: win.machineFolder)
         XCTAssertNil(WindowsUnattended.kept(win.machineFolder)); XCTAssertFalse(WindowsUnattended.inProgress(win))
+    }
+    func testATokenIsNamedNeverGiven() throws {
+        // mylinux claude NAME --install --token-file FILE --token-name NAME: the launcher reads the entry itself
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-secret-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("tokens").path, made = "sk-ant-oat01-MADEupMADEupMADEupMADEup0123456789"
+        try """
+            # my tokens
+            OTHER=one
+            export CLAUDE_CODE_TOKEN_GMAIL = "\(made)"
+            QUOTED='two words'
+            EMPTY=
+            TWICE=a
+            TWICE=b
+            """.write(toFile: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(AgentCommands.secret(named: "CLAUDE_CODE_TOKEN_GMAIL", inFile: file).value, made)
+        XCTAssertEqual(AgentCommands.secret(named: "OTHER", inFile: file).value, "one"); XCTAssertEqual(AgentCommands.secret(named: "QUOTED", inFile: file).value, "two words")
+        for (name, part) in [("MISSING", "no entry named MISSING"), ("EMPTY", "is empty"), ("TWICE", "2 times"), ("bad name", "letters, digits and _")] {
+            let r = AgentCommands.secret(named: name, inFile: file)
+            XCTAssertNil(r.value, name); XCTAssertTrue(r.problem?.contains(part) ?? false, "\(name): \(r.problem ?? "")")
+            XCTAssertFalse(r.problem?.contains(made) ?? true, "never a value in what is said")
+        }
+        XCTAssertTrue(AgentCommands.secret(named: "X", inFile: dir.appendingPathComponent("nowhere").path).problem?.contains("cannot be read") ?? false)
+        // Codex in a Linux machine rides in the request of Claude Code's script, with or without its steps
+        var r = ClaudeRequest(); r.claude = false; r.codexInstall = true; r.codexLogin = "{\"tokens\": {}}"
+        let j = r.json(defaultAliases: [])
+        XCTAssertEqual(j["claude"] as? Bool, false); XCTAssertEqual(j["statusLine"] as? Bool, false); XCTAssertNil(j["token"])
+        XCTAssertEqual((j["codex"] as? [String: Any])?["install"] as? Bool, true); XCTAssertEqual((j["codex"] as? [String: Any])?["login"] as? String, "{\"tokens\": {}}")
+        XCTAssertNil(ClaudeRequest().json(defaultAliases: [])["codex"], "a request of the wizard's is as it was"); XCTAssertNil(ClaudeRequest().json(defaultAliases: [])["claude"])
+        let linux = try XCTUnwrap(ClaudeStatus.parse(Data(#"{"claude": {"installed": true, "version": "2.1.0", "path": "~/.local/bin/claude"}, "codex": {"installed": true, "version": "0.200.1", "login": true, "cx": true}}"#.utf8)))
+        XCTAssertTrue(linux.codexInstalled && linux.codexLogin && linux.codexCx); XCTAssertEqual(linux.codexVersion, "0.200.1")
+        // Windows: OpenAI's desktop app is asked for in words, and the Store's terms are the user's
+        XCTAssertNil(CodexInstall.request(login: nil)["desktop"])
+        let asked = CodexInstall.request(login: nil, desktop: true, storeTerms: false)
+        XCTAssertEqual(asked["desktop"] as? Bool, true); XCTAssertEqual(asked["storeTerms"] as? Bool, false)
+        let win = try XCTUnwrap(CodexStatus.parse(Data(#"{"codex": {"installed": true, "version": "0.161.0"}, "desktop": {"installed": true, "version": "1.2.3.0"}}"#.utf8)))
+        XCTAssertTrue(win.desktopInstalled); XCTAssertEqual(win.desktopVersion, "1.2.3.0")
+    }
+    @MainActor func testClaudeAndCodexFromTheCommandLineAreRefusedInWords() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-cli-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = ProfileStore(file: dir.appendingPathComponent("profiles.json"))
+        let name = "clitest-\(UUID().uuidString.prefix(8).lowercased())"
+        XCTAssertEqual(CLIService.handle(["create", "omarchy", "--name", name, "--no-start"], store: store).code, 0)
+        XCTAssertEqual(CLIService.handle(["create", "tiny", "--name", name + "-s", "--no-start"], store: store).code, 0)
+        for (words, part) in [(["claude"], "which machine"), (["claude", "nobody"], "no machine named"), (["codex", name + "-s"], "Omarchy or a Windows machine"),
+                              (["claude", name], "is not running"), (["codex", name, "--install", "--login-from-mac"], "is not running")] {
+            let r = CLIService.handle(words, store: store)
+            XCTAssertNotEqual(r.code, 0, "\(words)"); XCTAssertTrue((r.json["error"] as? String ?? "").contains(part), "\(words): \(r.json)")
+        }
+        XCTAssertEqual(CLI.words(["om", "--install", "--token-file", "~/t", "--token-name", "N", "--account", "gmail"])?.values["token-name"], "N")
+        XCTAssertTrue(CLI.usage.contains("mylinux claude <name> --install") && CLI.usage.contains("--login-from-mac"))
+        for n in [name, name + "-s"] { XCTAssertEqual(CLIService.handle(["delete", n, "--yes"], store: store).code, 0) }
     }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))

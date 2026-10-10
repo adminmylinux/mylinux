@@ -29,6 +29,8 @@ that can take a minute, and the command says so and waits.
 | is tester1 up | `status tester1` |
 | run `uname -a` in tester1 | `ssh tester1 -- uname -a` |
 | install tiny alpine 1/20 called tester1 and install claude code on it | the `create` above, then "Claude Code in a server" below |
+| install omarchy with claude code and codex | the `create` for it, then `claude NAME --install` and `codex NAME --install` ("Claude Code and Codex in a desktop" below) |
+| what does my windows machine have of claude and codex | `claude NAME` and `codex NAME` |
 | delete tester1 | `delete tester1 --yes` (see the rules below) |
 | erase all machines | `erase machines --yes` (see the rules below) |
 | erase everything, make the launcher like a new install | `erase everything --yes` (see the rules below) |
@@ -96,6 +98,30 @@ something on the Mac's screen (the microphone, for a desktop's first start).
 output and exit status. The account is `alpine` in tiny and alpine (root with `doas`), `debian` in debian (root with
 `sudo`). Quote a command that has pipes or `&&` as one word: `ssh tester1 -- 'apk add git && git --version'`.
 Files go in and out through the machine's Mac folder: `status` gives `folder`; its `Mac` subfolder is `~/Mac` inside.
+
+## Claude Code and Codex in a desktop (Omarchy, Windows)
+
+`claude NAME` and `codex NAME` say what a running Omarchy or Windows machine has of each: installed, its version,
+signed in or not, what is still to do. With `--install` the launcher puts in place what is missing, and the command
+waits until that is done and says each step:
+
+- `claude NAME --install`: Claude Code and its status line; in Windows also Git for Windows (Claude Code works
+  through it) and Claude, the desktop app, pinned to the taskbar.
+- A subscription (a token from `claude setup-token`) is added by saying **where the token is, never the token**:
+  `claude NAME --install --token-file FILE --token-name ENTRY --account WORD [--alias cc1] [--default|--not-default]`.
+  FILE is a file of `NAME=value` lines on the Mac and ENTRY the name of one line; the launcher reads that entry
+  itself. Use it only when the user told you the file and the entry. Do not open or print the file, and never ask
+  the user to paste a token to you. `--account` is one word for the subscription, as the user calls it (the status
+  line shows it); the alias is the next free of cc1, cc2, … unless given, and the first subscription is also plain
+  `claude`'s login.
+- `codex NAME --install`: Codex and the alias `cx`. `--login-from-mac` signs it in with the Mac's own Codex login
+  (a copy of `~/.codex/auth.json` goes into the machine): pass it only when the user said they want that. In
+  Windows, `--desktop --accept-store-terms` also installs OpenAI's desktop app (ChatGPT, with Codex in it) from the
+  Microsoft Store; the Store's terms are the user's to accept, so pass `--accept-store-terms` only when they said so.
+- Without a token or a login, signing in is the user's, inside the machine: say so.
+
+The machine must be running and signed in to its desktop (an Omarchy or a Windows that was just made: `wait` for it
+first). A machine that cannot be reached answers with an error that says what to do.
 
 ## Claude Code in a server
 

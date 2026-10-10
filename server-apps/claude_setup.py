@@ -8,7 +8,11 @@
                                   removed) first: Claude Code installed when missing, a subscription saved as an alias
                                   (cc1, cc2, …) with its long-lived token, the status line that shows its account, your
                                   skills with a myLinux API key. Each step goes into progress-<id>.jsonl as it starts
-                                  and ends, the outcome into result-<id>.json
+                                  and ends, the outcome into result-<id>.json. With "codex" in the request
+                                  (mylinux codex NAME --install): Codex installed when missing with OpenAI's
+                                  installer, the alias cx, and, when the request carries it, the Mac's Codex login
+                                  as ~/.codex/auth.json (what "Codex login from the Mac" copies, asked from inside);
+                                  "claude": false leaves Claude Code's own steps out
 
 The launcher writes this file and the request into the machine's Mac share and leaves "claude status <id>" or "claude
 apply <id>" for Omarchy's session agent (omarchy/session), which starts it; the wizard reads the answers from the
@@ -38,6 +42,9 @@ SHARE = Path(os.environ.get("MYLINUX_SHARE", "/mnt/mac"))
 DIR = SHARE / ".mylinux/claude"
 SITE = os.environ.get("MYLINUX_SITE", "https://mylinux.app")
 CLAUDE_INSTALLER = "https://claude.ai/install.sh"
+CODEX_INSTALLER = "https://chatgpt.com/codex/install.sh"       # the catalog's (catalog.json: codex)
+CODEX_LOGIN = HOME / ".codex/auth.json"
+CX = "codex --dangerously-bypass-approvals-and-sandbox"       # the catalog's alias cx, when the request names none
 
 ACCOUNTS_DIR = HOME / ".config/mylinux/claude-accounts"
 ALIASES_FILE = HOME / ".config/mylinux/aliases.sh"
@@ -135,6 +142,31 @@ def claude_version() -> tuple[str | None, str]:
         return path, ""
 
 
+def codex_version() -> tuple[str | None, str]:
+    """Where codex is and the version it reports ("" when it does not answer)."""
+    path = shutil.which("codex", path=search_path())
+    if not path:
+        return None, ""
+    try:
+        r = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
+                           env=dict(os.environ, PATH=search_path()))
+        m = re.search(r"\d+\.\d+\.\d+[^\s]*", r.stdout + r.stderr)
+        return path, m.group(0) if m else ""
+    except (OSError, subprocess.SubprocessError):
+        return path, ""
+
+
+def codex_status() -> dict:
+    """Codex here: installed, signed in (a login file is there; never what is in it), and the alias cx."""
+    path, version = codex_version()
+    try:
+        login = CODEX_LOGIN.is_file() and CODEX_LOGIN.stat().st_size > 0
+    except OSError:
+        login = False
+    return {"installed": path is not None, "version": version, "path": path.replace(str(HOME), "~", 1) if path else "",
+            "login": login, "cx": "cx" in alias_names()}
+
+
 def alias_names() -> list[str]:
     try:
         lines = ALIASES_FILE.read_text().splitlines()
@@ -195,6 +227,7 @@ def status() -> dict:
         "statusLine": status_line(),
         "apiKey": API_KEY_FILE.is_file() and API_KEY_FILE.stat().st_size > 0,
         "onboarded": isinstance(config, dict) and config.get("hasCompletedOnboarding") is True,
+        "codex": codex_status(),
     }
 
 
@@ -262,6 +295,49 @@ def install_claude() -> tuple[bool, str]:
     if rc != 0 or path is None:
         return False, "Claude Code's installer did not finish\n" + tail(out)
     return True, version
+
+
+def install_codex() -> tuple[bool, str]:
+    """OpenAI's own installer, as myLinux Apps runs it: nobody to ask."""
+    if not shutil.which("curl", path=search_path()):
+        return False, "curl is needed for Codex's installer: install it in a terminal (sudo pacman -S curl), then try again"
+    rc, out = fetch_and_run(CODEX_INSTALLER, env={"CODEX_NON_INTERACTIVE": "1"})
+    path, version = codex_version()
+    if rc != 0 or path is None:
+        return False, tail(out) or "the installer did not finish"
+    return True, version
+
+
+def ensure_alias(name: str, command: str) -> bool:
+    """One alias in the aliases file when it has none of that name (the file's other lines as they are). True when added."""
+    if name in alias_names():
+        return False
+    lines = ALIASES_FILE.read_text().splitlines() if ALIASES_FILE.exists() else [ALIASES_HEADER]
+    lines.append(f"alias {name}={quote_alias(command)}")
+    ALIASES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ALIASES_FILE.with_suffix(".tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    tmp.replace(ALIASES_FILE)
+    return True
+
+
+def secrets_in(login: str) -> list[str]:
+    """A login file's text and every long word in it: none of it goes into a progress or result file."""
+    found = [login] if login else []
+    def walk(v) -> None:
+        if isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif isinstance(v, str) and len(v) >= 20:
+            found.append(v)
+    try:
+        walk(json.loads(login))
+    except ValueError:
+        pass
+    return found
 
 
 def save_account(name: str, account: str, token: str) -> None:
@@ -382,6 +458,18 @@ def checked(request) -> tuple[dict, str | None]:
             return r, "that does not look like a token from claude setup-token (sk-ant-oat01-…)"
     if r["apiKey"] and not APIKEY_RE.match(r["apiKey"]):
         return r, "a myLinux API key starts with mlx_"
+    # Codex (mylinux codex NAME --install): installed when missing, and the Mac's login when the request carries it
+    codex = request.get("codex") if isinstance(request.get("codex"), dict) else {}
+    login = codex.get("login") if isinstance(codex.get("login"), str) else ""
+    r["codex"] = {"install": codex.get("install") is True, "login": login}
+    r["claude"] = request.get("claude") is not False
+    if login:
+        try:
+            fine = isinstance(json.loads(login), dict)
+        except ValueError:
+            fine = False
+        if not fine:
+            return r, "the Codex login is not a login file as Codex writes it"
     return r, None
 
 
@@ -393,7 +481,7 @@ def apply(ident: str) -> dict:
     except OSError:
         pass
     r, problem = checked(request)
-    progress = Progress(ident, [r.get("token", ""), r.get("apiKey", "")])
+    progress = Progress(ident, [r.get("token", ""), r.get("apiKey", "")] + secrets_in((r.get("codex") or {}).get("login", "")))
     if problem:
         progress.emit("request", "Checking the request", "failed", problem)
         return {"ok": False, "steps": progress.steps}
@@ -408,6 +496,52 @@ def apply(ident: str) -> dict:
     ok = True
     before = status()
     adding = bool(r["token"])
+    if r["claude"]:
+        ok = apply_claude(r, progress, before, adding)
+    if r["codex"]["install"] or r["codex"]["login"]:
+        ok = apply_codex(r, progress, before) and ok
+    return {"ok": ok, "steps": progress.steps, "alias": r["alias"] if adding else "", "account": r["account"] if adding else "",
+            "makeDefault": adding and r["makeDefault"], "status": status()}
+
+
+def apply_codex(r: dict, progress: Progress, before: dict) -> bool:
+    """Codex: installed when missing, the Mac's login when given, and the alias cx for new terminals."""
+    ok = True
+    have = before["codex"]
+    if have["installed"]:
+        progress.emit("codex", "Codex", "done", "already installed" + (f", version {have['version']}" if have["version"] else ""))
+    elif r["codex"]["install"]:
+        progress.emit("codex", "Installing Codex", "running")
+        good, detail = install_codex()
+        progress.emit("codex", "Installing Codex", "done" if good else "failed", f"version {detail}" if good and detail else detail)
+        ok = ok and good
+    if r["codex"]["login"]:
+        progress.emit("codex-login", "Signing Codex in as on the Mac", "running")
+        try:
+            write_private(CODEX_LOGIN, r["codex"]["login"])
+            progress.emit("codex-login", "Signing Codex in as on the Mac", "done", "~/.codex/auth.json, for you only")
+        except OSError as e:
+            progress.emit("codex-login", "Signing Codex in as on the Mac", "failed", str(e))
+            ok = False
+    try:
+        command = next((a["command"] for a in r["defaultAliases"] if isinstance(a, dict) and a.get("name") == "cx" and isinstance(a.get("command"), str)
+                        and "\n" not in a["command"]), CX)
+        fresh = not ALIASES_FILE.exists()
+        added = write_aliases(r["defaultAliases"]) if fresh else []
+        if ensure_alias("cx", command):
+            added.append("cx")
+        files = write_rc_block()
+        progress.emit("codex-alias", "The alias cx", "done", ("added" if "cx" in added else "already there") + ": Codex without approvals or sandbox"
+                      + (f"; loaded from {' and '.join(files)}" if files else ""))
+    except OSError as e:
+        progress.emit("codex-alias", "The alias cx", "failed", str(e))
+        ok = False
+    return ok
+
+
+def apply_claude(r: dict, progress: Progress, before: dict, adding: bool) -> bool:
+    """Claude Code: installed when missing, the subscription, the aliases, the status line, the skills."""
+    ok = True
 
     # 1. Claude Code itself
     if before["claude"]["installed"]:
@@ -460,8 +594,7 @@ def apply(ident: str) -> dict:
         # the subscription works without them: a failure here is told, and is not the setup's
         progress.emit("skills", "Your skills from mylinux.app", "done" if rc == 0 else "skipped",
                       "installed in ~/.claude" if rc == 0 else tail(out, 6) or "could not be installed")
-    return {"ok": ok, "steps": progress.steps, "alias": r["alias"] if adding else "", "account": r["account"] if adding else "",
-            "makeDefault": adding and r["makeDefault"], "status": status()}
+    return ok
 
 
 def main(argv: list[str]) -> int:

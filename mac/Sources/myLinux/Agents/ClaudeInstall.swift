@@ -145,6 +145,9 @@ struct ClaudeStatus: Equatable {
     /// Claude, the desktop app, in a Windows machine: installed with Claude Code, and pinned to the taskbar once
     /// (`desktopPinnedOnce`: taken off the taskbar by hand afterwards, it is not offered again).
     var desktopInstalled = false, desktopVersion = "", desktopPinned = false, desktopPinnedOnce = false
+    /// Codex in a Linux machine, which the same script looks at (`mylinux codex NAME`): installed, a login file there
+    /// (never what is in it), and the alias cx.
+    var codexInstalled = false, codexVersion = "", codexLogin = false, codexCx = false
 
     static func parse(_ data: Data) -> ClaudeStatus? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -171,6 +174,9 @@ struct ClaudeStatus: Equatable {
         let desktop = obj["desktop"] as? [String: Any] ?? [:]
         desktopInstalled = desktop["installed"] as? Bool ?? false; desktopVersion = desktop["version"] as? String ?? ""
         desktopPinned = desktop["pinned"] as? Bool ?? false; desktopPinnedOnce = desktop["pinnedOnce"] as? Bool ?? false
+        let codex = obj["codex"] as? [String: Any] ?? [:]
+        codexInstalled = codex["installed"] as? Bool ?? false; codexVersion = codex["version"] as? String ?? ""
+        codexLogin = codex["login"] as? Bool ?? false; codexCx = codex["cx"] as? Bool ?? false
     }
 
     /// Claude Code here can start without the browser: a subscription with its token, or plain claude's.
@@ -220,6 +226,10 @@ struct ClaudeRequest: Equatable {
     var alias = "", account = "", token = "", apiKey = ""
     /// The token is also the login of plain `claude` and the alias cc.
     var makeDefault = false
+    /// Claude Code's own steps (off for `mylinux codex NAME --install` in a Linux machine, which is Codex alone).
+    var claude = true
+    /// Codex, in a Linux machine: installed when missing, and signed in with this login file's text when given.
+    var codexInstall = false, codexLogin = ""
 
     static let reserved: Set<String> = ["claude", "mylinux-apps"]
     private static func matches(_ s: String, _ pattern: String) -> Bool { s.range(of: pattern, options: .regularExpression) != nil }
@@ -240,7 +250,9 @@ struct ClaudeRequest: Equatable {
     }
 
     func json(defaultAliases: [[String: String]]) -> [String: Any] {
-        var out: [String: Any] = ["defaultAliases": defaultAliases, "statusLine": true]
+        var out: [String: Any] = ["defaultAliases": defaultAliases, "statusLine": claude]
+        if !claude { out["claude"] = false }
+        if codexInstall || !codexLogin.isEmpty { out["codex"] = ["install": codexInstall, "login": codexLogin] }
         if !cleanToken.isEmpty {
             out["alias"] = alias.trimmingCharacters(in: .whitespaces); out["account"] = account.trimmingCharacters(in: .whitespaces)
             out["token"] = cleanToken; out["makeDefault"] = makeDefault
@@ -298,6 +310,8 @@ struct ClaudeOutcome: Equatable {
     /// at its first run, so the first `claude --version` in a new machine takes ten seconds and more (the script
     /// gives it thirty).
     var answerTimeout: TimeInterval = 45
+    /// How long the setup inside may take once it has begun: an install is a download of a few hundred megabytes.
+    var setupTimeout: TimeInterval = 30 * 60
     /// How long the agent has to take a question; it looks every second. (Windows's is asked by the launcher's helper,
     /// once the agent has said in the last seconds that it takes questions: a little longer.)
     var takeTimeout: TimeInterval { min(windows ? 12 : 6, answerTimeout) }
@@ -379,14 +393,14 @@ struct ClaudeOutcome: Equatable {
             let begun = await wait(answerTimeout) { FileManager.default.fileExists(atPath: ClaudeInstall.requestFile(self.share, id).path) ? nil : true }
             guard begun != nil else { failed(id, noAnswer); return }
             // an install is a download of a few hundred megabytes: as long as that takes, within reason
-            let done = await wait(30 * 60) { () -> ClaudeOutcome? in
+            let done = await wait(setupTimeout) { () -> ClaudeOutcome? in
                 let now = ClaudeInstall.steps(self.share, id)
                 if now != self.steps { self.steps = now }
                 return ClaudeInstall.outcome(self.share, id)
             }
             guard !Task.isCancelled else { ClaudeInstall.forget(share, id); return }
             ClaudeInstall.forget(share, id)
-            guard let done else { failed(id, "The setup inside did not finish in half an hour."); return }
+            guard let done else { failed(id, "The setup inside did not finish in \(Int(setupTimeout / 60)) minutes. It may still be going on there: ask again in a while."); return }
             steps = done.steps
             if let s = done.status { status = s }
             outcome = done

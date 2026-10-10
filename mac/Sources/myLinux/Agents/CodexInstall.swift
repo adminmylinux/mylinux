@@ -21,6 +21,8 @@ struct CodexStatus: Equatable {
     /// `cxOld`: a cx from before 0.7.73, which starts Codex with its background server (Codex 0.161 on Windows stops
     /// at that: "the CLI package does not match this platform or executable").
     var cx = false, cxOld = false, onPath = false, winget = true
+    /// OpenAI's desktop app with Codex in it (ChatGPT, from the Microsoft Store): `mylinux codex NAME --install --desktop`.
+    var desktopInstalled = false, desktopVersion = ""
 
     static func parse(_ data: Data) -> CodexStatus? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -38,6 +40,8 @@ struct CodexStatus: Equatable {
         let there = alias["cx"] as? Bool ?? false, current = alias["current"] as? Bool ?? there
         cx = there && current; cxOld = there && !current; onPath = alias["loaded"] as? Bool ?? false
         winget = obj["winget"] as? Bool ?? true
+        let desktop = obj["desktop"] as? [String: Any] ?? [:]
+        desktopInstalled = desktop["installed"] as? Bool ?? false; desktopVersion = desktop["version"] as? String ?? ""
     }
 
     /// What Install does without the login, in the wizard's words.
@@ -63,8 +67,12 @@ struct CodexOutcome: Equatable {
 
 enum CodexInstall {
     /// What the wizard asks the script to do: Codex and cx when they are missing, and the Mac's login when given.
-    static func request(login: Data?) -> [String: Any] {
-        ["install": true, "alias": true, "login": login.flatMap { String(data: $0, encoding: .utf8) } ?? ""]
+    /// `desktop`: OpenAI's desktop app too, from the Microsoft Store; `storeTerms`: the user has accepted the Store's
+    /// terms (the script installs it only then).
+    static func request(login: Data?, desktop: Bool = false, storeTerms: Bool = false) -> [String: Any] {
+        var r: [String: Any] = ["install": true, "alias": true, "login": login.flatMap { String(data: $0, encoding: .utf8) } ?? ""]
+        if desktop { r["desktop"] = true; r["storeTerms"] = storeTerms }
+        return r
     }
 
     /// This Mac's Codex login file (a test names another: MYLINUX_TEST_CODEX_LOGIN).
@@ -85,8 +93,11 @@ enum CodexInstall {
     /// The Mac has a login to give (looked at when the page is made, not read until it is sent).
     @Published var macHasLogin = false
     @Published var copyLogin = false
+    /// From the command line (AgentCommands): OpenAI's desktop app too, and the Store's terms as the user accepted them.
+    var desktop = false, storeTerms = false
     private var task: Task<Void, Never>?
     var answerTimeout: TimeInterval = 45
+    var setupTimeout: TimeInterval = 30 * 60
     var takeTimeout: TimeInterval { min(12, answerTimeout) }
 
     init(machine: Profile) { self.machine = machine }
@@ -137,18 +148,18 @@ enum CodexInstall {
             let files = files
             let id = ClaudeInstall.newID()
             if let problem = files.prepare() { failed(id, problem); return }
-            guard files.writeRequest(CodexInstall.request(login: login), id: id), files.ask("apply", id) else {
+            guard files.writeRequest(CodexInstall.request(login: login, desktop: desktop, storeTerms: storeTerms), id: id), files.ask("apply", id) else {
                 failed(id, "Could not write the request into \(files.folder.path)."); return
             }
             guard await taken(id) else { failed(id, ClaudeInstallModel.windowsNotRunning); return }
-            let done = await wait(30 * 60) { () -> CodexOutcome? in
+            let done = await wait(setupTimeout) { () -> CodexOutcome? in
                 let now = ClaudeStep.parse(lines: (try? String(contentsOf: files.progressFile(id), encoding: .utf8)) ?? "")
                 if now != self.steps { self.steps = now }
                 return (try? Data(contentsOf: files.resultFile(id))).flatMap(CodexOutcome.parse)
             }
             files.forget(id)
             guard !Task.isCancelled else { return }
-            guard let done else { failed(id, "The setup inside did not finish in half an hour."); return }
+            guard let done else { failed(id, "The setup inside did not finish in \(Int(setupTimeout / 60)) minutes. It may still be going on there: ask again in a while."); return }
             steps = done.steps
             if let s = done.status { status = s }
             outcome = done

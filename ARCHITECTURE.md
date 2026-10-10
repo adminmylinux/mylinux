@@ -532,6 +532,19 @@ pointer while it is fullscreen or after ⌘⌃G.
   answers. The sheet has a fixed size (fields that do not apply are greyed, not removed). `--render-first-start
   omarchy|windows <png>` draws it to a file.
 
+- `Agents/AgentCommands.swift`: the wizards without a window (`mylinux claude NAME [--install …]`, `mylinux codex
+  NAME [--install …]`), for an Omarchy or a Windows machine that is running. It drives the wizards' own models
+  (`ClaudeInstallModel`, `CodexInstallModel`): a look first, then the install, and answers at once with where that
+  stands (`checking`, `working`, `ready`, `finished`, or an error when the machine's helper does not answer); the
+  client asks again (`--poll`) until it is done. A token is named, never given: `--token-file FILE --token-name
+  NAME` is read here in the launcher (`AgentCommands.secret`), so it is in no command line and no notification.
+  Codex in a Linux machine goes through Claude Code's script: `server-apps/claude_setup.py` reports `codex` in its
+  status and takes `"codex": {"install", "login"}` (OpenAI's installer, the Mac's login as `~/.codex/auth.json`,
+  the alias cx) with `"claude": false` leaving Claude Code's own steps out. In Windows,
+  `windows/claude_codex_setup.ps1`'s `codex apply` takes `desktop` and `storeTerms`: OpenAI's desktop app from the
+  Microsoft Store (`winget install --id 9PLM9XGG6VKS --source msstore`), the one place in that script where terms
+  are accepted, and only when the request says the user has accepted them.
+
 ### 7.2 How it runs a machine
 
 `Runner` (one per profile, kept by `RunManager` in `Runner.swift`) starts `/bin/sh run.sh` or `run-omarchy.sh`

@@ -49,6 +49,15 @@ enum CLI {
           mylinux status <name>                   its state; "ready" is true when it can be used
           mylinux wait <name> [--timeout SECONDS] until it is ready (default 900 seconds)
           mylinux ssh <name> [-- command…]        a server's shell, or one command in it (tiny, alpine, debian)
+          mylinux claude <name>                   Claude Code inside an Omarchy or a Windows machine: what is there
+          mylinux claude <name> --install [--token-file FILE --token-name NAME --account WORD [--alias cc1] [--default|--not-default]]
+                                                  installs what is missing (in Windows the desktop app too); with a token,
+                                                  named by the file of NAME=value lines it is in and its entry there, a
+                                                  subscription is added (the launcher reads the token; it is never given)
+          mylinux codex <name>                    Codex inside it: what is there
+          mylinux codex <name> --install [--login-from-mac] [--desktop --accept-store-terms]
+                                                  installs Codex and the alias cx; signs it in with this Mac's own Codex
+                                                  login; in Windows, OpenAI's desktop app from the Microsoft Store
           mylinux delete <name> --yes [--stop]    the machine and its disk, into the Trash (--stop shuts it down first)
           mylinux erase machines --yes [--stop]   every machine and its disk, into the Trash (--stop shuts running ones down first)
           mylinux erase everything --yes [--stop] as a new install: the machines, the downloads, the settings, the saved
@@ -87,7 +96,7 @@ enum CLI {
         var plain: [String] = [], values: [String: String] = [:], flags: Set<String> = [], rest: [String] = []
     }
     static let valued: Set<String> = ["name", "memory", "disk", "cpus", "timeout", "iso", "agent", "ssh-port", "user", "password", "edition", "keyboard", "keys",
-                                       "timezone", "hostname", "full-name", "email"]
+                                       "timezone", "hostname", "full-name", "email", "token-file", "token-name", "account", "alias"]
     static func words(_ args: [String]) -> Words? {
         var w = Words(), i = 0
         while i < args.count {
@@ -187,7 +196,7 @@ enum CLI {
         }
         guard let w = words(Array(args.dropFirst())) else { err("mylinux: a --word is missing its value (mylinux help)"); return 2 }
         if first == "skill" { return Skill.run(w) }
-        guard ["kinds", "list", "create", "start", "stop", "restart", "status", "wait", "ssh", "delete", "erase"].contains(first) else {
+        guard ["kinds", "list", "create", "start", "stop", "restart", "status", "wait", "ssh", "delete", "erase", "claude", "codex"].contains(first) else {
             err("mylinux: no command \"\(first)\" (mylinux help)"); return 2
         }
         guard reach() else {
@@ -212,6 +221,22 @@ enum CLI {
             var c = all.map { strdup($0) } + [nil]
             execv("/usr/bin/ssh", &c)
             return finish(.failed("ssh could not be started"))
+        case "claude", "codex":
+            // the launcher looks inside the machine, or installs there, and goes on by itself: this asks how far it
+            // is until it is done (an install: 80 minutes at most unless --timeout says more; a new Windows is slow)
+            guard let name = w.plain.first else { err("mylinux \(first) <name> [--install …]"); return 2 }
+            guard var r = ask(args) else { return finish(.failed("no answer from the launcher", code: 3)) }
+            let end = Date().addingTimeInterval(w.values["timeout"].flatMap(Double.init) ?? (w.flags.contains("install") ? 80 * 60 : 330))
+            while ["checking", "working"].contains((r.json[first] as? [String: Any])?["state"] as? String ?? ""), Date() < end {
+                Thread.sleep(forTimeInterval: 1.5)
+                guard let next = ask([first, name, "--poll"]) else { return finish(.failed("no answer from the launcher", code: 3)) }
+                r = next
+            }
+            if ["checking", "working"].contains((r.json[first] as? [String: Any])?["state"] as? String ?? "") {
+                var j = r.json; j["ok"] = false; j["error"] = "not finished in time (it goes on inside: mylinux \(first) \"\(name)\" asks again)"
+                return finish(Reply(code: 4, json: j))
+            }
+            return finish(r)
         case "delete":
             // --stop: the machine is shut down first and waited for; then the launcher is asked
             if w.flags.contains("stop"), w.flags.contains("yes"), let name = w.plain.first,
@@ -510,6 +535,7 @@ enum CLI {
             return CLI.Reply(code: 1, json: ["ok": false, "error": d["error"] as? String ?? "\(p.name) failed", "machine": d])
         }
         switch command {
+        case "claude", "codex": return AgentCommands.handle(command, w, store: store, settings: settings)
         case "ping": return .ok(["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"])
         case "kinds":
             let kinds: [Profile.Kind] = [.tiny, .alpine, .debian, .omarchy, .arch, .kali, .mylinux, .windows]
