@@ -6,7 +6,8 @@
 #                                            names, never a token), the status line, and whether the aliases are found
 #     claude_codex_setup.ps1 claude apply    carries out the request on its standard input (JSON): Git and Claude Code
 #                                            installed when missing, a subscription saved as an alias (cc1, cc2, …)
-#                                            with its long-lived token, the status line that shows its account
+#                                            with its long-lived token, the status line that shows its account, and
+#                                            Claude, the desktop app, installed and pinned to the taskbar
 #     claude_codex_setup.ps1 codex status    Codex and its version, whether it is signed in, the alias cx
 #     claude_codex_setup.ps1 codex apply     Codex installed (winget), the alias cx, and the login of the Mac this
 #                                            machine runs on (~/.codex/auth.json there) put in place
@@ -22,6 +23,8 @@
 #     .local\bin\<alias>.cmd                        the alias: Claude Code with that subscription; cc.cmd and cx.cmd
 #     .claude\statusline.ps1, .claude\settings.json the status line and the setting that runs it
 #     .codex\auth.json                              Codex's login
+#     .config\mylinux\claude-desktop-pinned         that Claude was pinned to the taskbar once (it is not pinned
+#                                                   again after you take it off)
 # With "makeDefault" the token is also the login of plain claude and cc: the user's own environment variables
 # CLAUDE_CODE_OAUTH_TOKEN and MYLINUX_CLAUDE_ACCOUNT, which every new terminal has.
 param([string]$Tool = '', [string]$What = '')
@@ -227,6 +230,16 @@ function Line-State {
     return [ordered]@{ script = [bool]$text; showsAccount = $text.Contains('MYLINUX_CLAUDE_ACCOUNT')
                        configured = (($command -replace '\\', '/') -like '*/.claude/statusline.ps1*'); command = $command }
 }
+# Claude, the desktop app (winget's Anthropic.Claude: an installer of its own that puts it in the user's folder, with
+# a shortcut in the Start menu), and whether it is on the taskbar.
+$DesktopLink = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Anthropic\Claude.lnk'
+$TaskbarPins = Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'
+$PinnedOnce = Join-Path $Config 'claude-desktop-pinned'
+function Desktop-State {
+    $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AnthropicClaude' -ErrorAction SilentlyContinue
+    return [ordered]@{ installed = (Test-Path -LiteralPath $DesktopLink); version = [string]$entry.DisplayVersion
+                       pinned = (Test-Path -LiteralPath (Join-Path $TaskbarPins 'Claude.lnk')); pinnedOnce = (Test-Path -LiteralPath $PinnedOnce) }
+}
 function Claude-Status {
     $path = Find-Program 'claude'
     $version = ''
@@ -245,6 +258,7 @@ function Claude-Status {
         statusLine = (Line-State)
         apiKey = $false
         onboarded = ((Key (Read-Json (Join-Path $User '.claude.json')) 'hasCompletedOnboarding') -eq $true)
+        desktop = (Desktop-State)
     }
 }
 
@@ -402,12 +416,66 @@ function Install-StatusLine {
     $doc['statusLine'] = $line
     Write-Json $Settings $doc
 }
+function Install-Desktop {
+    $r = Winget 'Anthropic.Claude'
+    # winget is done when Claude's own installer has started; the shortcut is there when that one is
+    for ($i = 0; $i -lt 120 -and -not (Test-Path -LiteralPath $DesktopLink); $i++) { Start-Sleep -Seconds 2 }
+    if (Test-Path -LiteralPath $DesktopLink) { return @{ ok = $true; detail = [string](Desktop-State).version } }
+    return @{ ok = $false; detail = "Claude did not install`n" + (Tail $r.out) }
+}
+# Claude on the taskbar. Windows has no call for that; what it has is a taskbar layout, a file named by a policy,
+# which Explorer reads as it starts and adds to the pins. So: the layout (the Store apps pinned now, which a layout
+# that leaves them out would take off, and Claude), the policy, Explorer started again, and then the policy and the
+# file away again: the pin stays, as one made by hand. Not when a layout policy is there already (somebody's own).
+function Pin-Desktop {
+    $policy = 'HKCU:\Software\Policies\Microsoft\Windows\Explorer'
+    foreach ($hive in 'HKCU:', 'HKLM:') {
+        $have = Get-ItemProperty "$hive\Software\Policies\Microsoft\Windows\Explorer" -ErrorAction SilentlyContinue
+        if ($have -and $have.StartLayoutFile) { return @{ ok = $false; skipped = $true; detail = 'this Windows has a taskbar layout of its own (a policy): right-click Claude in the Start menu to pin it' } }
+    }
+    $apps = @()
+    $band = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband' -ErrorAction SilentlyContinue
+    if ($band -and $band.Favorites) {
+        $names = [Text.Encoding]::Unicode.GetString([byte[]]$band.Favorites)
+        $apps = @([regex]::Matches($names, '[A-Za-z0-9][A-Za-z0-9.\-]+_[a-z0-9]{13}![A-Za-z0-9.\-_]+') | ForEach-Object { $_.Value } | Select-Object -Unique)
+    }
+    $rows = @($apps | ForEach-Object { '        <taskbar:UWA AppUserModelID="' + [Security.SecurityElement]::Escape($_) + '" />' })
+    $rows += '        <taskbar:DesktopApp DesktopApplicationLinkPath="' + [Security.SecurityElement]::Escape($DesktopLink) + '" />'
+    $layout = Join-Path $Config 'taskbar-layout.xml'
+    New-Item -ItemType Directory -Force $Config | Out-Null
+    [IO.File]::WriteAllText($layout, (@('<?xml version="1.0" encoding="utf-8"?>',
+        '<LayoutModificationTemplate xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification" xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" xmlns:taskbar="http://schemas.microsoft.com/Start/2014/TaskbarLayout" Version="1">',
+        '  <CustomTaskbarLayoutCollection>', '    <defaultlayout:TaskbarLayout>', '      <taskbar:TaskbarPinList>') + $rows + @('      </taskbar:TaskbarPinList>', '    </defaultlayout:TaskbarLayout>', '  </CustomTaskbarLayoutCollection>', '</LayoutModificationTemplate>') -join "`r`n"), (New-Object Text.UTF8Encoding($true)))
+    $made = -not (Test-Path $policy)
+    try {
+        New-Item $policy -Force | Out-Null
+        Set-ItemProperty $policy -Name StartLayoutFile -Value $layout -Type ExpandString
+        Set-ItemProperty $policy -Name LockedStartLayout -Value 1 -Type DWord
+        # this session's Explorer; Windows starts it again by itself
+        $session = (Get-Process -Id $PID).SessionId
+        Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session } | Stop-Process -Force -ErrorAction SilentlyContinue
+        $pin = Join-Path $TaskbarPins 'Claude.lnk'
+        for ($i = 0; $i -lt 60 -and -not (Test-Path -LiteralPath $pin); $i++) {
+            Start-Sleep -Milliseconds 500
+            if ($i -eq 30 -and -not (Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })) { Start-Process explorer.exe }
+        }
+        if (-not (Test-Path -LiteralPath $pin)) { return @{ ok = $false; detail = 'Windows did not take the pin: right-click Claude in the Start menu to pin it' } }
+        [IO.File]::WriteAllText($PinnedOnce, (Get-Date -Format s) + "`r`n")
+        return @{ ok = $true; detail = 'Windows''s taskbar was started again for it' }
+    } finally {
+        Remove-ItemProperty $policy -Name StartLayoutFile, LockedStartLayout -ErrorAction SilentlyContinue
+        $left = Get-Item $policy -ErrorAction SilentlyContinue
+        if ($made -and $left -and $left.ValueCount -eq 0 -and $left.SubKeyCount -eq 0) { Remove-Item $policy -Force -ErrorAction SilentlyContinue }
+        Remove-Item -LiteralPath $layout -Force -ErrorAction SilentlyContinue
+    }
+}
 function Claude-Checked($request) {
     if (-not ($request -is [Collections.IDictionary])) { return @{ problem = 'the request is not what the launcher sends' } }
     $r = @{ problem = $null }
     foreach ($k in 'alias', 'account', 'token') { $r[$k] = ([string](Key $request $k)) -replace '\s', '' }
     $r.makeDefault = ((Key $request 'makeDefault') -eq $true)
     $r.statusLine = ((Key $request 'statusLine') -ne $false)
+    $r.desktop = ((Key $request 'desktop') -ne $false)
     if ($r.token) {
         if ($r.alias -notmatch $AliasRe) { $r.problem = 'the alias is one word: letters, digits, - and _, starting with a letter' }
         elseif (@('claude', 'cc', 'cx', 'codex', 'git', 'winget') -contains $r.alias.ToLower()) { $r.problem = "$($r.alias) is taken: pick another name (cc1, cc2, ...)" }
@@ -489,12 +557,38 @@ function Claude-Apply {
         } elseif ($r.statusLine) {
             Step 'statusline' 'The status line' 'done' 'already shows the account'
         }
+        # 4. Claude, the desktop app, and its place on the taskbar (once: taken off by hand, it stays off)
+        if ($r.desktop) {
+            $desk = Desktop-State
+            if (-not $desk.installed) {
+                Step 'desktop' 'Installing Claude, the desktop app' 'running' 'from winget'
+                $d = Install-Desktop
+                Step 'desktop' 'Installing Claude, the desktop app' $(if ($d.ok) { 'done' } else { 'failed' }) $(if ($d.ok) { $(if ($d.detail) { "version $($d.detail); " } else { '' }) + 'it asks you to sign in when you open it' } else { $d.detail })
+                $ok = $ok -and $d.ok
+                $desk = Desktop-State
+            }
+            if ($desk.installed -and -not $desk.pinned -and -not $desk.pinnedOnce) {
+                Step 'taskbar' 'Pinning Claude to the taskbar' 'running'
+                try { $t = Pin-Desktop } catch { $t = @{ ok = $false; detail = [string]$_.Exception.Message } }
+                # (a pin that did not come is told, and is not the setup's failure: Claude is in the Start menu)
+                Step 'taskbar' 'Pinning Claude to the taskbar' $(if ($t.ok) { 'done' } else { 'skipped' }) $t.detail
+            }
+        }
         return [ordered]@{ ok = $ok; steps = @($script:Steps); alias = $(if ($adding) { $r.alias } else { '' }); account = $(if ($adding) { $r.account } else { '' })
                            makeDefault = ($adding -and $r.makeDefault); status = (Claude-Status) }
     } finally { try { $lock.ReleaseMutex() } catch { } }
 }
 
 # ---- Codex -------------------------------------------------------------------------------------------------------------
+# cx, as this writes it. Codex 0.161 starts a background server of its own for its terminal, and on Windows that
+# one stops at once ("the CLI package does not match this platform or executable", with winget's Arm64 package and
+# started by its real path too); --no-daemon, which the message names, starts Codex without it.
+$CxLines = @('@echo off', 'rem myLinux: cx starts Codex without approvals or sandbox, and without its background server', 'call codex --no-daemon --dangerously-bypass-approvals-and-sandbox %*')
+function Cx-Current {
+    $file = Join-Path $Bin 'cx.cmd'
+    if (-not (Test-Path -LiteralPath $file)) { return $false }
+    return [IO.File]::ReadAllText($file).Contains('--no-daemon')
+}
 function Codex-Status {
     $path = Find-Program 'codex'
     $version = ''; $said = ''
@@ -515,7 +609,7 @@ function Codex-Status {
         version = 1; system = 'windows'; user = [string]$env:USERNAME
         codex = [ordered]@{ installed = [bool]$path; version = $version; path = (Short $path) }
         login = [ordered]@{ file = $file; accepted = $accepted; says = $said }
-        alias = [ordered]@{ cx = (Test-Path -LiteralPath (Join-Path $Bin 'cx.cmd')); loaded = (Bin-OnPath) }
+        alias = [ordered]@{ cx = (Test-Path -LiteralPath (Join-Path $Bin 'cx.cmd')); current = (Cx-Current); loaded = (Bin-OnPath) }
         winget = [bool](Find-Program 'winget')
     }
 }
@@ -544,12 +638,15 @@ function Codex-Apply {
     if ((Key $request 'alias') -ne $false) {
         try {
             $wrote = $false
-            if (-not (Test-Path -LiteralPath (Join-Path $Bin 'cx.cmd'))) {
-                Write-Cmd 'cx' @('@echo off', 'rem myLinux: cx starts Codex without approvals or sandbox', 'call codex --dangerously-bypass-approvals-and-sandbox %*')
+            $file = Join-Path $Bin 'cx.cmd'
+            # not there, or the cx of before (this wizard's, or the snippet's): one that is somebody's own is left
+            $old = (Test-Path -LiteralPath $file) -and -not (Cx-Current) -and [IO.File]::ReadAllText($file).Contains('codex --dangerously-bypass-approvals-and-sandbox')
+            if (-not (Test-Path -LiteralPath $file) -or $old) {
+                Write-Cmd 'cx' $CxLines
                 $wrote = $true
             }
             $onPath = Add-BinToPath
-            Step 'alias' 'The alias cx' 'done' ($(if ($wrote) { 'cx starts Codex without approvals or sandbox' } else { 'already there' }) + $(if ($onPath) { '; ~\.local\bin is on your PATH now' } else { '' }))
+            Step 'alias' 'The alias cx' 'done' ($(if ($wrote) { 'cx starts Codex without approvals or sandbox, and without its background server' } else { 'already there' }) + $(if ($onPath) { '; ~\.local\bin is on your PATH now' } else { '' }))
         } catch {
             Step 'alias' 'The alias cx' 'failed' ([string]$_.Exception.Message)
             $ok = $false

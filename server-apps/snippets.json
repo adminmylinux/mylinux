@@ -225,8 +225,8 @@
    "os": [
     "windows"
    ],
-   "description": "cx starts Codex without approvals or sandbox (a cx.cmd on your PATH)",
-   "text": "& {\n  New-Item -ItemType Directory -Force \"$env:USERPROFILE\\.local\\bin\" | Out-Null\n  $bin = \"$env:USERPROFILE\\.local\\bin\"\n  $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n  if (($p -split ';') -notcontains $bin) { [Environment]::SetEnvironmentVariable('Path', ((\"$p\".TrimEnd(';'), $bin | Where-Object { $_ }) -join ';'), 'User') }\n  if (($env:Path -split ';') -notcontains $bin) { $env:Path += \";$bin\" }\n  Set-Content -Encoding ascii \"$bin\\cx.cmd\" \"@echo off`r`ncodex --dangerously-bypass-approvals-and-sandbox %*\"\n  'cx is ready: it starts Codex without approvals or sandbox'\n}"
+   "description": "cx starts Codex without approvals or sandbox, and without its background server, which does not start on Windows (a cx.cmd on your PATH)",
+   "text": "& {\n  New-Item -ItemType Directory -Force \"$env:USERPROFILE\\.local\\bin\" | Out-Null\n  $bin = \"$env:USERPROFILE\\.local\\bin\"\n  $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n  if (($p -split ';') -notcontains $bin) { [Environment]::SetEnvironmentVariable('Path', ((\"$p\".TrimEnd(';'), $bin | Where-Object { $_ }) -join ';'), 'User') }\n  if (($env:Path -split ';') -notcontains $bin) { $env:Path += \";$bin\" }\n  Set-Content -Encoding ascii \"$bin\\cx.cmd\" \"@echo off`r`ncodex --no-daemon --dangerously-bypass-approvals-and-sandbox %*\"\n  'cx is ready: it starts Codex without approvals or sandbox (plain codex stops at its background server on Windows)'\n}"
   },
   {
    "id": "dev-tools-windows",

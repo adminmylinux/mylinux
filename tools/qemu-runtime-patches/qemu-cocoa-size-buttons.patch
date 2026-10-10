@@ -1,6 +1,6 @@
 --- a/ui/cocoa.m
 +++ b/ui/cocoa.m
-@@ -117,7 +117,44 @@
+@@ -117,7 +117,64 @@
  static NSTextField *pauseLabel;
  
  static bool allow_events;
@@ -11,6 +11,26 @@
 + * the keyboard stayed captured while the window was in front.)
 + */
 +static bool mylinux_keys_released;
++/*
++ * myLinux: the guest's own Caps Lock, as its keyboard's light says. The window keeps the guest's Caps Lock like the
++ * Mac's by counting the presses it sent (handleEventLocked) and never looked at the guest: a press the guest did not
++ * take (sent while it started, or while its keyboard was being set up) or a change the guest made itself left the
++ * two the wrong way round from then on, on in the guest when off on the Mac. The guest's keyboard light is its word:
++ * when it says the other thing than the Mac, one more press is sent. Only for a guest whose light follows the key:
++ * Omarchy has Caps Lock as its Compose key, its light never changes, and every such press would be a key typed
++ * there. That is learnt (the light changed within a second of a press sent) or said at the start
++ * (MYLINUX_CAPS_LOCK_LIGHT=1: Windows). Presses the light does not answer are not repeated in a stream: two, then a
++ * wait that grows.
++ */
++static int mylinux_caps_light = -1;            /* the guest's Caps Lock light: 0, 1, and -1 before anything was said */
++static bool mylinux_caps_follows;              /* the light follows the key */
++static CFAbsoluteTime mylinux_caps_sent_at;    /* the last press sent, by the window's count or to set it right */
++static CFAbsoluteTime mylinux_caps_quiet_until;
++static double mylinux_caps_wait = 10;
++static int mylinux_caps_unanswered;            /* presses sent to set it right that the light has not answered */
++static bool mylinux_caps_look_pending;
++static void mylinux_caps_set_right(bool mac);
++static void mylinux_caps_look_again(void);
 +/* the launcher that started this machine, asked through a distributed notification (Restart, Cloud Folders…, Mount a Share…, Snippets…) */
 +static bool mylinux_restart_available(void);
 +static void mylinux_ask_launcher(NSString *action);
@@ -45,7 +65,7 @@
  static NSInteger cbchangecount = -1;
  static QemuClipboardInfo *cbinfo;
  static QemuEvent cbevent;
-@@ -696,12 +733,30 @@
+@@ -696,12 +753,30 @@
  {
      [[self window] setContentAspectRatio:NSMakeSize(screen.width, screen.height)];
  
@@ -78,23 +98,33 @@
      } else if ([[self window] styleMask] & NSWindowStyleMaskFullScreen) {
          [[self window] setContentSize:[self fixAspectRatio:[self screenSafeAreaSize]]];
          [[self window] center];
-@@ -981,6 +1036,11 @@
+@@ -980,6 +1055,11 @@
+     InputButton button;
      unsigned int keycode;
      NSUInteger modifiers = [event modifierFlags];
- 
++
 +    /* a click in the window after Ctrl+Option+G: every key goes to the guest again */
 +    if (mylinux_keys_released && [event type] == NSEventTypeLeftMouseDown && [event window] == [self window]) {
 +        mylinux_keys_released = false;
 +    }
-+
+ 
      /*
       * Check -[NSEvent modifierFlags] here.
-      *
-@@ -1125,6 +1185,30 @@
-             return true;
+@@ -1022,7 +1102,10 @@
+         qkbd_state_modifier_get(kbd, QKBD_MOD_CAPSLOCK)) {
+         qkbd_state_key_event(kbd, KEY_CAPSLOCK, true);
+         qkbd_state_key_event(kbd, KEY_CAPSLOCK, false);
++        mylinux_caps_sent_at = CFAbsoluteTimeGetCurrent();
++        mylinux_caps_look_again();          /* myLinux: and whether the guest took it (its light) */
+     }
++    mylinux_caps_set_right(!!(modifiers & NSEventModifierFlagCapsLock));
+ 
+     if (!(modifiers & NSEventModifierFlagShift)) {
+         qkbd_state_key_event(kbd, KEY_LEFTSHIFT, false);
+@@ -1126,6 +1209,30 @@
          case NSEventTypeKeyDown:
              keycode = cocoa_keycode_to_linux([event keyCode]);
-+
+ 
 +            // myLinux: Control+Command+F toggles full screen whatever the keyboard mode, captured keyboard included
 +            // (macOS never sees the chord then, so the window handles it itself).
 +            if ([event keyCode] == 3 /* f */ &&
@@ -118,10 +148,11 @@
 +                }
 +                return true;
 +            }
- 
++
              // Keep Command chords with the host unless the focused guest
              // captured the keyboard.
-@@ -1147,9 +1231,12 @@
+             if (![self isKeyboardCaptured] &&
+@@ -1147,9 +1254,12 @@
                              [self selectConsoleLocked:key - '0' - 1]; /* ascii math */
                              return true;
  
@@ -135,7 +166,7 @@
                              return true;
                      }
                  }
-@@ -1375,6 +1462,9 @@
+@@ -1375,6 +1485,9 @@
   */
  - (BOOL) isKeyboardCaptured
  {
@@ -145,7 +176,7 @@
      return isMouseGrabbed ||
             (full_grab_enabled && [[self window] isKeyWindow]);
  }
-@@ -1405,17 +1495,46 @@
+@@ -1405,17 +1518,46 @@
  
  
  /*
@@ -193,7 +224,7 @@
  - (void)displayConsole:(id)sender;
  - (void)pauseQEMU:(id)sender;
  - (void)resumeQEMU:(id)sender;
-@@ -1423,6 +1542,11 @@
+@@ -1423,6 +1565,11 @@
  - (void)removePause;
  - (void)restartQEMU:(id)sender;
  - (void)powerDownQEMU:(id)sender;
@@ -205,7 +236,7 @@
  - (void)ejectDeviceMedia:(id)sender;
  - (void)changeDeviceMedia:(id)sender;
  - (BOOL)verifyQuit;
-@@ -1475,7 +1599,7 @@
+@@ -1475,7 +1622,7 @@
          }
  
          // create a window
@@ -214,7 +245,7 @@
              styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskClosable
              backing:NSBackingStoreBuffered defer:NO];
          if(!window) {
-@@ -1489,8 +1613,9 @@
+@@ -1489,8 +1636,9 @@
              : @"QEMU"];
          [window setContentView:cocoaView];
          [window makeKeyAndOrderFront:self];
@@ -225,7 +256,7 @@
  
          /* Used for displaying pause on the screen */
          pauseLabel = [NSTextField new];
-@@ -1553,28 +1678,75 @@
+@@ -1553,28 +1701,75 @@
  
  - (void)windowDidChangeScreen:(NSNotification *)notification
  {
@@ -257,8 +288,8 @@
 +    }
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
-+}
-+
+ }
+ 
 +- (void)windowWillEnterFullScreen:(NSNotification *)notification
 +{
 +    mylinux_fullscreen_moving = true;
@@ -266,8 +297,8 @@
 +    prefullscreen_size = [[[cocoaView window] contentView] frame].size;
 +    /* the toolbar stays out of full screen; the floating box has its controls there */
 +    [[[cocoaView window] toolbar] setVisible:NO];
- }
- 
++}
++
 +- (void)windowWillExitFullScreen:(NSNotification *)notification
 +{
 +    mylinux_fullscreen_moving = true;
@@ -302,7 +333,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
      [cocoaView ungrabMouse];
-@@ -1582,6 +1754,23 @@
+@@ -1582,6 +1777,23 @@
  
  - (void)windowDidResize:(NSNotification *)notification
  {
@@ -326,7 +357,7 @@
      [cocoaView updateScale];
      [cocoaView updateUIInfo];
  }
-@@ -1675,12 +1864,540 @@
+@@ -1675,12 +1887,540 @@
  }
  
  /* Stretches video to fit host monitor size */
@@ -867,7 +898,7 @@
      [cocoaView resizeWindow];
  }
  
-@@ -1754,8 +2471,100 @@
+@@ -1754,8 +2494,100 @@
      with_bql(^{
          qmp_system_powerdown(NULL);
      });
@@ -938,8 +969,8 @@
 +- (void)mylinuxClaude:(id)sender
 +{
 +    mylinux_ask_launcher(@"claude");
- }
- 
++}
++
 +/* myLinux: Machine › Codex Install… : the launcher's wizard for Codex inside a Windows machine (installed, the alias
 +   cx, and signed in with this Mac's login; the machine's agent runs its script) */
 +- (void)mylinuxCodex:(id)sender
@@ -951,8 +982,8 @@
 +- (void)mylinuxCloudFolders:(id)sender
 +{
 +    mylinux_ask_launcher(@"cloud");
-+}
-+
+ }
+ 
 +/* myLinux: Machine › Snippets… : the launcher's commands for this system, to copy into a terminal inside */
 +- (void)mylinuxSnippets:(id)sender
 +{
@@ -968,7 +999,7 @@
  /* Ejects the media.
   * Uses sender's tag to figure out the device to eject.
   */
-@@ -1935,7 +2744,30 @@
+@@ -1935,7 +2767,30 @@
      menu = [[NSMenu alloc] initWithTitle: @"Machine"];
      [menu setAutoenablesItems: NO];
      [menu addItem: [[[NSMenuItem alloc] initWithTitle: @"Reset" action: @selector(restartQEMU:) keyEquivalent: @""] autorelease]];
@@ -999,3 +1030,97 @@
      menuItem = [[[NSMenuItem alloc] initWithTitle: @"Machine" action:nil keyEquivalent:@""] autorelease];
      [menuItem setSubmenu:menu];
      [[NSApp mainMenu] addItem:menuItem];
+@@ -2092,6 +2947,84 @@
+     });
+ }
+ 
++/* myLinux: the guest's keyboard lights changed (QEMU's thread, its lock held): its Caps Lock is what the light says */
++static void mylinux_leds_changed(Notifier *notifier, void *data)
++{
++    int light = !!(qemu_input_get_leds_mask(dcl.con) & QEMU_CAPS_LOCK_LED);
++    if (light != mylinux_caps_light) {
++        if (mylinux_caps_light >= 0) {
++            if (CFAbsoluteTimeGetCurrent() - mylinux_caps_sent_at < 1.0) {
++                mylinux_caps_follows = true;            /* the light answered a press */
++            }
++            mylinux_caps_unanswered = 0;
++            mylinux_caps_wait = 10;
++            mylinux_caps_quiet_until = 0;
++        }
++        mylinux_caps_light = light;
++    }
++    dispatch_async(dispatch_get_main_queue(), ^{
++        mylinux_caps_set_right(!!([NSEvent modifierFlags] & NSEventModifierFlagCapsLock));
++    });
++}
++
++static Notifier mylinux_leds_notifier = {
++    .notify = mylinux_leds_changed,
++};
++
++/* on the main thread: once more in a moment, when a press sent has had its time (a press the guest did not take
++   leaves no light to wake this) */
++static void mylinux_caps_look_again(void)
++{
++    if (mylinux_caps_look_pending) {
++        return;
++    }
++    mylinux_caps_look_pending = true;
++    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
++        mylinux_caps_look_pending = false;
++        mylinux_caps_set_right(!!([NSEvent modifierFlags] & NSEventModifierFlagCapsLock));
++    });
++}
++
++/* on the main thread: the guest's Caps Lock to the Mac's (`mac`), when its light says it is the other */
++static void mylinux_caps_set_right(bool mac)
++{
++    __block bool again = false;
++    with_bql(^{
++        if (!mylinux_caps_follows || mylinux_caps_light < 0 || !kbd || mac == (mylinux_caps_light == 1)) {
++            return;
++        }
++        CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
++        if (now - mylinux_caps_sent_at < 0.7) {
++            again = true;                               /* a press is on its way: its light first */
++            return;
++        }
++        if (now < mylinux_caps_quiet_until) {
++            return;
++        }
++        if (mylinux_caps_unanswered >= 2) {             /* the light does not answer: later, and later still */
++            mylinux_caps_unanswered = 0;
++            mylinux_caps_quiet_until = now + mylinux_caps_wait;
++            mylinux_caps_wait = MIN(mylinux_caps_wait * 3, 600);
++            return;
++        }
++        mylinux_caps_unanswered++;
++        mylinux_caps_sent_at = now;
++        fprintf(stderr, "myLinux: Caps Lock in the guest set to the Mac's (%s)\n", mac ? "on" : "off");
++        if (qkbd_state_modifier_get(kbd, QKBD_MOD_CAPSLOCK) != mac) {
++            /* the window's count is off as well: through it, so the two agree afterwards */
++            qkbd_state_key_event(kbd, KEY_CAPSLOCK, true);
++            qkbd_state_key_event(kbd, KEY_CAPSLOCK, false);
++        } else {
++            qemu_input_event_send_key_linux(dcl.con, KEY_CAPSLOCK, true);
++            qemu_input_event_send_key_linux(dcl.con, KEY_CAPSLOCK, false);
++        }
++        again = true;
++    });
++    if (again) {
++        mylinux_caps_look_again();
++    }
++}
++
+ static Notifier mouse_mode_change_notifier = {
+     .notify = cocoa_mouse_mode_change_notify
+ };
+@@ -2732,6 +3665,8 @@
+     qemu_console_register_listener(qemu_console_lookup_default(),
+                                    &dcl, dcl.ops);
+     kbd = qkbd_state_init(dcl.con);
++    mylinux_caps_follows = mylinux_env("MYLINUX_CAPS_LOCK_LIGHT") != NULL;
++    qemu_input_led_notifier_add(&mylinux_leds_notifier);
+     qemu_add_mouse_mode_change_notifier(&mouse_mode_change_notifier);
+     [cocoaView notifyMouseModeChange];
+     [cocoaView updateUIInfo];

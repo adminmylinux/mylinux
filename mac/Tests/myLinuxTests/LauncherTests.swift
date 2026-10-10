@@ -994,6 +994,12 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertTrue(status.windows); XCTAssertFalse(status.git); XCTAssertEqual(status.nextAlias, "cc2")
         XCTAssertTrue(status.repairs.contains { $0.contains("Git for Windows") }, "\(status.repairs)")
         XCTAssertTrue(status.repairs.contains { $0.contains("PATH") }, "\(status.repairs)")
+        // Claude, the desktop app: installed and pinned with Claude Code, and the pin offered once
+        XCTAssertTrue(status.repairs.contains { $0.contains("desktop app") && $0.contains("taskbar starts again") }, "\(status.repairs)")
+        func desktop(_ json: String) -> ClaudeStatus? { ClaudeStatus.parse(Data(#"{"system":"windows","claude":{"installed":true},"statusLine":{"script":true,"showsAccount":true,"configured":true},"desktop":\#(json)}"#.utf8)) }
+        XCTAssertEqual(desktop(#"{"installed":true,"version":"2.1","pinned":false,"pinnedOnce":false}"#)?.repairs.count, 1, "the pin alone")
+        XCTAssertEqual(desktop(#"{"installed":true,"pinned":true,"pinnedOnce":true}"#)?.repairs, [])
+        XCTAssertEqual(desktop(#"{"installed":true,"pinned":false,"pinnedOnce":true}"#)?.repairs, [], "taken off the taskbar by hand: not offered again")
         // an old agent's silence: a helper that has heard nothing for a while takes nothing
         XCTAssertFalse(bridge.alive(now: Date().addingTimeInterval(30)))
     }
@@ -1003,13 +1009,16 @@ final class OmarchyProfileTests: XCTestCase {
         let there = try XCTUnwrap(CodexStatus.parse(Data(#"{"codex":{"installed":true,"version":"0.50.0","path":"C:\\x\\codex.exe"},"login":{"file":true,"says":"Logged in using ChatGPT"},"alias":{"cx":true,"loaded":true}}"#.utf8)))
         XCTAssertTrue(there.repairs.isEmpty); XCTAssertEqual(there.says, "Logged in using ChatGPT"); XCTAssertTrue(there.winget, "not said: assumed")
         XCTAssertNil(CodexStatus.parse(Data(#"{"claude":{"installed":true}}"#.utf8)), "another tool's answer")
+        // a cx from before 0.7.73 starts Codex with its background server, which stops on Windows: it is renewed
+        let old = try XCTUnwrap(CodexStatus.parse(Data(#"{"codex":{"installed":true},"login":{"file":true},"alias":{"cx":true,"current":false,"loaded":true}}"#.utf8)))
+        XCTAssertTrue(old.cxOld); XCTAssertFalse(old.cx); XCTAssertEqual(old.repairs.count, 1); XCTAssertTrue(old.repairs[0].contains("Renew"), "\(old.repairs)")
         XCTAssertEqual(CodexInstall.request(login: nil)["login"] as? String, "")
         XCTAssertEqual(CodexInstall.request(login: Data(#"{"tokens":{}}"#.utf8))["login"] as? String, #"{"tokens":{}}"#)
         let o = try XCTUnwrap(CodexOutcome.parse(Data(#"{"ok":true,"steps":[{"step":"codex","title":"Codex","state":"done","detail":"x"}],"status":{"codex":{"installed":true}}}"#.utf8)))
         XCTAssertTrue(o.ok); XCTAssertEqual(o.steps.count, 1); XCTAssertEqual(o.status?.installed, true)
         // the script both wizards send is the launcher's own
         let script = try XCTUnwrap(WindowsLink.bundledScript() ?? (try? String(contentsOfFile: #filePath.replacingOccurrences(of: "/mac/Tests/myLinuxTests/LauncherTests.swift", with: "/windows/\(WindowsLink.scriptName)"), encoding: .utf8)))
-        for word in ["function Claude-Apply", "function Codex-Apply", "MYLINUX_CLAUDE_ACCOUNT", "'claude status'", "'codex apply'"] { XCTAssertTrue(script.contains(word), word) }
+        for word in ["function Claude-Apply", "function Codex-Apply", "MYLINUX_CLAUDE_ACCOUNT", "'claude status'", "'codex apply'", "--no-daemon", "function Pin-Desktop"] { XCTAssertTrue(script.contains(word), word) }
         XCTAssertFalse(script.contains("accept-source-agreements") || script.contains("accept-package-agreements"), "nothing is agreed to on the user's behalf")
     }
     func testTinyAlpineIsAServerThatIsAlpineInside() {

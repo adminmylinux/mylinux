@@ -142,6 +142,9 @@ struct ClaudeStatus: Equatable {
     /// A Windows machine's answer (windows/claude_codex_setup.ps1): the aliases are .cmd files on the PATH there, and
     /// Claude Code works through Git for Windows.
     var windows = false, git = true
+    /// Claude, the desktop app, in a Windows machine: installed with Claude Code, and pinned to the taskbar once
+    /// (`desktopPinnedOnce`: taken off the taskbar by hand afterwards, it is not offered again).
+    var desktopInstalled = false, desktopVersion = "", desktopPinned = false, desktopPinnedOnce = false
 
     static func parse(_ data: Data) -> ClaudeStatus? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -165,6 +168,9 @@ struct ClaudeStatus: Equatable {
         lineConfigured = line["configured"] as? Bool ?? false; lineCommand = line["command"] as? String ?? ""
         apiKey = obj["apiKey"] as? Bool ?? false
         windows = obj["system"] as? String == "windows"; git = obj["git"] as? Bool ?? true
+        let desktop = obj["desktop"] as? [String: Any] ?? [:]
+        desktopInstalled = desktop["installed"] as? Bool ?? false; desktopVersion = desktop["version"] as? String ?? ""
+        desktopPinned = desktop["pinned"] as? Bool ?? false; desktopPinnedOnce = desktop["pinnedOnce"] as? Bool ?? false
     }
 
     /// Claude Code here can start without the browser: a subscription with its token, or plain claude's.
@@ -187,9 +193,17 @@ struct ClaudeStatus: Equatable {
             out.append("Update the status line: the one there does not show the account (it is kept as statusline.sh.before-mylinux)")
         }
         if !aliasesMissing.isEmpty { out.append("Add the alias \(aliasesMissing.joined(separator: ", ")) for new terminals") }
-        else if !accounts.isEmpty && !aliasesLoaded { out.append(windows ? "Put the aliases' folder (.local\\bin in your user folder) on your PATH" : "Have new terminals load the aliases (~/.bashrc)") }
+        if windows {
+            if !desktopInstalled { out.append("Install Claude, the desktop app, and pin it to the taskbar (\(Self.taskbarNote))") }
+            else if !desktopPinned && !desktopPinnedOnce { out.append("Pin Claude, the desktop app, to the taskbar (\(Self.taskbarNote))") }
+        }
+        if !aliasesMissing.isEmpty { return out }
+        if !accounts.isEmpty && !aliasesLoaded { out.append(windows ? "Put the aliases' folder (.local\\bin in your user folder) on your PATH" : "Have new terminals load the aliases (~/.bashrc)") }
         return out
     }
+
+    /// What pinning costs, said where it is offered: Windows adds a pin from outside only as Explorer starts.
+    static let taskbarNote = "Windows's taskbar starts again for a moment, and open folder windows close"
 
     /// cc1, then cc2, …: the first that is neither a subscription nor an alias there.
     var nextAlias: String {
@@ -495,6 +509,10 @@ struct ClaudeInstallView: View {
                 if s.installed { row(.good, "Claude Code \(s.version.isEmpty ? "is installed" : s.version)", s.path) }
                 else { row(.missing, "Claude Code is not installed") }
                 if s.windows && !s.git && !s.installed { row(.missing, "Git for Windows is not installed", "Claude Code works through it: it is installed first.") }
+                if s.windows {
+                    if s.desktopInstalled { row(.good, "Claude, the desktop app\(s.desktopVersion.isEmpty ? "" : " \(s.desktopVersion)")", s.desktopPinned ? "On the taskbar." : "In the Start menu.") }
+                    else { row(.missing, "Claude, the desktop app, is not installed") }
+                }
                 ForEach(s.accounts) { a in
                     if !a.token { row(.warn, "\(a.alias) has no token", "Add a subscription with this alias to give it one.") }
                     else if a.account.isEmpty { row(.warn, "\(a.alias): a subscription without a name", "The status line has no account to show for it; add it again with a name.") }
@@ -516,8 +534,9 @@ struct ClaudeInstallView: View {
         } footer: {
             Divider()
             if !s.signedIn {
-                Text(s.installed ? "Claude Code here has no token. The next page asks for one and sets up an alias and the status line with it."
-                                 : "The next page asks for a Claude Code token, then installs Claude Code with an alias for the account and the status line.")
+                Text((s.installed ? "Claude Code here has no token. The next page asks for one and sets up an alias and the status line with it."
+                                  : "The next page asks for a Claude Code token, then installs Claude Code with an alias for the account and the status line.")
+                     + (s.windows && !s.desktopInstalled ? " Claude, the desktop app, is installed with it and pinned to the taskbar (\(ClaudeStatus.taskbarNote))." : ""))
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()

@@ -18,7 +18,9 @@ struct CodexStatus: Equatable {
     var installed = false, version = "", path = ""
     /// A login file is there and Codex takes it (`codex login status`); `loginFile` alone is a file Codex refuses.
     var signedIn = false, loginFile = false, says = ""
-    var cx = false, onPath = false, winget = true
+    /// `cxOld`: a cx from before 0.7.73, which starts Codex with its background server (Codex 0.161 on Windows stops
+    /// at that: "the CLI package does not match this platform or executable").
+    var cx = false, cxOld = false, onPath = false, winget = true
 
     static func parse(_ data: Data) -> CodexStatus? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -33,7 +35,8 @@ struct CodexStatus: Equatable {
         let login = obj["login"] as? [String: Any] ?? [:]
         loginFile = login["file"] as? Bool ?? false; signedIn = loginFile && (login["accepted"] as? Bool ?? true); says = login["says"] as? String ?? ""
         let alias = obj["alias"] as? [String: Any] ?? [:]
-        cx = alias["cx"] as? Bool ?? false; onPath = alias["loaded"] as? Bool ?? false
+        let there = alias["cx"] as? Bool ?? false, current = alias["current"] as? Bool ?? there
+        cx = there && current; cxOld = there && !current; onPath = alias["loaded"] as? Bool ?? false
         winget = obj["winget"] as? Bool ?? true
     }
 
@@ -41,7 +44,8 @@ struct CodexStatus: Equatable {
     var repairs: [String] {
         var out: [String] = []
         if !installed { out.append("Install Codex (OpenAI's Arm64 build, from winget)") }
-        if !cx { out.append("Add the alias cx: Codex without approvals or sandbox") }
+        if cxOld { out.append("Renew the alias cx: the one there starts Codex with its background server, which Codex on Windows stops at (“the CLI package does not match this platform or executable”)") }
+        else if !cx { out.append("Add the alias cx: Codex without approvals or sandbox") }
         else if !onPath { out.append("Put the alias's folder (.local\\bin in your user folder) on your PATH") }
         return out
     }
@@ -271,8 +275,9 @@ struct CodexInstallView: View {
                 else { row(.warn, "Codex is not installed, and winget is not there to install it", "Open Microsoft Store in Windows once and let App Installer update, then check again.") }
                 if s.signedIn { row(.good, s.says.isEmpty ? "Signed in" : s.says, "Its login is in .codex\\auth.json in your user folder there.") }
                 else if s.loginFile { row(.warn, "A login is there, and Codex does not take it", s.says) }
-                else { row(.missing, "Not signed in", "Typing codex in a terminal there signs in through Windows's browser; or use this Mac's login, below.") }
-                if s.cx && s.onPath { row(.good, "cx: Codex without approvals or sandbox") }
+                else { row(.missing, "Not signed in", "Typing cx in a terminal there signs in through Windows's browser; or use this Mac's login, below.") }
+                if s.cxOld { row(.warn, "cx is from before: it does not start Codex on Windows", "Codex's background server stops with “the CLI package does not match this platform or executable”; the new cx starts Codex without it.") }
+                else if s.cx && s.onPath { row(.good, "cx: Codex without approvals or sandbox", "And without Codex's background server, which does not start on Windows: type cx, not codex.") }
                 else if s.cx { row(.warn, "New terminals do not find cx", ".local\\bin in your user folder, where it is, is not on your PATH.") }
                 else { row(.missing, "No alias cx") }
                 if model.macHasLogin { row(.good, "This Mac has a Codex login", "~/.codex/auth.json") }
@@ -338,7 +343,7 @@ struct CodexInstallView: View {
         } footer: {
             Divider()
             if let o, o.ok {
-                Text("Open a new terminal in \(model.machine.name) and type cx (or codex)\(model.status.signedIn ? ": Codex starts signed in." : "; Codex asks you to sign in the first time.")")
+                Text("Open a new terminal in \(model.machine.name) and type cx\(model.status.signedIn ? ": Codex starts signed in." : "; Codex asks you to sign in the first time.") (Plain codex stops at its background server on Windows; codex --no-daemon is what cx runs.)")
                     .font(.callout).fixedSize(horizontal: false, vertical: true)
                 HStack { Spacer(); Button("Done") { close() }.keyboardShortcut(.defaultAction) }
             } else {

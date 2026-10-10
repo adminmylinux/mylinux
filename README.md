@@ -164,7 +164,9 @@ of Omarchy's clipboard agent over a virtio serial port); sound goes through the 
 Windows (Claude Code and a `cc` for it, Codex and `cx`, Git, VS Code and Node.js from winget, updates, the Mac's
 shared folders; **Paste** puts one into Windows Terminal), and **Mount a Share…**. Every key goes to Windows by default, ⌘ as the Windows key and Option as Alt; the machine's settings can
 leave ⌘ to macOS instead. Dragged from a Retina display to one that is not, or back, the window keeps its size and
-Windows changes its scaling (200 % or 100 %) to match.
+Windows changes its scaling (200 % or 100 %) to match. Caps Lock in Windows is the Mac's (from 0.7.73, runtime
+11.1.1-22): the window reads Windows's own Caps Lock from its keyboard light and sets it right when the two differ;
+before, a press Windows did not take while it started left it on when the Mac's was off.
 
 What it does not have: a shared folder (Windows reads no 9p; a folder shared on the Mac with File Sharing opens at
 `\\10.0.2.2` in File Explorer), Cloud Folders and Apps… (snippets and winget do those jobs), a TPM, and 3D
@@ -557,8 +559,14 @@ Anthropic's installer, saves a subscription with its `claude setup-token` token 
 `.cmd` in `.local\bin` of your user folder, which it puts on your PATH; the token in
 `.config\mylinux\claude-accounts\<alias>.env`, readable by your account only), makes it plain `claude`'s and `cc`'s
 login too when you tick that (your own environment variable `CLAUDE_CODE_OAUTH_TOKEN`), and installs a status line
-written in PowerShell that shows the folder, git branch, context, limits, cost, model and the account. **Codex
-Install…** installs Codex (OpenAI's Arm64 build, from winget), adds `cx` (Codex without approvals or sandbox), and
+written in PowerShell that shows the folder, git branch, context, limits, cost, model and the account. From 0.7.73 it
+also installs Claude, the desktop app (winget's `Anthropic.Claude`), and pins it to the taskbar, once: taken off the
+taskbar by hand, it is not put back. Windows has no call that pins an app, only a taskbar layout it reads as Explorer
+starts, so for the pin Windows's taskbar starts again for a moment and open folder windows close; the layout names the
+Store apps that are pinned already, so they stay, and the policy that points to it is taken away again. **Codex
+Install…** installs Codex (OpenAI's Arm64 build, from winget), adds `cx` (Codex without approvals or sandbox, and
+with `--no-daemon`: Codex 0.161 starts a background server for its terminal, which on Windows stops with “the CLI
+package does not match this platform or executable”; a `cx` from before 0.7.73 is renewed), and
 signs Codex in with this Mac's login when its page says so: the tick **Sign Codex in with this Mac's login**, with
 what that means under it, and a button that then reads **Install and Sign In**. Windows has a browser, so `codex`
 there can also sign in by itself.

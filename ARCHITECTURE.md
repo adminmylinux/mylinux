@@ -283,7 +283,24 @@ C# for the Windows calls:
   when it is plain `claude`'s too, and a status line in PowerShell (`.claude\statusline.ps1`, written into
   `settings.json` with every other key kept). For Codex: `OpenAI.Codex` from winget, `cx.cmd`, and the Mac's
   `~/.codex/auth.json` as `.codex\auth.json` when the wizard's page says so. winget is run for its own source only
-  and with no agreement accepted for the user.
+  and with no agreement accepted for the user. `cx` runs `codex --no-daemon …`: Codex 0.161's background server stops
+  on Windows with "the CLI package does not match this platform or executable" (by its real path too, so it is not
+  winget's link). Claude Install also installs the desktop app (`Anthropic.Claude`, whose own installer goes on after
+  winget returns: the Start menu shortcut is what is waited for) and pins it to the taskbar. Windows has no call for
+  a pin (the shell verb is refused outside Explorer, and waits for ever in a hidden process); what it has is a
+  taskbar layout named by the policy `StartLayoutFile`, read as Explorer starts. So `Pin-Desktop` writes a layout
+  with the Store apps the pin list names now (a layout without them took Outlook's pin off in a test) and Claude's
+  shortcut, sets the policy for the user, ends this session's Explorer (Windows starts it again), waits for the pin's
+  shortcut, and removes the policy and the file: the pin stays over a restart, as one made by hand. It does that
+  once (`.config\mylinux\claude-desktop-pinned`), and not at all where a layout policy is there already.
+- **Caps Lock.** QEMU's window keeps the guest's Caps Lock like the Mac's by counting the presses it sent, and never
+  looked at the guest: a press sent while Windows started was not taken, and from then on Windows's was on when the
+  Mac's was off. Runtime 11.1.1-22 listens to the guest's keyboard lights (`qemu_input_led_notifier_add`): when the
+  Caps Lock light says the other thing than the Mac, one more press is sent, raw when the window's count agrees with
+  the Mac and through the count when it does not. Only for a guest whose light follows the key
+  (`MYLINUX_CAPS_LOCK_LIGHT=1` from `run-windows.sh`; otherwise learnt, when the light changes within a second of a
+  press): Omarchy has Caps Lock as its Compose key, and there each such press would be a key typed. Presses the
+  light does not answer stop after two, for a wait that grows.
 
 The agent also says once, in front of whatever is open, that Windows is installed and should be started again (the
 start it was installed in still has the installer's hardware).

@@ -128,6 +128,10 @@ else
   SMBIOS=""; HOSTPORT=0
 fi
 export MYLINUX_SIZE_BUTTONS=1             # the window's size buttons: − + Fill Screen and full screen
+# Windows's Caps Lock is what its keyboard's light says, and is kept like the Mac's by it (runtime 11.1.1-22): the
+# window used to count the presses it sent, and one that Windows did not take while it started left the two the
+# wrong way round, on in Windows when off on the Mac
+export MYLINUX_CAPS_LOCK_LIGHT=1
 # the ⌘ menu in the title bar (⌘P opens it): the launcher's commands that fit Windows
 export MYLINUX_COMMANDS_MENU="claude codex snippets share"
 
