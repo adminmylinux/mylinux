@@ -35,11 +35,11 @@ struct WelcomeSheet: View {
         Offer(kind: .mylinux, name: "myLinux", size: "110 MB", bytes: 110e6,
               text: "A small Linux desktop with a Mac feel that starts in seconds and runs from memory, so every start is clean. Your home folder, browsers and coding agents live on their own disk."),
         Offer(kind: .omarchy, name: "Omarchy", size: "1.4 GB", bytes: 1.4e9,
-              text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. Your Command key works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
+              text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. Command works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
         Offer(kind: .arch, name: "Arch Linux", size: "2 GB", bytes: 2.0e9,
-              text: "Arch Linux with the KDE Plasma desktop: a taskbar, a start menu, Dolphin, Konsole and Firefox. The window resizes the desktop, the clipboard is shared with the Mac, and pacman keeps it current."),
+              text: "Arch Linux with the KDE Plasma desktop: a taskbar, a start menu, Dolphin, Konsole and Firefox. The window resizes the desktop, the clipboard is shared, and pacman keeps it current."),
         Offer(kind: .kali, name: "Kali Linux", size: "2 GB", bytes: 2.0e9,
-              text: "The security distribution with its Xfce desktop: QTerminal, Firefox and Kali's top tools (nmap, Metasploit, Wireshark, John, Hydra, sqlmap and more), the rest an apt install away. The window resizes the desktop and the clipboard is shared with the Mac."),
+              text: "The security distribution with its Xfce desktop and Kali's top tools: nmap, Metasploit, Wireshark, John, Hydra, sqlmap. The rest is an apt install away, and the clipboard is shared with the Mac."),
         Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
               text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
         Offer(kind: .alpine, name: "Alpine Server", size: "100 MB", bytes: 100e6,
@@ -51,14 +51,14 @@ struct WelcomeSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 ForEach(Self.offers, id: \.kind) { row($0) }
             }
             .padding(.horizontal, 24)
             keyboard
             footer
         }
-        .frame(width: 640)
+        .frame(width: 860)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -101,20 +101,21 @@ struct WelcomeSheet: View {
             Toggle("", isOn: Binding(get: { isOn }, set: { on in if on { chosen.insert(o.kind) } else { chosen.remove(o.kind) } }))
                 .toggleStyle(.checkbox).labelsHidden()
                 .disabled(started || present(o.kind))
-                .padding(.top, 16)
+                .padding(.top, 14)
                 .accessibilityLabel("Download \(o.name), \(o.size)")
             logo(o.kind)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(o.name).font(.system(size: 15, weight: .semibold))
                     Spacer()
                     Text(present(o.kind) ? "Downloaded" : o.size).font(.callout.monospacedDigit()).foregroundStyle(present(o.kind) ? Color.green : Color.secondary)
                 }
-                Text(o.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                // two lines at this width (the texts are written to fit; a longer one is cut, not a taller row)
+                Text(o.text).font(.callout).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 status(o.kind)
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14).padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isOn ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.04))
@@ -187,7 +188,7 @@ struct WelcomeSheet: View {
             Image(systemName: "keyboard").font(.system(size: 22)).foregroundStyle(.secondary).frame(width: 40)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Keyboard control").fontWeight(.semibold)
-                Text("Lets ⌘Space and the Command keys reach your machines (Find and Run, Omarchy's Super key). macOS asks once; optional.")
+                Text("Lets ⌘Space and the Command keys reach your machines (Find and Run, Omarchy's Super key). Optional.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
