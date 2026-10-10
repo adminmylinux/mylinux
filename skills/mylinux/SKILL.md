@@ -24,6 +24,7 @@ that error, do not guess around it. `{{MYLINUX}} help` lists every command.
 | start / stop / restart tester1 | `start tester1 --wait` / `stop tester1 --wait` / `restart tester1` |
 | is tester1 up | `status tester1` |
 | run `uname -a` in tester1 | `ssh tester1 -- uname -a` |
+| install tiny alpine 1/20 called tester1 and install claude code on it | the `create` above, then "Claude Code in a server" below |
 | delete tester1 | `delete tester1 --yes` (see the rules below) |
 | erase all machines | `erase machines --yes` (see the rules below) |
 | erase everything, make the launcher like a new install | `erase everything --yes` (see the rules below) |
@@ -67,6 +68,24 @@ goes on. Look at `status` (`job` says what is being downloaded and how far it is
 output and exit status. The account is `alpine` in tiny and alpine (root with `doas`), `debian` in debian (root with
 `sudo`). Quote a command that has pipes or `&&` as one word: `ssh tester1 -- 'apk add git && git --version'`.
 Files go in and out through the machine's Mac folder: `status` gives `folder`; its `Mac` subfolder is `~/Mac` inside.
+
+## Claude Code in a server
+
+To install Claude Code in a `tiny`, `alpine` or `debian` machine, run these with `ssh NAME --` (each as one quoted
+word). It installs; signing in is the user's (last step).
+
+1. What it needs. Alpine and tiny: `doas apk add libgcc libstdc++ ripgrep curl bash`. Debian: `sudo apt-get install -y curl`.
+2. Anthropic's installer, downloaded whole and then run:
+   `curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh && bash /tmp/claude-install.sh; rm -f /tmp/claude-install.sh`
+3. New terminals must find it. If `~/.profile` has no line with `.local/bin`, add
+   `export PATH="$HOME/.local/bin:$PATH"` to `~/.profile` and `~/.bashrc`, and on Alpine and tiny also
+   `export USE_BUILTIN_RIPGREP=0`.
+4. Check from a login shell: `sh -lc "claude --version"`, and tell the user the version.
+5. Tell the user how to sign in, and do not do it for them: in the machine's terminal, `claude` (it shows a link to
+   open on the Mac), or `curl -fsSL https://mylinux.app/claude | sh`, which asks for a token from `claude setup-token`.
+   Never ask the user to paste a token to you.
+
+Claude Code wants memory: in 1 GB it runs, and 2 GB or more is better. Say so if the user asked for 1 GB.
 
 ## Rules
 
