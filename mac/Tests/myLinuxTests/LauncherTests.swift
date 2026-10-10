@@ -1085,6 +1085,59 @@ final class OmarchyProfileTests: XCTestCase {
             XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), text)
         }
     }
+    func testAWindowsInstallThatAnswersItself() throws {
+        // the ISO's own language, the Mac's keyboard where Windows has its namesake, a computer name Windows takes
+        XCTAssertEqual(["CCCOMA_A64FRE_EN-US_DV9", "CCCOMA_A64FRE_NB-NO_DV9", "ccsa_a64fre_de-de_dv5", "Windows 11", nil].map(WindowsUnattended.language),
+                       ["en-US", "nb-NO", "de-DE", "en-US", "en-US"])
+        XCTAssertEqual(WindowsUnattended.keyboard(layout: "com.apple.keylayout.Norwegian"), "nb-NO")
+        XCTAssertEqual(WindowsUnattended.keyboard(layout: "com.apple.keylayout.Icelandic"), "is-IS")
+        XCTAssertEqual(WindowsUnattended.keyboard(layout: "com.apple.keylayout.ABC"), "en-US")
+        XCTAssertNil(WindowsUnattended.keyboard(layout: "com.apple.keylayout.Dvorak"), "no namesake: the language's own")
+        XCTAssertNil(WindowsUnattended.keyboard(layout: nil))
+        XCTAssertTrue(WindowsUnattended.isLocale("nb-NO")); XCTAssertFalse(WindowsUnattended.isLocale("norwegian")); XCTAssertFalse(WindowsUnattended.isLocale("nb_NO"))
+        XCTAssertEqual(["wintest", "My Windows 11!", "a-very-long-machine-name-indeed", "42", "", "Ünïcode"].map(WindowsUnattended.computerName),
+                       ["WINTEST", "MY-WINDOWS-11", "A-VERY-LONG-MAC", "*", "*", "N-CODE"])
+        // an account Windows would refuse is refused here, in words
+        XCTAssertNil(WindowsUnattended.problem(user: "viktor", password: ""))
+        XCTAssertNil(WindowsUnattended.problem(user: "Viktor K", password: "p<&>\"'w"))
+        for bad in ["", "Administrator", "guest", "a/b", "name@host", "ends.", String(repeating: "x", count: 21)] { XCTAssertNotNil(WindowsUnattended.problem(user: bad, password: ""), bad) }
+        XCTAssertNotNil(WindowsUnattended.problem(user: "viktor", password: "two\nlines"))
+        // the file: every place filled, what was typed escaped, and still XML
+        let template = try String(contentsOfFile: #filePath.replacingOccurrences(of: "/mac/Tests/myLinuxTests/LauncherTests.swift", with: "/windows/autounattend-unattended.xml"), encoding: .utf8)
+        var a = WindowsUnattended.Answers(user: "Viktor & Co", password: "p<&>\"'w")
+        a.edition = .home; a.language = "nb-NO"; a.keyboard = "is-IS"; a.computer = "WINTEST"
+        let text = WindowsUnattended.render(template, a)
+        XCTAssertFalse(text.contains("{{"))
+        XCTAssertTrue(text.contains("<Name>Viktor &amp; Co</Name>")); XCTAssertTrue(text.contains("<Value>p&lt;&amp;&gt;&quot;&apos;w</Value>"))
+        XCTAssertTrue(text.contains("<Key>\(WindowsUnattended.Edition.home.key)</Key>")); XCTAssertTrue(text.contains("<AcceptEula>true</AcceptEula>"))
+        XCTAssertTrue(text.contains("<UILanguage>nb-NO</UILanguage>")); XCTAssertTrue(text.contains("<InputLocale>is-IS</InputLocale>")); XCTAssertTrue(text.contains("<ComputerName>WINTEST</ComputerName>"))
+        XCTAssertNoThrow(try XMLDocument(xmlString: text), "what was typed cannot break the file")
+        XCTAssertTrue(text.contains("mylinux\\setup.cmd"), "the drivers and helpers are installed as in any install")
+        // written for the Mac user alone, in the machine's folder
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-unattended-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        XCTAssertNil(WindowsUnattended.write(a, machineFolder: dir, template: template))
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: WindowsUnattended.file(dir).path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        XCTAssertNotNil(WindowsUnattended.write(a, machineFolder: dir, template: nil), "a launcher without the template says so")
+    }
+    @MainActor func testAnUnattendedWindowsIsOnlyMadeOnTheUsersWord() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-cli-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = ProfileStore(file: dir.appendingPathComponent("profiles.json"))
+        let name = "clitest-\(UUID().uuidString.prefix(8).lowercased())"
+        // Microsoft's licence terms are the user's to accept: without the word for it, nothing is made
+        let refused = CLIService.handle(["create", "windows", "--name", name, "--unattended", "--no-start"], store: store)
+        XCTAssertEqual(refused.code, 2); XCTAssertTrue((refused.json["error"] as? String ?? "").contains("--accept-microsoft-license"), "\(refused.json)")
+        XCTAssertTrue((refused.json["error"] as? String ?? "").contains(WindowsUnattended.licenseTerms))
+        XCTAssertTrue(store.profiles.isEmpty)
+        // the account's options belong to it, and the other kinds ask nothing
+        XCTAssertEqual(CLIService.handle(["create", "windows", "--user", "x", "--no-start"], store: store).code, 2)
+        XCTAssertEqual(CLIService.handle(["create", "tiny", "--unattended", "--accept-microsoft-license", "--no-start"], store: store).code, 2)
+        XCTAssertEqual(CLIService.handle(["create", "windows", "--unattended", "--accept-microsoft-license", "--user", "Administrator", "--no-start"], store: store).code, 2)
+        XCTAssertEqual(CLIService.handle(["create", "windows", "--unattended", "--accept-microsoft-license", "--edition", "enterprise", "--no-start"], store: store).code, 2)
+        XCTAssertTrue(store.profiles.isEmpty)
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

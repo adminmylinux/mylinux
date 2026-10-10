@@ -33,9 +33,12 @@ enum CLI {
           mylinux kinds                           the kinds of machine, and whether each is downloaded
           mylinux list                            every machine and its state
           mylinux create <kind> [--name NAME] [--memory GB] [--disk GB] [--cpus N] [--ssh-port PORT] [--no-start] [--wait]
+                                                  [--keys all|mac|none]  a desktop's keyboard: every key to it, ⌘ kept by the Mac, or as typed
                                                   a new machine, downloaded when needed, and started
                                                   kinds: tiny (Tiny Alpine), alpine, debian, omarchy, arch, kali, mylinux, windows
-                                                  windows: --iso FILE the first time (Microsoft's Arm64 ISO)
+                                                  windows: --iso FILE the first time (Microsoft's Arm64 ISO);
+                                                  --unattended --accept-microsoft-license [--user NAME] [--password PW]
+                                                  [--edition pro|home] [--keyboard nb-NO] installs it without a question
           mylinux start <name> [--wait]           start it (downloads what it needs first)
           mylinux stop <name> [--wait]            shut it down
           mylinux restart <name>
@@ -74,7 +77,7 @@ enum CLI {
     struct Words: Equatable {
         var plain: [String] = [], values: [String: String] = [:], flags: Set<String> = [], rest: [String] = []
     }
-    static let valued: Set<String> = ["name", "memory", "disk", "cpus", "timeout", "iso", "agent", "ssh-port"]
+    static let valued: Set<String> = ["name", "memory", "disk", "cpus", "timeout", "iso", "agent", "ssh-port", "user", "password", "edition", "keyboard", "keys"]
     static func words(_ args: [String]) -> Words? {
         var w = Words(), i = 0
         while i < args.count {
@@ -258,6 +261,8 @@ enum CLI {
     /// What is being done for a machine on the command line's word: a download, then its start.
     struct Job { var phase: String; var what = ""; var manager: ScriptDownloader?; var error: String? }
     private(set) static var jobs: [UUID: Job] = [:]
+    /// A Windows install that answers itself, asked for and not begun: its answers, until the ISO is there to say its language.
+    private static var answers: [UUID: WindowsUnattended.Answers] = [:]
     private static var observer: NSObjectProtocol?
 
     static func serve() {
@@ -337,6 +342,11 @@ enum CLI {
             if let missing = left.list.first { fail("\(missing.name) did not download"); return }
             if let problem = left.problem { fail(problem); return }
             guard let fresh = store.profiles.first(where: { $0.id == id }) else { jobs[id] = nil; return }
+            if var a = answers[id], !fresh.windowsInstalled {
+                a.language = WindowsUnattended.language(isoLabel: settings.windowsISO)
+                if let problem = WindowsUnattended.write(a, machineFolder: fresh.machineFolder) { fail(problem); return }
+                answers[id] = nil
+            }
             jobs[id] = Job(phase: "starting")
             let r = RunManager.shared.runner(for: id)
             r.clearFailure()
@@ -382,9 +392,12 @@ enum CLI {
         if p.kind == .windows {
             let stage = WindowsSetupStage.of(p)
             let answers = WindowsDisplay.keptMemory(p.machineFolder) != nil
+            let unattended = WindowsUnattended.inProgress(p) || CLIService.answers[p.id] != nil
             d["windows"] = ["installed": p.windowsInstalled, "stage": ["answering Windows Setup", "installing", "first-run screens", "installed"][stage.rawValue],
-                            "agent": answers,
-                            "note": p.windowsInstalled ? "" : "Windows Setup and Windows's first-run screens are answered in the machine's window, by a person"]
+                            "agent": answers, "unattended": unattended,
+                            "note": p.windowsInstalled ? (unattended ? "installed: the machine restarts by itself in a moment, then it is ready" : "")
+                                : unattended ? "Windows is installing itself, with nothing to answer: 15 to 40 minutes"
+                                             : "Windows Setup and Windows's first-run screens are answered in the machine's window, by a person"]
             ready = ready && p.windowsInstalled && answers
         }
         d["ready"] = ready
@@ -432,6 +445,11 @@ enum CLI {
             if let m = w.values["memory"] { guard let v = CLI.gigabytes(m), v <= 512 else { return .failed("--memory is whole gigabytes: 1, 2, 4 …", code: 2) }; memory = v }
             if let s = w.values["disk"] { guard let v = CLI.gigabytes(s) else { return .failed("--disk is whole gigabytes: 20, 32, 64 …", code: 2) }; disk = v }
             if let c = w.values["cpus"] { guard let v = Int(c), v >= 0 else { return .failed("--cpus is a number of cores", code: 2) }; cpus = v }
+            var grab: String?
+            if let k = w.values["keys"] {
+                guard !kind.isServer, let g = ["all": "full", "mac": "opt", "none": "none"][k.lowercased()] else { return .failed("--keys is all, mac or none, for a desktop", code: 2) }
+                grab = g
+            }
             var port: Int?
             if let s = w.values["ssh-port"] {
                 guard let v = Int(s), (1024...65535).contains(v) else { return .failed("--ssh-port is 1024 to 65535", code: 2) }
@@ -440,6 +458,26 @@ enum CLI {
             }
             if let m = memory, m > Profile.macMemoryGB { return .failed("this Mac has \(Profile.macMemoryGB) GB of memory") }
             // the settings are checked before anything is made
+            var unattended: WindowsUnattended.Answers?
+            if w.flags.contains("unattended") {
+                guard kind == .windows else { return .failed("--unattended is for windows: the other kinds ask nothing", code: 2) }
+                guard w.flags.contains("accept-microsoft-license") || w.flags.contains("accept-microsoft-licence") else {
+                    return .failed("an unattended install answers Windows Setup for the user, Microsoft's licence terms among its questions (\(WindowsUnattended.licenseTerms)). That acceptance is the user's: when they have said so, add --accept-microsoft-license", code: 2)
+                }
+                let user = (w.values["user"] ?? NSUserName()).trimmingCharacters(in: .whitespaces), password = w.values["password"] ?? ""
+                if let problem = WindowsUnattended.problem(user: user, password: password) { return .failed(problem, code: 2) }
+                var a = WindowsUnattended.Answers(user: user, password: password)
+                if let e = w.values["edition"] { guard let edition = WindowsUnattended.Edition(rawValue: e.lowercased()) else { return .failed("--edition is pro or home", code: 2) }; a.edition = edition }
+                if let k = w.values["keyboard"] { guard WindowsUnattended.isLocale(k) else { return .failed("--keyboard is a language and region as Windows writes them: nb-NO, en-US, de-DE …", code: 2) }; a.keyboard = k }
+                else if let k = WindowsUnattended.keyboard(layout: WindowsUnattended.macLayout()) { a.keyboard = k }
+                a.computer = WindowsUnattended.computerName(name)
+                guard settings.desktopPresent(.windows) || w.values["iso"] != nil else {
+                    return .failed("Windows is Microsoft's and is not downloaded by myLinux: get the “Windows 11 (multi-edition ISO for Arm64)” from \(DesktopImageManager.microsoftPage.absoluteString) and pass it with --iso <the file>")
+                }
+                unattended = a
+            } else if ["user", "password", "edition", "keyboard"].contains(where: { w.values[$0] != nil }) {
+                return .failed("--user, --password, --edition and --keyboard go with --unattended (otherwise Windows Setup asks for them in the machine's window)", code: 2)
+            }
             var draft = ProfileStore.newProfile(named: name, kind: kind)
             if let memory { draft.memoryGB = memory; draft.memoryAuto = false }
             if let disk { draft.appsSizeGB = disk }
@@ -448,9 +486,16 @@ enum CLI {
             var p = store.add(kind: kind, named: name)
             p.memoryGB = draft.memoryGB; p.memoryAuto = draft.memoryAuto; p.appsSizeGB = draft.appsSizeGB; p.cpus = draft.cpus
             if let port { p.sshPort = port }                    // (a server gets the next free one by itself)
+            if let grab { p.grab = grab }
             store.update(p)
+            if let unattended { answers[p.id] = unattended }
             if !w.flags.contains("no-start") { begin(p.id, iso: w.values["iso"], store: store, settings: settings) }
-            return .ok(["machine": describe(p, settings: settings), "created": true])
+            var made: [String: Any] = ["machine": describe(p, settings: settings), "created": true]
+            if let a = unattended {
+                made["account"] = ["user": a.user, "password": a.password.isEmpty ? "none: it signs in by itself (Settings › Accounts in Windows sets one)" : "as given",
+                                   "edition": a.edition.title, "keyboard": a.keyboard]
+            }
+            return .ok(made)
         case "start":
             let (p, problem) = machine(); guard let p else { return problem! }
             let r = RunManager.shared.runner(for: p.id)
@@ -472,7 +517,7 @@ enum CLI {
             guard w.flags.contains("yes") else { return .failed("deleting \"\(p.name)\" moves the machine and its disk to the Trash: say so with --yes", code: 2) }
             let r = RunManager.shared.runner(for: p.id)
             guard !r.isActive, r.state != .inUseElsewhere, !Runner.diskInUse(p.appsDisk) else { return .failed("\"\(p.name)\" is running: mylinux stop \"\(p.name)\" --wait, then delete") }
-            jobs[p.id] = nil
+            jobs[p.id] = nil; answers[p.id] = nil
             if let left = store.remove(p.id, trashFiles: true) { return .ok(["deleted": p.name, "note": left]) }
             return .ok(["deleted": p.name, "note": "the machine's files are in the Trash"])
         default: return .failed("no command \"\(command)\"", code: 2)

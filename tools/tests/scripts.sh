@@ -2,6 +2,8 @@
 # Behaviour tests for the host-side scripts. Everything runs against a scratch copy of the repository
 # layout with fake tools on PATH (orb, curl, python3 where needed); nothing here touches out/ or a VM.
 # Usage: sh tools/tests/scripts.sh
+# With CHECK_CHANGED set (tools/check.sh's list of changed paths, one a line), the one section that takes a third of
+# the time for one script, the disk image's packaging, runs only when that script is among them.
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 T=$(mktemp -d "${TMPDIR:-/tmp}/mylinux-scripts.XXXXXX")
 T=$(cd "$T" && pwd -P)
@@ -16,6 +18,7 @@ file_is() { [ -f "$2" ] && [ "$(cat "$2")" = "$3" ] && ok "$1" || ko "$1 ($2 is 
 file_exists() { [ -e "$2" ] && ok "$1" || ko "$1 ($2 missing)"; }
 file_absent() { [ ! -e "$2" ] && ok "$1" || ko "$1 ($2 exists)"; }
 has() { printf '%s' "$2" | grep -qF -- "$3" && ok "$1" || ko "$1 (no '$3' in output)"; }
+want() { [ -z "${CHECK_CHANGED+x}" ] || printf '%s\n' "$CHECK_CHANGED" | grep -qE "$1"; }
 
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
@@ -295,6 +298,7 @@ v=$(plutil -extract items.0.data.info.version raw -o - "$T/image.json" 2>/dev/nu
 [ "$v" = "20260914-2601" ] && ok "get-debian.sh's plutil read finds the image version" || ko "plutil read gave '$v'"
 
 echo "mac/package-dmg.sh"
+if ! want '^mac/(package-dmg|release)\.sh$'; then echo "  (not changed: left out)"; else
 FAKE="$T/Fake App.app"; mkdir -p "$FAKE/Contents/MacOS"; printf '#!/bin/sh\necho hi\n' > "$FAKE/Contents/MacOS/Fake App"; chmod +x "$FAKE/Contents/MacOS/Fake App"
 printf '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Fake App</string><key>CFBundleIdentifier</key><string>test.fake</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>' > "$FAKE/Contents/Info.plist"
 codesign --force --sign - "$FAKE" >/dev/null 2>&1
@@ -308,6 +312,7 @@ hdiutil detach -quiet "$M" >/dev/null 2>&1 || true
 not_rc0 "refuses a path that is not an app" $rc
 (sh "$REPO/mac/package-dmg.sh" --notarize prof "$FAKE" "$T/y.dmg" >/dev/null 2>&1); rc=$?
 not_rc0 "refuses to notarise without a signing identity" $rc
+fi
 
 echo "tools/omarchy-bake-session.sh"
 grep -q 'tools/omarchy-bake-session.sh "$DISK.new"' "$W/run-omarchy.sh" && rc=0 || rc=1
@@ -396,6 +401,10 @@ grep -qF -- 'Codex Install…' "$REPO/tools/qemu-runtime-patches/qemu-cocoa-size
 grep -qF -- 'exec "$contents/MacOS/myLinux Launcher" --cli "$@"' "$REPO/mac/bin/mylinux" && [ -x "$REPO/mac/bin/mylinux" ] && grep -qF -- 'while [ -L "$self" ]' "$REPO/mac/bin/mylinux" && ok "mylinux runs the launcher it belongs to, through a link too" || ko "mac/bin/mylinux"
 grep -qF -- 'cp mac/bin/mylinux "$NEW/Contents/Resources/bin/mylinux"' "$REPO/mac/build-app.sh" && grep -qF -- 'cp skills/mylinux/SKILL.md' "$REPO/mac/build-app.sh" && ok "the app carries the command and the agents' skill" || ko "mac/build-app.sh does not carry mylinux or its skill"
 head -3 "$REPO/skills/mylinux/SKILL.md" | grep -q '^name: mylinux$' && grep -qF -- '{{MYLINUX}}' "$REPO/skills/mylinux/SKILL.md" && ok "the skill has a name and leaves the command's place to the app" || ko "skills/mylinux/SKILL.md"
+# an install that answers itself: the machine's own answer file while it installs, and none of it kept afterwards
+python3 -c 'import sys, xml.dom.minidom as m; s = open(sys.argv[1]).read(); m.parseString(s.encode()); sys.exit(0 if all(w in s for w in ("{{USER}}", "{{PASSWORD}}", "{{EDITION_KEY}}", "{{LANGUAGE}}", "{{KEYBOARD}}", "<AcceptEula>true</AcceptEula>", "mylinux\\setup.cmd")) else 1)' "$W/windows/autounattend-unattended.xml" && ok "the unattended answer file is XML with its places to fill" || ko "windows/autounattend-unattended.xml"
+grep -qF -- 'ANSWERS="$MACHINE/autounattend.xml"' "$W/run-windows.sh" && grep -qF -- 'cp "$ANSWERS" "$T/autounattend.xml"' "$W/run-windows.sh" && grep -qF -- 'rm -f "$MACHINE/autounattend.xml"' "$W/run-windows.sh" && ok "run-windows.sh uses a machine's own answers while it installs, and removes them when it is installed" || ko "run-windows.sh: the machine's own answer file"
+! grep -q 'AcceptEula' "$W/windows/autounattend.xml" && ok "the ordinary answer file accepts nothing for anybody" || ko "windows/autounattend.xml accepts the licence terms"
 grep -qF -- 'export MYLINUX_CAPS_LOCK_LIGHT=1' "$W/run-windows.sh" && grep -qF -- 'qemu_input_led_notifier_add(&mylinux_leds_notifier)' "$REPO/tools/qemu-runtime-patches/qemu-cocoa-size-buttons.patch" && ok "Windows's Caps Lock is kept like the Mac's by its keyboard light" || ko "Caps Lock: run-windows.sh or the runtime patch lacks the keyboard light"
 grep -qF -- 'call codex --no-daemon --dangerously-bypass-approvals-and-sandbox %*' "$W/windows/claude_codex_setup.ps1" && grep -qF -- 'codex --no-daemon --dangerously-bypass-approvals-and-sandbox' "$REPO/server-apps/snippets.json" && ok "cx starts Codex without its background server (which does not start on Windows)" || ko "cx still starts Codex with its background server"
 grep -qF -- "Winget 'Anthropic.Claude'" "$W/windows/claude_codex_setup.ps1" && grep -qF -- 'Remove-ItemProperty $policy -Name StartLayoutFile, LockedStartLayout' "$W/windows/claude_codex_setup.ps1" && ok "Claude Install has the desktop app and its taskbar pin, and leaves no policy behind" || ko "windows/claude_codex_setup.ps1: the desktop app or the pin's cleanup is missing"

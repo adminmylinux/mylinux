@@ -154,18 +154,30 @@ if [ "${DRYRUN:-0}" != 1 ]; then
     fi
   fi
   case "$(cat "$MACHINE/uuid" 2>/dev/null)" in ????????-????-????-????-????????????) ;; *) uuidgen | tr 'A-F' 'a-f' > "$MACHINE/uuid" ;; esac
+  # An install that answers itself (the launcher's `mylinux create windows --unattended`): the machine has an answer
+  # file of its own, with the account in it, which goes on the disc in place of autounattend.xml until Windows is
+  # installed. Then it is removed, and the disc that carried it is made again without it (or goes, where the drivers
+  # to make one from are no longer kept).
+  ANSWERS=windows/autounattend.xml
+  if [ "$INSTALLED" = 1 ]; then
+    rm -f "$MACHINE/autounattend.xml"
+    if [ -f "$MACHINE/tools.own-answers" ] && [ ! -d "$G/drivers" ]; then rm -f "$TOOLS" "$MACHINE/tools.stamp" "$MACHINE/tools.own-answers"; fi
+  elif [ -s "$MACHINE/autounattend.xml" ]; then
+    ANSWERS="$MACHINE/autounattend.xml"
+  fi
   # the tools disc: made again when what goes on it changed (a newer launcher's scripts reach Windows at its next start)
   if [ -d "$G/drivers" ]; then
-    STAMP=$( { cat windows/autounattend.xml windows/setup.cmd windows/setup.ps1 windows/mylinux-agent.ps1; find "$G/drivers" ${TOOLS_EXTRA:+"$TOOLS_EXTRA"} -type f -exec cksum {} +; } | cksum)
+    STAMP=$( { cat "$ANSWERS" windows/setup.cmd windows/setup.ps1 windows/mylinux-agent.ps1; find "$G/drivers" ${TOOLS_EXTRA:+"$TOOLS_EXTRA"} -type f -exec cksum {} +; } | cksum)
     if [ ! -s "$TOOLS" ] || [ "$(cat "$MACHINE/tools.stamp" 2>/dev/null)" != "$STAMP" ]; then
       T="$MACHINE/.tools"; NEWISO="$MACHINE/.tools-new.iso"       # (hdiutil adds .iso to a name that lacks it)
       rm -rf "$T" "$NEWISO"; mkdir -p "$T/mylinux"
-      cp windows/autounattend.xml "$T/"
+      cp "$ANSWERS" "$T/autounattend.xml"
       cp windows/setup.cmd windows/setup.ps1 windows/mylinux-agent.ps1 "$T/mylinux/"
       cp -R "$G/drivers" "$T/drivers"
       [ -z "${TOOLS_EXTRA:-}" ] || cp -R "$TOOLS_EXTRA"/. "$T/"
       hdiutil makehybrid -quiet -iso -joliet -default-volume-name MYLINUX -o "$NEWISO" "$T" || { rm -rf "$T" "$NEWISO"; die "could not make the tools disc"; }
       mv -f "$NEWISO" "$TOOLS"; rm -rf "$T"; printf '%s\n' "$STAMP" > "$MACHINE/tools.stamp"
+      if [ "$ANSWERS" = windows/autounattend.xml ]; then rm -f "$MACHINE/tools.own-answers"; else : > "$MACHINE/tools.own-answers"; chmod 600 "$TOOLS"; fi
     fi
   fi
 fi

@@ -158,7 +158,8 @@ enum WindowsSetupHelp {
             return
         }
         self.running.insert(p.id)
-        guard open[p.id] == nil, !dismissed.contains(p.id), !p.windowsInstalled else { return }
+        // (an install that answers itself has no steps for anybody: WindowsUnattended)
+        guard open[p.id] == nil, !dismissed.contains(p.id), !p.windowsInstalled, !WindowsUnattended.inProgress(p) else { return }
         // beside the machine's window: wait a few ticks for it to be there (the tools disc and the app come first)
         if MachineWindowPlacement.frame(of: p) == nil, waited[p.id, default: 0] < 4 { waited[p.id, default: 0] += 1; return }
         show(p, byUser: false)

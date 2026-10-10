@@ -639,7 +639,12 @@ final class RunManager: ObservableObject {
                     DispatchQueue.main.async {
                         r.refreshExternal(inUse: inUse)
                         // Windows being installed: the steps, beside the machine's window (WindowsSetupHelp)
-                        if p.kind == .windows { MainActor.assumeIsolated { WindowsSetupHelp.follow(p, running: inUse) } }
+                        if p.kind == .windows {
+                            MainActor.assumeIsolated {
+                                WindowsSetupHelp.follow(p, running: inUse)
+                                WindowsUnattended.follow(p, runner: r)      // an install that answers itself restarts itself at its end
+                            }
+                        }
                         if cloudAsked { self.cloudRequest(p.id, store: store) }
                         if codexAsked { CodexLogin.answer(p) }
                     }

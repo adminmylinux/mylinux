@@ -25,6 +25,8 @@ that error, do not guess around it. `{{MYLINUX}} help` lists every command.
 | is tester1 up | `status tester1` |
 | run `uname -a` in tester1 | `ssh tester1 -- uname -a` |
 | delete tester1 | `delete tester1 --yes` (see the rules below) |
+| install windows (and nothing about the licence) | `create windows` and tell them it waits for their answers in its window |
+| install windows unattended, I accept Microsoft's licence terms, user viktor | `create windows --unattended --accept-microsoft-license --user viktor --wait --timeout 3600` |
 
 "1gb/20gb" is memory, then disk. Sizes are whole gigabytes. A size the user did not give is left out: the launcher
 has a good default for each kind. A name with spaces goes in quotes.
@@ -37,16 +39,24 @@ has a good default for each kind. A name with spaces goes in quotes.
   pick for "a small Linux to test something in".
 - `alpine`, `debian`: servers with a cloud image. No desktop: a shell over SSH.
 - `omarchy`, `arch`, `kali`, `mylinux`: Linux desktops, each in its own window. Downloads of 1 to 2 GB the first time.
-- `windows`: Windows 11 for Arm. Two things are the user's, not yours: the ISO, which they download from Microsoft
-  (pass it once with `--iso FILE`), and Windows Setup with its first-run screens, which a person answers in the
-  machine's window (Microsoft's licence terms are among them). Create it, tell the user it is waiting for them in its
-  window, and do not wait for it unless they ask.
+- `windows`: Windows 11 for Arm. The ISO is the user's to download from Microsoft (pass it once with `--iso FILE`;
+  `kinds` says whether it is there). Then one of two ways:
+  - `create windows`: Windows Setup and its first-run screens are answered by a person in the machine's window,
+    Microsoft's licence terms among them. Create it, tell the user it is waiting for them there, and do not wait
+    for it unless they ask.
+  - `create windows --unattended --accept-microsoft-license [--user NAME] [--password PW] [--edition pro|home]
+    [--keyboard nb-NO]`: Windows installs itself with no question asked, 15 to 40 minutes, and restarts into the
+    finished machine. This accepts Microsoft's licence terms (https://www.microsoft.com/useterms) for the user, so
+    pass `--accept-microsoft-license` **only when the user has said in this conversation that they accept them**; if
+    they asked for an unattended install without saying so, ask them. The account is a local administrator: `--user`
+    (default: their Mac user name), `--password` only if the user gave one (without one Windows signs in by itself;
+    tell them it has none). Never invent a password, and do not repeat one back.
 
 ## Waiting
 
 `create` and `start` answer at once; `--wait` holds on until the machine is `ready` (a server: its SSH answers; a
 desktop: it is running; Windows: installed and signed in). The default is 900 seconds; a first Omarchy, Arch or Kali
-needs a download, so give those `--timeout 3600`. When the wait runs out (exit status 4) nothing is wrong: the work
+needs a download and an unattended Windows installs for a while, so give those `--timeout 3600`. When the wait runs out (exit status 4) nothing is wrong: the work
 goes on. Look at `status` (`job` says what is being downloaded and how far it is), tell the user, and `wait` again.
 
 ## Using a server

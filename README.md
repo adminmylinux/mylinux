@@ -511,7 +511,23 @@ saved copy when there is one, and the machine is started; `status` shows where t
 `wait` hold on until the machine is `ready`: a server when its SSH answers, a desktop when it runs, Windows when it is
 installed and signed in. A server started this way opens no terminal window. `start`, `stop`, `restart`, `status`
 and `delete` take a machine's name. Windows is created the same way (`--iso FILE` the first time), and Windows Setup
-and its first-run screens are still answered by a person in the machine's window.
+and its first-run screens are answered by a person in the machine's window, unless you ask for an install that
+answers itself (from 0.7.75):
+
+```sh
+mylinux create windows --name win --unattended --accept-microsoft-license --user viktor --wait --timeout 3600
+```
+
+That one goes from Microsoft's ISO to a desktop with no question asked, in 15 to 40 minutes: the language of the ISO,
+the keyboard of the Mac (`--keyboard nb-NO` for another), Windows 11 Pro (`--edition home`), the machine's one disk,
+a local administrator account (`--user`, default your Mac user name; `--password`, default none, and Windows then
+signs in by itself), and no first-run screens. When Windows reports that it is installed, the launcher restarts the
+machine into what it is from then on, and it is `ready`. Among the questions answered are Microsoft's licence terms
+(<https://www.microsoft.com/useterms>): that acceptance is yours, which is why the command refuses without
+`--accept-microsoft-license`, and why the agents' skill tells an agent to pass it only when you have said so. The
+answers are a file in the machine's folder for you alone
+([`windows/autounattend-unattended.xml`](windows/autounattend-unattended.xml), filled in), on the machine's tools
+disc while Windows installs; both are made again without it once Windows is installed.
 
 The command is a client of the launcher that is running (it starts the launcher when it is not): a machine made on
 the command line is in the launcher's list like any other. [`mac/Sources/myLinux/CLI.swift`](mac/Sources/myLinux/CLI.swift).

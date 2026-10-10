@@ -475,6 +475,17 @@ pointer while it is fullscreen or after ⌘⌃G.
   that means "can be used"; `--wait`, `wait` and `ssh` are the client's own (it asks `status` again, or replaces
   itself with `/usr/bin/ssh` and the machine's own key and known hosts). `skills/mylinux/SKILL.md` is the skill
   `mylinux skill install` writes for Claude Code and Codex, with the command's path filled in.
+- `WindowsUnattended.swift`: a Windows install that answers itself (`create windows --unattended
+  --accept-microsoft-license`). The answers are `windows/autounattend-unattended.xml` filled in for one machine (the
+  ISO's language from its label, the Mac's keyboard layout where Windows has its namesake, the edition by
+  Microsoft's generic key for it, the disk wiped and partitioned, the licence terms, a local administrator, no
+  first-run screens, two sign-ins by itself) and kept as `<machine>/autounattend.xml`, mode 600. `run-windows.sh`
+  puts that file on the tools disc in place of `autounattend.xml` while the machine is not installed, and at the
+  first installed start removes it and makes the disc again (or removes the disc, where the drivers to make one
+  from are gone). `setup.ps1` works as in any install: the network driver waits for the end of the first-run
+  screens, then `installed`. `RunManager`'s tick calls `WindowsUnattended.follow`: 45 seconds after a machine with
+  such a file is first seen installed, it is restarted, once, into the virtio display. The steps window stays away
+  from such an install. The command refuses to make the file without `--accept-microsoft-license`.
 
 ### 7.2 How it runs a machine
 
