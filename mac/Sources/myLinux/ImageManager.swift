@@ -10,6 +10,9 @@ class ScriptDownloader: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published fileprivate(set) var lastError: String?
     private var process: Process?
+    /// Nobody is there to ask (a download begun from the command line): a saved copy is installed where the question
+    /// "download the newer one, or use the saved one?" would be asked.
+    var quiet = false
 
     /// Called on the main thread when the script has ended, whatever the outcome.
     func finished() {}
@@ -90,6 +93,9 @@ class ScriptDownloader: ObservableObject {
                 guard let saved else { self.run(tool, starting: starting, settings: settings); return }
                 guard let latest, latest != saved else {
                     self.run(tool, starting: "Installing the saved \(name)…", settings: settings); return
+                }
+                if self.quiet {
+                    self.run(tool, environment: ["MYLINUX_FROM_CACHE": "1"], starting: "Installing the saved \(name)…", settings: settings); return
                 }
                 switch Self.askNewer(name: name, saved: saved, latest: latest, size: size) {
                 case .alertFirstButtonReturn: self.run(tool, starting: starting, settings: settings)

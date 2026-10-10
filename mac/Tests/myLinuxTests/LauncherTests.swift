@@ -1021,6 +1021,70 @@ final class OmarchyProfileTests: XCTestCase {
         for word in ["function Claude-Apply", "function Codex-Apply", "MYLINUX_CLAUDE_ACCOUNT", "'claude status'", "'codex apply'", "--no-daemon", "function Pin-Desktop"] { XCTAssertTrue(script.contains(word), word) }
         XCTAssertFalse(script.contains("accept-source-agreements") || script.contains("accept-package-agreements"), "nothing is agreed to on the user's behalf")
     }
+    func testTheCommandLinesWordsAreRead() {
+        // sizes are whole gigabytes, however they are written
+        XCTAssertEqual(["1", "1g", "1GB", "20gb", "2048m", "4096MB", "8 GiB".replacingOccurrences(of: " ", with: "")].map(CLI.gigabytes), [1, 1, 1, 20, 2, 4, 8])
+        for bad in ["0", "0.5", "512m", "1.5g", "-2", "lots", ""] { XCTAssertNil(CLI.gigabytes(bad), bad) }
+        // a kind, as people say it
+        XCTAssertEqual(["tiny", "Tiny-Alpine", "tinyalpine", "alpine", "DEBIAN", "omarchy", "arch", "kali", "windows", "win11", "mylinux"].map(CLI.kind),
+                       [.tiny, .tiny, .tiny, .alpine, .debian, .omarchy, .arch, .kali, .windows, .windows, .mylinux])
+        XCTAssertNil(CLI.kind("ubuntu"))
+        // what stands alone, what follows a --name, the --flags, and what is after --
+        let w = CLI.words(["tiny", "--name", "tester 1", "--memory=1", "--disk", "20gb", "--wait", "--", "uname", "-a", "--name"])
+        XCTAssertEqual(w, CLI.Words(plain: ["tiny"], values: ["name": "tester 1", "memory": "1", "disk": "20gb"], flags: ["wait"], rest: ["uname", "-a", "--name"]))
+        XCTAssertNil(CLI.words(["tiny", "--name"]), "a --name without its value")
+        XCTAssertNil(CLI.words(["--wait=yes"]), "a flag takes no value")
+        XCTAssertTrue(CLI.usage.contains("mylinux create <kind>"))
+    }
+    @MainActor func testTheCommandLineMakesAMachineAsAsked() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-cli-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = ProfileStore(file: dir.appendingPathComponent("profiles.json"))
+        func ask(_ words: String...) -> CLI.Reply { CLIService.handle(words, store: store) }
+        // (names nobody's real machine has: a machine's folder comes from its name, in the launcher's own data folder)
+        let one = "clitest-\(UUID().uuidString.prefix(8).lowercased())", two = one + "-build"
+        // "install tiny alpine 1gb/20gb called tester1", as the skill turns it into words (not started: no QEMU in a test)
+        let made = ask("create", "tiny", "--name", one, "--memory", "1", "--disk", "20gb", "--no-start")
+        XCTAssertEqual(made.code, 0, "\(made.json)")
+        let p = try XCTUnwrap(store.profiles.first { $0.name == one })
+        XCTAssertEqual(p.kind, .tiny); XCTAssertEqual(p.memoryGB, 1); XCTAssertFalse(p.memoryAuto, "a size that was asked for stays"); XCTAssertEqual(p.appsSizeGB, 20)
+        XCTAssertTrue((1024...65535).contains(p.sshPort), "a server listens")
+        let m = try XCTUnwrap(made.json["machine"] as? [String: Any])
+        XCTAssertEqual(m["state"] as? String, "stopped"); XCTAssertEqual(m["ready"] as? Bool, false); XCTAssertEqual((m["ssh"] as? [String: Any])?["user"] as? String, "alpine")
+        // sizes left out are the kind's own, and its memory goes on following the Mac's
+        XCTAssertEqual(ask("create", "debian", "--name", two, "--no-start").code, 0)
+        let d = try XCTUnwrap(store.profiles.first { $0.name == two })
+        XCTAssertTrue(d.memoryAuto); XCTAssertEqual(d.appsSizeGB, 32); XCTAssertNotEqual(d.sshPort, p.sshPort, "two servers, two ports")
+        // what is refused, in words, and nothing made
+        let before = store.profiles.count
+        for (words, part) in [(["create", "tiny", "--name", one.uppercased(), "--no-start"], "there already"), (["create", "ubuntu"], "which kind"),
+                              (["create", "tiny", "--disk", "2", "--no-start"], "Disk size"), (["create", "tiny", "--memory", "half", "--no-start"], "gigabytes"),
+                              (["create", "tiny", "--ssh-port", "\(p.sshPort)", "--no-start"], "\(one)'s"), (["status", "nobody"], "no machine named"),
+                              (["delete", one], "--yes"), (["frobnicate"], "no command")] {
+            let r = CLIService.handle(words, store: store)
+            XCTAssertNotEqual(r.code, 0, "\(words)"); XCTAssertEqual(r.json["ok"] as? Bool, false)
+            XCTAssertTrue((r.json["error"] as? String ?? "").contains(part), "\(words): \(r.json)")
+        }
+        XCTAssertEqual(store.profiles.count, before)
+        // a machine is found by its name whatever the capitals, and listed
+        XCTAssertEqual(CLIService.find(one.uppercased(), store: store)?.id, p.id)
+        XCTAssertEqual((ask("list").json["machines"] as? [[String: Any]])?.compactMap { $0["name"] as? String }.sorted(), [one, two])
+        XCTAssertEqual((ask("kinds").json["kinds"] as? [[String: Any]])?.count, 8)
+        // deleted on --yes, into the Trash (nothing of it was on disk yet)
+        XCTAssertEqual(ask("delete", one, "--yes").code, 0); XCTAssertNil(CLIService.find(one, store: store))
+        // the skill names this app's own command, and the launcher keeps an installed copy like its own
+        if let text = CLI.Skill.text() {
+            XCTAssertFalse(text.contains("{{MYLINUX}}")); XCTAssertTrue(text.contains("name: mylinux")); XCTAssertTrue(text.contains("create tiny --name tester1 --memory 1 --disk 20 --wait"))
+            let home = dir.appendingPathComponent("home"), file = home.appendingPathComponent(".claude/skills/mylinux/SKILL.md")
+            CLI.Skill.refreshInstalled(home: home)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "never put where there is none")
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "an older launcher's".write(to: file, atomically: true, encoding: .utf8)
+            CLI.Skill.refreshInstalled(home: home)
+            XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), text)
+        }
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

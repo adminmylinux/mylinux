@@ -16,6 +16,8 @@ struct MyLinuxApp: App {
         if args.count >= 3, args[1] == "--windows-display" { exit(WindowsDisplay.run(socketPath: args[2], statsFile: args.count > 3 ? args[3] : nil, link: args.count > 4 ? args[4] : nil)) }
         // Clear All Data's second half: once the launcher that asked has quit, its data goes, then a fresh one starts
         if args.count == 4, args[1] == "--finish-start-over", let pid = Int32(args[2]) { exit(StartOver.finish(after: pid, relaunch: args[3])) }
+        // the command line: `mylinux …` (Contents/Resources/bin/mylinux) is this binary with --cli, a client of the launcher that runs
+        if args.count >= 2, args[1] == "--cli" { exit(CLI.run(Array(args.dropFirst(2)))) }
     }
 
     var body: some Scene {
@@ -69,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteProfile.removeStrayKnownHosts()            // host keys earlier launchers left in ~/Library/Application
         Handover.start()                                 // one launcher at a time: earlier ones hand their windows over
         MachineLink.serve()                              // the servers' own apps: their state, their requests
+        CLIService.serve()                               // the command line (mylinux …), for people and coding agents
+        if ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] == nil { CLI.Skill.refreshInstalled() }   // an installed agent skill follows the launcher
         // MYLINUX_TEST_UPDATE=1 (a scratch MYLINUX_SUPPORT_DIR, with MYLINUX_UPDATE_FEED): check, update, and say how it went
         if ProcessInfo.processInfo.environment["MYLINUX_TEST_UPDATE"] == "1", ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
             let u = LauncherUpdater.shared

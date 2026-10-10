@@ -491,6 +491,41 @@ installed on (26 here), which is why the release uses the libraries from `tools/
 (the website's link) is always the newest launcher. Neither is the repository's "latest" release: that stays the
 Linux image, which `tools/get-image.sh` resolves.
 
+### The command line, and coding agents
+
+The launcher has a command, `mylinux` (from 0.7.74), inside the app:
+`/Applications/myLinux Launcher.app/Contents/Resources/bin/mylinux` (a link to it from a folder on your PATH works).
+It is made for coding agents as much as for people: every answer is JSON, and what takes time is asked about, not
+waited for in silence.
+
+```sh
+mylinux create tiny --name tester1 --memory 1 --disk 20 --wait   # a Tiny Alpine with 1 GB and 20 GB, started, SSH answering
+mylinux ssh tester1 -- 'apk add git && git --version'            # one command inside, its output and exit status
+mylinux list                                                     # every machine and its state
+mylinux stop tester1 --wait && mylinux delete tester1 --yes      # shut down, then into the Trash with its disk
+```
+
+`create <kind>` takes `tiny`, `alpine`, `debian`, `omarchy`, `arch`, `kali`, `mylinux` or `windows`; sizes left out
+are the kind's own (`mylinux kinds` lists them and what is downloaded). What a kind needs is downloaded first, a
+saved copy when there is one, and the machine is started; `status` shows where that is (`job`), and `--wait` or
+`wait` hold on until the machine is `ready`: a server when its SSH answers, a desktop when it runs, Windows when it is
+installed and signed in. A server started this way opens no terminal window. `start`, `stop`, `restart`, `status`
+and `delete` take a machine's name. Windows is created the same way (`--iso FILE` the first time), and Windows Setup
+and its first-run screens are still answered by a person in the machine's window.
+
+The command is a client of the launcher that is running (it starts the launcher when it is not): a machine made on
+the command line is in the launcher's list like any other. [`mac/Sources/myLinux/CLI.swift`](mac/Sources/myLinux/CLI.swift).
+
+**For an agent**: `mylinux skill install` puts a skill, [`skills/mylinux/SKILL.md`](skills/mylinux/SKILL.md), where
+Claude Code and Codex look for theirs (`~/.claude/skills/mylinux`, `~/.codex/skills/mylinux`; `--agent claude` for one).
+In a new session of the agent, say what you want:
+
+    /mylinux install tiny alpine 1gb/20gb called tester1
+
+The skill tells the agent the command's path, how to turn such a sentence into a command, to wait and report, and
+what not to do unasked (delete a machine, stop one it did not start). The launcher keeps an installed skill the same
+as its own copy when it starts.
+
 ## Keys
 
 The Mac **Option** key is the Super key inside myLinux (Cmd stays with macOS).

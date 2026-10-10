@@ -23,6 +23,8 @@ final class Runner: ObservableObject {
     @Published private(set) var sshReady = false
     /// Waiting for that login (after Start, or a Terminal press before it), to open the terminal then.
     @Published private(set) var waitingForSSH = false
+    /// Whether the terminal opens when that login has answered (not for a start from the command line).
+    private var wantsTerminal = true
     // ---- the clock: every step is timed and shown in seconds ("Starting… 7 s", "Ready in 14 s") ----------------
     /// When this start began, when a server's sshd first answered, when it was ready (cloud folders mounted).
     @Published private(set) var startedAt: Date?
@@ -61,7 +63,9 @@ final class Runner: ObservableObject {
     var logFile: URL { Paths.logs.appendingPathComponent("\(profileID.uuidString).log") }
 
     // ---- start ----------------------------------------------------------------------------------------------
-    func start(_ p: Profile, settings: AppSettings = .shared) {
+    /// `showTerminal`: a server's terminal opens by itself once its sshd answers (false for a start asked from the
+    /// command line: an agent's test machine does not put a window in front of what the user is doing).
+    func start(_ p: Profile, settings: AppSettings = .shared, showTerminal: Bool = true) {
         guard !isActive else { return }
         if let problem = p.problems.first { state = .failed(problem); return }
         // "every key to the machine": QEMU's event tap needs Accessibility, which macOS credits to this app and
@@ -113,7 +117,7 @@ final class Runner: ObservableObject {
         // machine with sound out and a silent microphone).
         if p.kind.runsDesktop, p.sound, !askedMicrophone, Microphone.shouldAsk {
             askedMicrophone = true
-            Microphone.ask { [weak self] in self?.start(p, settings: settings) }
+            Microphone.ask { [weak self] in self?.start(p, settings: settings, showTerminal: showTerminal) }
             return
         }
 
@@ -168,7 +172,7 @@ final class Runner: ObservableObject {
         sshReady = false
         // myLinux: its cloud folders are mounted through the root console once its shell is up (appendConsole)
         cloudConsolePending = p.kind == .mylinux ? (p.cloudFolders, p.macFolders) : nil
-        if p.isServer { openTerminal(p) }
+        if p.isServer { wantsTerminal = showTerminal; openTerminal(p, show: showTerminal) }
     }
     /// myLinux's cloud folders, to mount at the console's first prompt after a start (CloudFolder.consoleScript;
     /// also with none ticked, so links to folders taken away go).
@@ -302,9 +306,12 @@ final class Runner: ObservableObject {
     /// button. Before that, QEMU's forwarded port accepts the connection with nothing behind it and a terminal would
     /// fail with "timed out during banner exchange" (a first Alpine start takes about 28 s), so a real ssh login is
     /// the test, and a press during the wait just waits along.
-    func openTerminal(_ p: Profile) {
+    /// `show` false only waits for the login (so `sshReady` and the clock are right) and opens nothing; a Terminal press
+    /// during that wait still gets its window.
+    func openTerminal(_ p: Profile, show: Bool = true) {
         let profile = p.terminalProfile
-        if sshReady { Runner.showTerminal(p); return }
+        if show { wantsTerminal = true }
+        if sshReady { if show { Runner.showTerminal(p) }; return }
         guard !waitingForSSH else { return }
         waitingForSSH = true
         let args = SshTerminal.arguments(for: profile) + ["true"]
@@ -325,7 +332,8 @@ final class Runner: ObservableObject {
                         self.mountCloudFolders(p, sshArgs: SshTerminal.arguments(for: profile))
                         DispatchQueue.main.async {
                             self.mountingCloud = false; self.readyAt = Date()
-                            self.sshReady = true; self.waitingForSSH = false; Runner.showTerminal(p)
+                            self.sshReady = true; self.waitingForSSH = false
+                            if self.wantsTerminal { Runner.showTerminal(p) }
                         }
                         return
                     }

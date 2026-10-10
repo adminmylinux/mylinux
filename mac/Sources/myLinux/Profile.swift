@@ -315,11 +315,12 @@ final class ProfileStore: ObservableObject {
     }
 
     /// A new machine: its own disk and share, the other settings copied from `template` when given.
+    /// `named`: the name to give it (the command line's --name; the caller has seen that no machine has it).
     @discardableResult
-    func add(copying template: Profile? = nil, kind: Profile.Kind? = nil) -> Profile {
+    func add(copying template: Profile? = nil, kind: Profile.Kind? = nil, named: String? = nil) -> Profile {
         let kind = kind ?? template?.kind ?? .mylinux
         let template = template?.kind == kind ? template : nil      // settings carry over within a kind only
-        let name = uniqueName(template.map { "\($0.name) copy" } ?? (kind == .mylinux ? "Machine" : kind.title))
+        let name = named ?? uniqueName(template.map { "\($0.name) copy" } ?? (kind == .mylinux ? "Machine" : kind.title))
         var p = ProfileStore.newProfile(named: name, kind: kind)
         if let t = template {
             p.grab = t.grab; p.mouse = t.mouse; p.clipboard = t.clipboard

@@ -1,0 +1,12 @@
+#!/bin/sh
+# mylinux: myLinux Launcher from the command line, for people and for coding agents (mylinux help).
+# This script lives in the app (Contents/Resources/bin/mylinux) and runs the launcher's own binary as a client of the
+# launcher that is running (mac/Sources/myLinux/CLI.swift). A link to it from a folder on the PATH works too: it
+# finds the app it belongs to.
+self=$0
+while [ -L "$self" ]; do
+  target=$(readlink "$self")
+  case "$target" in /*) self=$target ;; *) self=$(dirname "$self")/$target ;; esac
+done
+contents=$(cd "$(dirname "$self")/../.." && pwd) || exit 1
+exec "$contents/MacOS/myLinux Launcher" --cli "$@"

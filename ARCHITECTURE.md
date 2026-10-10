@@ -465,6 +465,17 @@ pointer while it is fullscreen or after ⌘⌃G.
   console.
 - `StatusMenu.swift`: the menu bar item, the mouse's way out of a full keyboard grab.
 
+- `CLI.swift`: the command line. `mylinux …` (the script `Contents/Resources/bin/mylinux`, which resolves a link to
+  itself and runs the launcher's binary with `--cli`) is a client: it posts its words as a distributed notification
+  scoped to the launcher's data folder (as `MachineLink` does) and prints the launcher's answer, JSON, starting the
+  launcher first when nobody answers. `CLIService` in the launcher does the work with the launcher's own store,
+  downloaders and runners: `create` checks the settings on a draft, adds the profile and begins a job (what the
+  kind needs, downloaded with `ScriptDownloader.quiet`, which installs a saved copy where it would ask; then
+  `Runner.start(showTerminal: false)`), and answers at once. `status` describes a machine with its job and a `ready`
+  that means "can be used"; `--wait`, `wait` and `ssh` are the client's own (it asks `status` again, or replaces
+  itself with `/usr/bin/ssh` and the machine's own key and known hosts). `skills/mylinux/SKILL.md` is the skill
+  `mylinux skill install` writes for Claude Code and Codex, with the command's path filled in.
+
 ### 7.2 How it runs a machine
 
 `Runner` (one per profile, kept by `RunManager` in `Runner.swift`) starts `/bin/sh run.sh` or `run-omarchy.sh`
