@@ -23,7 +23,7 @@ want() { [ -z "${CHECK_CHANGED+x}" ] || printf '%s\n' "$CHECK_CHANGED" | grep -q
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$REPO/run-windows.sh" "$W/"; cp -R "$REPO/windows" "$W/"; cp "$REPO/tools/desktop-window.sh" "$REPO/tools/get-windows.sh" "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/omarchy-update-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$REPO/run-windows.sh" "$W/"; cp -R "$REPO/windows" "$W/"; cp "$REPO/tools/desktop-window.sh" "$REPO/tools/get-windows.sh" "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/omarchy-bake-answers.sh" "$REPO/tools/omarchy-update-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$REPO/omarchy/answers" "$W/omarchy/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -330,6 +330,60 @@ if [ -n "$DEBUGFS" ]; then
   (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
   is_rc "baking again replaces the files" $rc 0
 else echo "  skip debugfs bake (no debugfs here: runtime not installed)"; fi
+echo "tools/omarchy-bake-answers.sh, omarchy/answers"
+grep -q 'tools/omarchy-bake-answers.sh "$DISK.new" "$MACHINE/first-start.answers"' "$W/run-omarchy.sh" && rc=0 || rc=1
+is_rc "run-omarchy.sh bakes first-start answers into a new disk when the machine has them" $rc 0
+grep -q 'rm -f "$MACHINE/first-start.answers"' "$W/run-omarchy.sh" && rc=0 || rc=1
+is_rc "and removes them from the Mac (they name a password)" $rc 0
+AF="$T/a machine's folder"; mkdir -p "$AF"
+printf 'keyboard=Icelandic\nusername=tester\npassword=p w=1$x\nfullname=\nhostname=omtest\ntimezone=Europe/Oslo\nconfirm=yes\n' > "$AF/first-start.answers"
+gunzip -c "$REPO/tools/tests/fixtures/ext4-mini.img.gz" > "$AF/disk.img"
+(cd "$W" && MYLINUX_DEBUGFS=/nonexistent/debugfs sh tools/omarchy-bake-answers.sh "$AF/disk.img" "$AF/first-start.answers" >/dev/null 2>&1); rc=$?
+is_rc "without a debugfs it says so and exits 3 (Omarchy asks its questions)" $rc 3
+if [ -n "$DEBUGFS" ]; then
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-answers.sh "$AF/disk.img" "$AF/first-start.answers" >/dev/null 2>&1); rc=$?
+  is_rc "a disk without Omarchy's first-start setup is left alone (exit 4)" $rc 4
+  out=$("$DEBUGFS" -R "stat /var/lib/mylinux" "$AF/disk.img" 2>&1); case "$out" in *"Type: directory"*) ko "nothing is written into it" ;; *) ok "nothing is written into it" ;; esac
+  # what the answers are for: Omarchy's setup, waiting, with its one-attempt entry and gum
+  : > "$T/empty"; printf '#!/bin/bash\nif [[ ${1:-} == "--attempt" ]]; then run_setup; fi\n' > "$T/owner"
+  { for d in /usr /usr/bin /var /var/lib /var/lib/omarchy /var/lib/omarchy/provisioning /etc /etc/systemd /etc/systemd/system; do echo "mkdir $d"; done
+    echo "write $T/empty /usr/bin/gum"; echo "write $T/empty /var/lib/omarchy/provisioning/pending"
+    echo "write $T/empty /etc/systemd/system/omarchy-provision-owner.service"; echo "write $T/owner /usr/bin/omarchy-provision-owner"; } > "$T/like-omarchy"
+  "$DEBUGFS" -w -f "$T/like-omarchy" "$AF/disk.img" >/dev/null 2>&1
+  out=$(cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-answers.sh "$AF/disk.img" "$AF/first-start.answers" 2>&1); rc=$?
+  is_rc "bakes the answers into a disk with Omarchy's setup waiting (from a folder with a space in its name)" $rc 0
+  has "says for whom" "$out" "for tester"; case "$out" in *"p w"*) ko "and never the password" ;; *) ok "and never the password" ;; esac
+  out=$("$DEBUGFS" -R "stat /var/lib/mylinux/answers" "$AF/disk.img" 2>/dev/null); has "the answers are root's alone" "$out" "Mode:  0600"
+  out=$("$DEBUGFS" -R "stat /var/lib/mylinux" "$AF/disk.img" 2>/dev/null); has "in a folder that is root's alone" "$out" "Mode:  0700"
+  out=$("$DEBUGFS" -R "cat /var/lib/mylinux/answers" "$AF/disk.img" 2>/dev/null); has "as they were given" "$out" 'password=p w=1$x'
+  out=$("$DEBUGFS" -R "stat /var/lib/mylinux/bin/gum" "$AF/disk.img" 2>/dev/null); has "the gum that gives them can run" "$out" "Mode:  0755"
+  out=$("$DEBUGFS" -R "cat /etc/systemd/system/omarchy-provision-owner.service.d/20-mylinux-answers.conf" "$AF/disk.img" 2>/dev/null)
+  has "Omarchy's setup service runs the setup with them" "$out" "ExecStart=/var/lib/mylinux/provision"
+  printf 'username=tester\n' > "$AF/no-password.answers"
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-answers.sh "$AF/disk.img" "$AF/no-password.answers" >/dev/null 2>&1); rc=$?
+  is_rc "answers without a password are refused" $rc 2
+else echo "  skip debugfs bake (no debugfs here: runtime not installed)"; fi
+# the gum in the disk, with a stand-in for the real one: Omarchy's own questions, as its setup form asks them
+GS="$T/gum"; mkdir -p "$GS/asked"
+printf '#!/bin/sh\necho "REAL: $*"\n' > "$GS/real"; chmod +x "$GS/real"
+sed "s|^real=/usr/bin/gum|real=$GS/real|; s|^asked=/run/mylinux-answers|asked=$GS/asked|" "$REPO/omarchy/answers/gum" > "$GS/gum"; chmod +x "$GS/gum"
+gum() { MYLINUX_ANSWERS="$AF/first-start.answers" "$GS/gum" "$@"; }
+is() { [ "$2" = "$3" ] && ok "$1" || ko "$1 (got '$2')"; }
+out=$(printf 'English (US)\nIcelandic\n' | gum choose --height 10 --selected "English (US)" --header "Select keyboard layout"); is "the keyboard is chosen" "$out" "Icelandic"
+out=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt "Username> "); is "the user is named" "$out" "tester"
+out=$(gum input --password --prompt "Password> "); is "the password is given as it was typed" "$out" 'p w=1$x'
+out=$(gum input --password --prompt "Confirm> "); is "and again to confirm it" "$out" 'p w=1$x'
+out=$(gum input --prompt "Full name> "); is "a skipped answer is an answer" "$out" ""
+out=$(gum input --prompt "Email address> " </dev/null); has "a question with no answer given is the person's" "$out" "REAL: input"
+out=$(printf 'Europe/Paris\nUTC\n' | gum filter --height 10 --header "Timezone"); has "a choice Omarchy does not offer is the person's" "$out" "REAL: filter"
+(gum confirm --negative "No, change it" "Does this look right?" >/dev/null 2>&1); rc=$?; is_rc "it looks right" $rc 0
+out=$(gum input --prompt "Username> " </dev/null); has "an answer Omarchy did not take is not given twice" "$out" "REAL: input"
+out=$(gum confirm "Reboot this machine?" </dev/null); has "any other question is the person's" "$out" "REAL: confirm Reboot"
+out=$(gum style --foreground 2 hello </dev/null); has "and everything else is gum's" "$out" "REAL: style"
+out=$(MYLINUX_ANSWERS="$T/nowhere" "$GS/gum" input --prompt "Username> " </dev/null); has "without answers it is gum" "$out" "REAL: input"
+(bash -n "$REPO/omarchy/answers/provision"); rc=$?; is_rc "omarchy/answers/provision is a script bash reads" $rc 0
+grep -q 'omarchy-provision-owner --attempt' "$REPO/omarchy/answers/provision" && grep -q 'shred -u "$dir/answers"' "$REPO/omarchy/answers/provision" && rc=0 || rc=1
+is_rc "it runs Omarchy's own setup and removes the answers when that ends" $rc 0
 (python3 "$REPO/tools/omarchy-clipboard.py" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-clipboard.py selftest (protocol, echo filtering)" $rc 0
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 AUDIO=0 CPUS=2 SSH=1 FORWARD=2222:22 sh run-omarchy.sh 2>&1)

@@ -1,0 +1,47 @@
+#!/bin/bash
+# myLinux: Omarchy's first-start setup with the answers the launcher was given (`mylinux create omarchy
+# --unattended`). The setup service runs this in place of omarchy-provision-owner for the one start that has answers
+# (20-mylinux-answers.conf): Omarchy's own setup, straight at its questions (--attempt: past the "Press Return to
+# Start Setup" screen), with ./bin/gum answering them. When it ends, however it ends, the answers (the password is
+# among them) and everything of this are removed; if it did not go through, Omarchy's own setup follows as it always
+# runs, for a person to answer.
+dir=/var/lib/mylinux
+dropin=/etc/systemd/system/omarchy-provision-owner.service.d
+
+# The screen Omarchy's greeter, skipped here, would have left: its colours, and the text size it picks once the screen
+# has its final size (omarchy-provision-owner: set_tokyo_night_colors, wait_console_stable, scale_console_font), so
+# the progress screen looks as it does after the questions.
+screen() { printf '%s|%s' "$(stty size 2>/dev/null </dev/tty)" "$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null)"; }
+settle() {                                   # settle <tenths at most> <tenths unchanged>
+  local was="" now quiet=0 i
+  for ((i = 0; i < $1 && quiet < $2; i++)); do
+    now=$(screen); if [[ $now == "$was" ]]; then quiet=$((quiet + 1)); else was=$now; quiet=0; fi
+    sleep 0.1
+  done
+}
+text_size() {
+  local best="" least=9999 name rows cols off
+  for name in default8x16 sun12x22 latarcyrheb-sun32; do
+    setfont "$name" 2>/dev/null || continue
+    read -r rows cols < <(stty size 2>/dev/null </dev/tty || echo "0 0")
+    [[ $rows =~ ^[0-9]+$ && $cols =~ ^[0-9]+$ ]] && ((cols > 81)) || continue        # Omarchy's logo is 81 wide
+    off=$((rows > 48 ? rows - 48 : 48 - rows)); ((off < least)) && { least=$off; best=$name; }
+  done
+  setfont "${best:-default8x16}" 2>/dev/null || true
+}
+if [[ $(tty 2>/dev/null) == /dev/tty* ]]; then
+  for colour in 01a1b26 1f7768e 29ece6a 3e0af68 47aa2f7 5bb9af7 67dcfff 7a9b1d6 8414868 9f7768e A9ece6a Be0af68 C7aa2f7 Dbb9af7 E7dcfff Fc0caf5; do
+    printf '\e]P%s' "$colour"
+  done
+  printf '\e[0m'; clear
+  settle 100 15; text_size; settle 30 5
+fi
+
+MYLINUX_ANSWERS=$dir/answers PATH=$dir/bin:$PATH /usr/bin/omarchy-provision-owner --attempt
+status=$?
+shred -u "$dir/answers" 2>/dev/null || rm -f "$dir/answers"
+rm -rf "$dir/bin" "$dir/provision" /run/mylinux-answers "$dropin/20-mylinux-answers.conf"
+rmdir "$dropin" "$dir" 2>/dev/null
+[ "$status" = 0 ] && exit 0
+echo "myLinux: the setup with the answers given did not finish ($status): Omarchy's own setup follows" >&2
+exec /usr/bin/omarchy-provision-owner

@@ -535,6 +535,22 @@ answers are a file in the machine's folder for you alone
 ([`windows/autounattend-unattended.xml`](windows/autounattend-unattended.xml), filled in), on the machine's tools
 disc while Windows installs; both are made again without it once Windows is installed.
 
+A new Omarchy asks its first-start questions in its window (keyboard, account, password, a name and an e-mail address
+for git, host name, time zone). Answered beforehand, it goes straight to the desktop, in under a minute (from 0.7.79):
+
+```sh
+mylinux create omarchy --unattended --password "$PASSWORD" --wait
+```
+
+What is not said is as on the Mac: `--user` (your Mac user name), `--keyboard` (the Mac's layout; Omarchy's name for
+one, `Norwegian`, or a language and region, `nb-NO`), `--timezone` (the Mac's), `--hostname` (from the machine's
+name); `--full-name` and `--email` are left out unless given. Omarchy takes no blank password, so `--password` is
+needed, and it is yours to choose. Omarchy cannot be told its answers, so they go into the new disk before its first
+boot ([`tools/omarchy-bake-answers.sh`](tools/omarchy-bake-answers.sh)) with a small `gum`, the program Omarchy asks
+with, that gives them ([`omarchy/answers`](omarchy/answers)); Omarchy's own setup then runs as it always does, and
+the answers, the password among them, are removed from the Mac at that start and from the disk when the setup ends.
+A question Omarchy does not take the answer to is asked in the window after all.
+
 The command is a client of the launcher that is running (it starts the launcher when it is not): a machine made on
 the command line is in the launcher's list like any other. [`mac/Sources/myLinux/CLI.swift`](mac/Sources/myLinux/CLI.swift).
 

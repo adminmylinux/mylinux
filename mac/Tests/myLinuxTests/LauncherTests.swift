@@ -1150,6 +1150,75 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(CLIService.handle(["create", "windows", "--unattended", "--accept-microsoft-license", "--edition", "enterprise", "--no-start"], store: store).code, 2)
         XCTAssertTrue(store.profiles.isEmpty)
     }
+    func testAnOmarchyThatAnswersItsFirstStart() throws {
+        // the Mac's keyboard by Omarchy's name for it; --keyboard by that name, or as the unattended Windows takes it
+        XCTAssertEqual(OmarchyUnattended.keyboard(layout: "com.apple.keylayout.Norwegian"), "Norwegian")
+        XCTAssertEqual(OmarchyUnattended.keyboard(layout: "com.apple.keylayout.ABC"), "English (US)")
+        XCTAssertEqual(OmarchyUnattended.keyboard(layout: "com.apple.keylayout.Dvorak"), "English (US, Dvorak)")
+        XCTAssertNil(OmarchyUnattended.keyboard(layout: "com.apple.keylayout.Thai"), "no namesake: Omarchy's own, English (US)")
+        XCTAssertNil(OmarchyUnattended.keyboard(layout: nil))
+        XCTAssertEqual(["icelandic", "is-IS", "English (UK)", "nb-no", " German "].map { OmarchyUnattended.keyboard($0) }, ["Icelandic", "Icelandic", "English (UK)", "Norwegian", "German"])
+        XCTAssertNil(OmarchyUnattended.keyboard("klingon"))
+        XCTAssertEqual(Set(OmarchyUnattended.layouts.map(\.name)).count, OmarchyUnattended.layouts.count)
+        XCTAssertEqual(OmarchyUnattended.layouts.count, 48, "Omarchy's setup form offers 48")
+        XCTAssertEqual(["Omarchy", "My Omarchy 2!", "", "ünï"].map(OmarchyUnattended.hostname), ["omarchy", "my-omarchy-2", "omarchy", "n"])
+        // what Omarchy's own form would refuse is refused here, in words
+        var good = OmarchyUnattended.Answers(user: "viktor", password: "p w=1$x")
+        good.keyboard = "Icelandic"; good.hostname = "omtest"; good.timezone = "Atlantic/Reykjavik"; good.fullName = "Viktor K"; good.email = "v@example.com"
+        XCTAssertNil(OmarchyUnattended.problem(good))
+        func with(_ change: (inout OmarchyUnattended.Answers) -> Void) -> String? { var a = good; change(&a); return OmarchyUnattended.problem(a) }
+        for bad in ["", "Viktor", "1abc", "a b", "root", "sddm", String(repeating: "x", count: 33)] { XCTAssertNotNil(with { $0.user = bad }, bad) }
+        XCTAssertTrue(with { $0.password = "" }?.contains("--password") ?? false, "Omarchy takes no blank password, and none is made up")
+        XCTAssertNotNil(with { $0.password = "two\nlines" }); XCTAssertNotNil(with { $0.keyboard = "Klingon" }); XCTAssertNotNil(with { $0.fullName = "a:b" })
+        XCTAssertNotNil(with { $0.email = "nobody" }); XCTAssertNil(with { $0.email = "" }); XCTAssertNil(with { $0.fullName = "" })
+        for bad in ["-x", "a b", "", String(repeating: "h", count: 64)] { XCTAssertNotNil(with { $0.hostname = bad }, bad) }
+        for bad in ["Mars/Olympus", "../etc/passwd", ""] { XCTAssertNotNil(with { $0.timezone = bad }, bad) }
+        // the answers as the gum in the disk reads them: a line each, what was typed kept as typed, and the last "yes"
+        let text = OmarchyUnattended.text(good)
+        XCTAssertEqual(text.split(separator: "\n").map(String.init),
+                       ["keyboard=Icelandic", "username=viktor", "password=p w=1$x", "fullname=Viktor K", "email=v@example.com", "hostname=omtest", "timezone=Atlantic/Reykjavik", "confirm=yes"])
+        XCTAssertTrue(OmarchyUnattended.text(with2(good) { $0.fullName = "" }).contains("fullname=\n"), "skipped is an answer too")
+        // kept for the Mac user alone until the machine's first start, with the word that it sets itself up
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-omarchy-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let p = ProfileStore.newProfile(named: "O", kind: .omarchy, folder: dir)
+        XCTAssertEqual(p.machineFolder.path, dir.path); XCTAssertEqual(OmarchyUnattended.stage(p), .none)
+        XCTAssertNil(OmarchyUnattended.write(good, machineFolder: dir))
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: OmarchyUnattended.file(dir).path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        XCTAssertEqual(try String(contentsOf: OmarchyUnattended.file(dir), encoding: .utf8), text)
+        XCTAssertEqual(OmarchyUnattended.stage(p), .settingUp)
+        XCTAssertFalse((try String(contentsOf: OmarchyUnattended.marker(dir), encoding: .utf8)).contains("p w"), "the word names nothing secret")
+        try "asked\n".write(to: OmarchyUnattended.marker(dir), atomically: true, encoding: .utf8)       // run-omarchy.sh, when the answers did not go in
+        XCTAssertEqual(OmarchyUnattended.stage(p), .asking)
+        XCTAssertEqual(OmarchyUnattended.stage(ProfileStore.newProfile(named: "A", kind: .arch, folder: dir)), .none, "Omarchy's alone")
+        // a machine deleted before its first start: its answers do not go to the Trash with it
+        try "x".write(to: dir.appendingPathComponent("autounattend.xml"), atomically: true, encoding: .utf8)
+        try "x".write(to: dir.appendingPathComponent("omarchy.ext4"), atomically: true, encoding: .utf8)
+        ProfileStore.forgetAnswers(in: dir)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted(), ["first-start.unattended", "omarchy.ext4"])
+    }
+    private func with2(_ a: OmarchyUnattended.Answers, _ change: (inout OmarchyUnattended.Answers) -> Void) -> OmarchyUnattended.Answers { var b = a; change(&b); return b }
+    @MainActor func testAnOmarchyWithAnswersIsRefusedInWords() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-cli-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = ProfileStore(file: dir.appendingPathComponent("profiles.json"))
+        let name = "clitest-\(UUID().uuidString.prefix(8).lowercased())", start = ["create", "omarchy", "--name", name, "--no-start"]
+        // the password is the user's: without one nothing is made, and none is made up
+        for (words, part) in [(["--unattended"], "--password"), (["--unattended", "--password", "x", "--keyboard", "klingon"], "--keyboard"),
+                              (["--unattended", "--password", "x", "--user", "root"], "own account names"),
+                              (["--unattended", "--password", "x", "--timezone", "Mars/Olympus"], "time zone"),
+                              (["--unattended", "--password", "x", "--hostname", "-x"], "host name"),
+                              (["--unattended", "--password", "x", "--edition", "pro"], "Windows's"),
+                              (["--password", "x"], "--unattended"), (["--timezone", "UTC"], "--unattended")] {
+            let r = CLIService.handle(start + words, store: store)
+            XCTAssertEqual(r.code, 2, "\(words)"); XCTAssertTrue((r.json["error"] as? String ?? "").contains(part), "\(words): \(r.json)")
+        }
+        let r = CLIService.handle(["create", "windows", "--unattended", "--accept-microsoft-license", "--hostname", "x", "--no-start"], store: store)
+        XCTAssertEqual(r.code, 2); XCTAssertTrue((r.json["error"] as? String ?? "").contains("Omarchy's"), "\(r.json)")
+        XCTAssertTrue(store.profiles.isEmpty)
+        XCTAssertTrue(CLI.usage.contains("omarchy: --unattended --password PW"))
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

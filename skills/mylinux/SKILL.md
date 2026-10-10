@@ -19,7 +19,8 @@ that error, do not guess around it. `{{MYLINUX}} help` lists every command.
 | --- | --- |
 | install tiny alpine 1gb/20gb called tester1 | `create tiny --name tester1 --memory 1 --disk 20 --wait` |
 | make me a debian box named build with 4 GB | `create debian --name build --memory 4 --wait` |
-| install omarchy | `create omarchy --wait --timeout 3600` |
+| install omarchy | `create omarchy --wait --timeout 3600`, and tell them its first-start questions wait in its window |
+| install omarchy, user viktor, password … (or: unattended, without the questions) | `create omarchy --unattended --password … --user viktor --wait --timeout 3600` |
 | what machines do I have | `list` |
 | start / stop / restart tester1 | `start tester1 --wait` / `stop tester1 --wait` / `restart tester1` |
 | is tester1 up | `status tester1` |
@@ -42,6 +43,15 @@ has a good default for each kind. A name with spaces goes in quotes.
   pick for "a small Linux to test something in".
 - `alpine`, `debian`: servers with a cloud image. No desktop: a shell over SSH.
 - `omarchy`, `arch`, `kali`, `mylinux`: Linux desktops, each in its own window. Downloads of 1 to 2 GB the first time.
+- A new `omarchy` asks a person its first-start questions in its window (keyboard, account, password, host name, time
+  zone), unless they are answered beforehand:
+  `create omarchy --unattended --password PW [--user NAME] [--keyboard Norwegian|nb-NO] [--timezone Europe/Oslo]
+  [--hostname NAME] [--full-name "NAME"] [--email ADDRESS]` goes straight to the desktop, in about a minute after the
+  download. What is left out is as on the Mac (its user name, keyboard and time zone; the host name from the
+  machine's name); the name and e-mail address are for git and can be left out. Omarchy takes no blank password, and
+  the password (for signing in and for sudo) is the user's to choose: if they asked for this without giving one, ask
+  them for it, or whether they would rather answer in the machine's window. Never invent a password, and do not
+  repeat one back.
 - `windows`: Windows 11 for Arm. The ISO is the user's to download from Microsoft (pass it once with `--iso FILE`;
   `kinds` says whether it is there). Then one of two ways:
   - `create windows`: Windows Setup and its first-run screens are answered by a person in the machine's window,
@@ -58,7 +68,7 @@ has a good default for each kind. A name with spaces goes in quotes.
 ## Waiting
 
 `create` and `start` answer at once; `--wait` holds on until the machine is `ready` (a server: its SSH answers; a
-desktop: it is running; Windows: installed and signed in). The default is 900 seconds; a first Omarchy, Arch or Kali
+desktop: it is running; an Omarchy made with `--unattended`: its desktop is up; Windows: installed and signed in). The default is 900 seconds; a first Omarchy, Arch or Kali
 needs a download and an unattended Windows installs for a while, so give those `--timeout 3600`. When the wait runs out (exit status 4) nothing is wrong: the work
 goes on. Look at `status` (`job` says what is being downloaded and how far it is), tell the user, and `wait` again.
 

@@ -86,14 +86,14 @@ mkdir -p "$NEW/Contents/Resources/server-apps"
 cp server-apps/run.sh server-apps/mylinux_apps.py server-apps/catalog.json server-apps/speedtest.py server-apps/mount-share.sh server-apps/claude_setup.py server-apps/snippets.json server-apps/snippets-vnc.json "$NEW/Contents/Resources/server-apps/"
 # GhosttyKit's resources (Ghostty's resource folder and terminfo), found there by its patched lookup
 cp -R "$(dirname "$BIN")/GhosttyKit_GhosttyTerminal.bundle" "$NEW/Contents/Resources/"
-mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session "$NEW/Contents/Resources/runtime/omarchy/"
+mkdir -p "$NEW/Contents/Resources/runtime/omarchy" && cp -R omarchy/session omarchy/answers "$NEW/Contents/Resources/runtime/omarchy/"
 cp -R tiny "$NEW/Contents/Resources/runtime/"      # Tiny Alpine's boot scripts, which run-server.sh puts into the initrd
 cp -R windows "$NEW/Contents/Resources/runtime/"   # a Windows machine's answer file, setup script and agent, which run-windows.sh puts on its tools disc
 # the command line (mylinux …) and the skill that teaches a coding agent its commands (mylinux skill install)
 mkdir -p "$NEW/Contents/Resources/bin" "$NEW/Contents/Resources/skills/mylinux"
 cp mac/bin/mylinux "$NEW/Contents/Resources/bin/mylinux"; chmod 755 "$NEW/Contents/Resources/bin/mylinux"
 cp skills/mylinux/SKILL.md "$NEW/Contents/Resources/skills/mylinux/SKILL.md"
-for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-arch.sh get-kali.sh get-windows.sh desktop-window.sh get-debian.sh get-alpine.sh get-tiny.sh get-edk2.sh download-cache.sh save-downloads.sh extra-shares.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh omarchy-update-session.sh qemu-flavour.sh qemu-runtime.version; do
+for f in make-app-bundle.sh brand-qemu.py gen-icon.py clipboard-host.sh host-window.sh get-image.sh get-qemu-runtime.sh get-omarchy.sh get-arch.sh get-kali.sh get-windows.sh desktop-window.sh get-debian.sh get-alpine.sh get-tiny.sh get-edk2.sh download-cache.sh save-downloads.sh extra-shares.sh omarchy-clipboard.py omarchy-session-mac.sh omarchy-bake-session.sh omarchy-bake-answers.sh omarchy-update-session.sh qemu-flavour.sh qemu-runtime.version; do
   cp "tools/$f" "$NEW/Contents/Resources/runtime/tools/"
 done
 # icons (tools/icons/make-icons.sh): the launcher's own, and the desktop's for the QEMU wrapper make-app-bundle.sh builds

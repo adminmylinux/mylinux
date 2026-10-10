@@ -61,6 +61,7 @@ flowchart LR
 | `run-omarchy.sh` | Starts an Omarchy machine on the Mac. |
 | `run-windows.sh`, `windows/` | Starts a Windows 11 for Arm machine; the answer file, setup script and agent that go onto its tools disc. |
 | `omarchy/session/` | Session save and restore agent that runs inside Omarchy (installed by the user, systemd user units). |
+| `omarchy/answers/` | Omarchy's first-start questions answered from a file: a `gum` that gives the answers, the setup that uses it, and the drop-in that runs it (`tools/omarchy-bake-answers.sh` puts them into a new disk). |
 | `mac/` | myLinux Launcher, a Swift package; `mac/build-app.sh` bundles it. `mac/spike/` is a leftover experiment. |
 | `tools/` | Host helpers: app bundling and branding, image and runtime downloads, the QEMU runtime build and its patches, clipboard bridges, window placement, the SDK fast loop, checks and tests. |
 | `tools/vmtest/` | Tests that boot a throwaway VM and drive it through QMP and the serial console. |
@@ -490,6 +491,25 @@ pointer while it is fullscreen or after ⌘⌃G.
   screens, then `installed`. `RunManager`'s tick calls `WindowsUnattended.follow`: 45 seconds after a machine with
   such a file is first seen installed, it is restarted, once, into the virtio display. The steps window stays away
   from such an install. The command refuses to make the file without `--accept-microsoft-license`.
+
+- `OmarchyUnattended.swift`: Omarchy's first start without its questions (`create omarchy --unattended --password
+  PW`). Omarchy's first-start setup (`omarchy-provision-owner`, armed by `/var/lib/omarchy/provisioning/pending`)
+  asks with `gum` and takes no answers file, so the answers are given through a `gum` of ours. The launcher checks
+  them by the setup form's own rules (the user name's pattern and reserved names, a password that is not blank, the
+  host name's pattern, one of the form's 48 keyboards, a time zone) and writes them as `<machine>/first-start.answers`
+  (mode 600) with `first-start.unattended` beside it. At the machine's first start `run-omarchy.sh` has
+  `tools/omarchy-bake-answers.sh` write into the new disk, with `debugfs`: `/var/lib/mylinux/answers` (root's alone,
+  in a folder that is root's alone), `/var/lib/mylinux/bin/gum`, `/var/lib/mylinux/provision`, and a drop-in for
+  `omarchy-provision-owner.service` whose `ExecStart` is that `provision`; the file on the Mac is removed. `provision`
+  sets the console's colours and text size as Omarchy's greeter would, runs `omarchy-provision-owner --attempt` (the
+  setup without the "Press Return" screen) with `bin` first in `PATH`, and afterwards removes the answers (`shred`),
+  itself and the drop-in; if the attempt failed, Omarchy's own setup follows, asking. `gum` answers the form's
+  questions by their prompts, each once: asked again (the answer was not taken), given a choice the form does not
+  offer, or used for anything else, it is `/usr/bin/gum`. A disk without that setup is left alone (exit 4) and
+  Omarchy asks; `first-start.unattended` then says `asked`, and `status` says so. `RunManager`'s tick calls
+  `OmarchyUnattended.follow`: the marker goes when the session tool's `status.json` in the share is newer than the
+  start (the desktop is up), or after ten minutes; until then `status` is not `ready`. A machine deleted before its
+  first start has its answers removed, not moved to the Trash (`ProfileStore.forgetAnswers`, Windows's too).
 
 ### 7.2 How it runs a machine
 

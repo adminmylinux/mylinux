@@ -10,7 +10,7 @@ set -eu
 cd "$(dirname "$0")/.."
 DISK=${1:?disk image}; SRC=${2:-omarchy/session}
 OUT="${MYLINUX_OUT:-out}"
-die() { echo "omarchy-bake-session.sh: $*" >&2; exit "${2:-1}"; }
+die() { echo "omarchy-bake-session.sh: $1" >&2; exit "${2:-1}"; }
 if [ -n "${MYLINUX_DEBUGFS:-}" ]; then DEBUGFS=$MYLINUX_DEBUGFS
 else
   DEBUGFS=""

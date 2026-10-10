@@ -645,6 +645,8 @@ final class RunManager: ObservableObject {
                                 WindowsUnattended.follow(p, runner: r)      // an install that answers itself restarts itself at its end
                             }
                         }
+                        // an Omarchy made with its first-start answers: set up when its desktop is seen
+                        if p.kind == .omarchy { MainActor.assumeIsolated { OmarchyUnattended.follow(p, runner: r) } }
                         if cloudAsked { self.cloudRequest(p.id, store: store) }
                         if codexAsked { CodexLogin.answer(p) }
                     }

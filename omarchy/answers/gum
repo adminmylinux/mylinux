@@ -1,0 +1,40 @@
+#!/bin/bash
+# myLinux: Omarchy's first-start questions, answered from a file. Omarchy asks them with gum (its setup form,
+# /usr/share/omarchy/install/provisioning/setup-form.sh: keyboard, user name, password, name, e-mail, host name, time
+# zone, "Does this look right?") and has no way to be told the answers beforehand. For a machine made with
+# `mylinux create omarchy --unattended`, the launcher writes the answers and this file into the new disk before its
+# first start (tools/omarchy-bake-answers.sh), and ./provision puts this file's folder ahead of /usr/bin for the setup
+# alone. A question it knows gets its answer, once: asked a second time (Omarchy did not take the answer: a name that
+# is reserved, say), given a choice Omarchy does not offer, or used for anything else, it is the real gum, and the
+# person at the screen answers.
+real=/usr/bin/gum
+answers=${MYLINUX_ANSWERS:-/var/lib/mylinux/answers}
+asked=/run/mylinux-answers
+[ -r "$answers" ] || exec "$real" "$@"
+
+has() { grep -q "^$1=" "$answers" && [ ! -e "$asked/${2:-$1}" ]; }          # has <key> [<asked as>]
+said() { mkdir -p "$asked" && : > "$asked/$1"; }
+value() { sed -n "s/^$1=//p" "$answers" | head -n 1; }
+
+key=""; as=""
+case "$1:$*" in
+  input:*"Username> "*) key=username ;;
+  input:*"Password> "*) key=password ;;
+  input:*"Confirm> "*) key=password; as=password-again ;;
+  input:*"Full name> "*) key=fullname ;;
+  input:*"Email address> "*) key=email ;;
+  input:*"Hostname> "*) key=hostname ;;
+  choose:*"Select keyboard layout"*) key=keyboard ;;
+  choose:*"Timezone"*|filter:*"Timezone"*) key=timezone ;;
+  confirm:*"Does this look right?"*) key=confirm ;;
+esac
+[ -n "$key" ] && has "$key" "${as:-$key}" || exec "$real" "$@"
+said "${as:-$key}"
+case "$1" in
+  input) value "$key" ;;
+  confirm) [ "$(value confirm)" = yes ] || exec "$real" "$@" ;;
+  *)  # one of the lines gum is given to choose from, or the choice is the person's
+    choices=$(cat); want=$(value "$key")
+    if printf '%s\n' "$choices" | grep -Fxq -- "$want"; then printf '%s\n' "$want"
+    else printf '%s\n' "$choices" | "$real" "$@"; fi ;;
+esac

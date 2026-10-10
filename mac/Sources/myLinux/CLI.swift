@@ -39,6 +39,9 @@ enum CLI {
                                                   windows: --iso FILE the first time (Microsoft's Arm64 ISO);
                                                   --unattended --accept-microsoft-license [--user NAME] [--password PW]
                                                   [--edition pro|home] [--keyboard nb-NO] installs it without a question
+                                                  omarchy: --unattended --password PW [--user NAME] [--keyboard Norwegian|nb-NO]
+                                                  [--timezone Europe/Oslo] [--hostname NAME] [--full-name "NAME"] [--email ADDRESS]
+                                                  answers its first-start questions: straight to the desktop
           mylinux start <name> [--wait]           start it (downloads what it needs first)
           mylinux stop <name> [--wait]            shut it down
           mylinux restart <name>
@@ -81,7 +84,8 @@ enum CLI {
     struct Words: Equatable {
         var plain: [String] = [], values: [String: String] = [:], flags: Set<String> = [], rest: [String] = []
     }
-    static let valued: Set<String> = ["name", "memory", "disk", "cpus", "timeout", "iso", "agent", "ssh-port", "user", "password", "edition", "keyboard", "keys"]
+    static let valued: Set<String> = ["name", "memory", "disk", "cpus", "timeout", "iso", "agent", "ssh-port", "user", "password", "edition", "keyboard", "keys",
+                                       "timezone", "hostname", "full-name", "email"]
     static func words(_ args: [String]) -> Words? {
         var w = Words(), i = 0
         while i < args.count {
@@ -422,6 +426,18 @@ enum CLI {
                                              : "Windows Setup and Windows's first-run screens are answered in the machine's window, by a person"]
             ready = ready && p.windowsInstalled && answers
         }
+        if p.kind == .omarchy {
+            // made with its first-start answers given: ready when its desktop has been seen (OmarchyUnattended.follow)
+            switch OmarchyUnattended.stage(p) {
+            case .settingUp:
+                d["omarchy"] = ["unattended": true, "note": state == "running" ? "Omarchy is setting itself up with the answers given: the desktop in about a minute"
+                                                                                : "its first start sets Omarchy up with the answers given, without its questions"]
+                ready = false
+            case .asking:
+                d["omarchy"] = ["unattended": false, "note": "the answers could not be put into the new disk: Omarchy asks its first-start questions in the machine's window, for a person to answer"]
+            case .none: break
+            }
+        }
         d["ready"] = ready
         return d
     }
@@ -480,9 +496,27 @@ enum CLI {
             }
             if let m = memory, m > Profile.macMemoryGB { return .failed("this Mac has \(Profile.macMemoryGB) GB of memory") }
             // the settings are checked before anything is made
-            var unattended: WindowsUnattended.Answers?
-            if w.flags.contains("unattended") {
-                guard kind == .windows else { return .failed("--unattended is for windows: the other kinds ask nothing", code: 2) }
+            var unattended: WindowsUnattended.Answers?, omarchy: OmarchyUnattended.Answers?
+            let forOmarchy = ["timezone", "hostname", "full-name", "email"]
+            if w.flags.contains("unattended"), kind == .omarchy {
+                // Omarchy's first-start questions, answered beforehand: what is not said is as on this Mac
+                var a = OmarchyUnattended.Answers(user: (w.values["user"] ?? NSUserName()).trimmingCharacters(in: .whitespaces), password: w.values["password"] ?? "")
+                if let k = w.values["keyboard"] {
+                    guard let layout = OmarchyUnattended.keyboard(k) else {
+                        return .failed("--keyboard is one of Omarchy's keyboards by name (Norwegian, Icelandic, \"English (UK)\" …) or a language and region (nb-NO, is-IS, en-GB)", code: 2)
+                    }
+                    a.keyboard = layout
+                } else if let layout = OmarchyUnattended.keyboard(layout: WindowsUnattended.macLayout()) { a.keyboard = layout }
+                a.timezone = w.values["timezone"] ?? TimeZone.current.identifier
+                a.hostname = w.values["hostname"] ?? OmarchyUnattended.hostname(name)
+                a.fullName = (w.values["full-name"] ?? "").trimmingCharacters(in: .whitespaces)
+                a.email = (w.values["email"] ?? "").trimmingCharacters(in: .whitespaces)
+                if w.values["edition"] != nil { return .failed("--edition is Windows's", code: 2) }
+                if let problem = OmarchyUnattended.problem(a) { return .failed(problem, code: 2) }
+                omarchy = a
+            } else if w.flags.contains("unattended") {
+                guard kind == .windows else { return .failed("--unattended is for windows and omarchy: the other kinds ask nothing", code: 2) }
+                if let extra = forOmarchy.first(where: { w.values[$0] != nil }) { return .failed("--\(extra) is Omarchy's", code: 2) }
                 guard w.flags.contains("accept-microsoft-license") || w.flags.contains("accept-microsoft-licence") else {
                     return .failed("an unattended install answers Windows Setup for the user, Microsoft's licence terms among its questions (\(WindowsUnattended.licenseTerms)). That acceptance is the user's: when they have said so, add --accept-microsoft-license", code: 2)
                 }
@@ -497,8 +531,8 @@ enum CLI {
                     return .failed("Windows is Microsoft's and is not downloaded by myLinux: get the “Windows 11 (multi-edition ISO for Arm64)” from \(DesktopImageManager.microsoftPage.absoluteString) and pass it with --iso <the file>")
                 }
                 unattended = a
-            } else if ["user", "password", "edition", "keyboard"].contains(where: { w.values[$0] != nil }) {
-                return .failed("--user, --password, --edition and --keyboard go with --unattended (otherwise Windows Setup asks for them in the machine's window)", code: 2)
+            } else if let alone = (["user", "password", "edition", "keyboard"] + forOmarchy).first(where: { w.values[$0] != nil }) {
+                return .failed("--\(alone) goes with --unattended, for windows or omarchy (otherwise the machine asks in its window)", code: 2)
             }
             var draft = ProfileStore.newProfile(named: name, kind: kind)
             if let memory { draft.memoryGB = memory; draft.memoryAuto = false }
@@ -511,11 +545,19 @@ enum CLI {
             if let grab { p.grab = grab }
             store.update(p)
             if let unattended { answers[p.id] = unattended }
+            if let omarchy, let problem = OmarchyUnattended.write(omarchy, machineFolder: p.machineFolder) {
+                _ = store.remove(p.id, trashFiles: true)
+                return .failed(problem)
+            }
             if !w.flags.contains("no-start") { begin(p.id, iso: w.values["iso"], store: store, settings: settings) }
             var made: [String: Any] = ["machine": describe(p, settings: settings), "created": true]
             if let a = unattended {
                 made["account"] = ["user": a.user, "password": a.password.isEmpty ? "none: it signs in by itself (Settings › Accounts in Windows sets one)" : "as given",
                                    "edition": a.edition.title, "keyboard": a.keyboard]
+            }
+            if let a = omarchy {
+                made["account"] = ["user": a.user, "password": "as given", "keyboard": a.keyboard, "timezone": a.timezone, "hostname": a.hostname,
+                                   "fullName": a.fullName.isEmpty ? "not given" : a.fullName, "email": a.email.isEmpty ? "not given" : a.email]
             }
             return .ok(made)
         case "start":

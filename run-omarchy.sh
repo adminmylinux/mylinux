@@ -126,6 +126,14 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinu
   # the session tool goes into the disk now (system-wide, enabled), so the Session menu works from the first login
   if [ "$DESKTOP" = omarchy ]; then
     tools/omarchy-bake-session.sh "$DISK.new" omarchy/session || echo "run-omarchy.sh: the session tool is not in the disk; inside Omarchy, sh ~/<share>/mylinux-tools/install-session.sh installs it" >&2
+    # the answers to Omarchy's first-start questions, when they were given beforehand (mylinux create omarchy
+    # --unattended): into the disk too, and Omarchy sets itself up with them. Without them in the disk it asks.
+    if [ -f "$MACHINE/first-start.answers" ]; then
+      tools/omarchy-bake-answers.sh "$DISK.new" "$MACHINE/first-start.answers" omarchy/answers || {
+        echo "run-omarchy.sh: the first-start answers are not in the disk: Omarchy asks its questions in the window" >&2
+        [ ! -f "$MACHINE/first-start.unattended" ] || echo asked > "$MACHINE/first-start.unattended"
+      }
+    fi
   fi
   cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/$REVFILE" "$MACHINE/boot/$REVFILE" 2>/dev/null || true
   mv "$DISK.new" "$DISK"
@@ -133,6 +141,7 @@ elif [ "${DRYRUN:-0}" != 1 ] && [ "$DESKTOP" = omarchy ]; then
   # a machine made earlier: its session tool brought up to date (Apps… needs the agent's "apps"), if it was shut down cleanly
   tools/omarchy-update-session.sh "$DISK" omarchy/session || true
 fi
+[ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.answers"      # they name a password: in the new disk by now, or of no use
 SERIAL="${SERIAL:-file:$MACHINE/console.log}"
 case "$SERIAL" in
   file:*) CONSOLE="file,id=hvc0,path=${SERIAL#file:}" ;;
