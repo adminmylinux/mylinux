@@ -127,6 +127,34 @@ enum OmarchyUnattended {
         } catch { return "could not write the first-start answers: \(error.localizedDescription)" }
     }
 
+    /// The answers kept for the machine's first start, read back (for the machine's page and the dialog), or nil.
+    static func read(_ machineFolder: URL) -> Answers? {
+        guard let text = try? String(contentsOf: file(machineFolder), encoding: .utf8) else { return nil }
+        var said: [String: String] = [:]
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            guard let eq = line.firstIndex(of: "=") else { continue }
+            said[String(line[..<eq])] = String(line[line.index(after: eq)...])
+        }
+        guard let user = said["username"], let password = said["password"] else { return nil }
+        var a = Answers(user: user, password: password)
+        a.keyboard = said["keyboard"] ?? a.keyboard; a.fullName = said["fullname"] ?? ""; a.email = said["email"] ?? ""
+        a.hostname = said["hostname"] ?? a.hostname; a.timezone = said["timezone"] ?? a.timezone
+        return a
+    }
+    /// The answers are not wanted after all (while the machine has not started with them): Omarchy asks.
+    static func forget(_ machineFolder: URL) {
+        for url in [file(machineFolder), marker(machineFolder)] { try? FileManager.default.removeItem(at: url) }
+    }
+    /// What a new machine of that name is given unless something else is said: as on this Mac (its user name when
+    /// Omarchy takes it, its keyboard where Omarchy has its namesake, its time zone), and no password.
+    static func suggested(machine: String, macUser: String = NSUserName(), macLayout: String? = WindowsUnattended.macLayout(),
+                          zone: String = TimeZone.current.identifier) -> Answers {
+        var a = Answers(user: macUser, password: "")
+        if let layout = keyboard(layout: macLayout) { a.keyboard = layout }
+        a.timezone = zone; a.hostname = hostname(machine)
+        return a
+    }
+
     /// How long a machine may run without its desktop being seen before the wait for it is given up.
     static let patience: TimeInterval = 600
 

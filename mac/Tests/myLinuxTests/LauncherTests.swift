@@ -1219,6 +1219,77 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertTrue(store.profiles.isEmpty)
         XCTAssertTrue(CLI.usage.contains("omarchy: --unattended --password PW"))
     }
+    func testTheDialogOfANewMachineTakesItsFirstStartAnswers() throws {
+        // as on this Mac: its user name when the kind takes it, its keyboard by the kind's name for it, no password
+        var o = FirstStartForm.suggested(.omarchy, name: "Omarchy", macUser: "Viktor", macLayout: "com.apple.keylayout.Norwegian")
+        XCTAssertEqual(o.user, "viktor"); XCTAssertEqual(o.keyboard, "Norwegian"); XCTAssertTrue(o.answered); XCTAssertEqual(o.password, "")
+        XCTAssertEqual(FirstStartForm.suggested(.omarchy, name: "O", macUser: "root", macLayout: nil).user, "", "a name Omarchy refuses is not suggested")
+        var w = FirstStartForm.suggested(.windows, name: "Windows", macUser: "Viktor", macLayout: "com.apple.keylayout.Norwegian")
+        XCTAssertEqual(w.user, "Viktor"); XCTAssertEqual(w.keyboard, "nb-NO"); XCTAssertFalse(w.acceptsLicense, "the licence is the user's to tick")
+        XCTAssertEqual(FirstStartForm.suggested(.windows, name: "W", macUser: "guest", macLayout: nil).keyboard, "en-US")
+        // Omarchy: a password, typed twice, of the user's own; then it can be made
+        XCTAssertEqual(o.verdict(taken: []), .waiting("Choose a password: Omarchy takes no account without one."))
+        o.password = "p w=1$x"
+        XCTAssertEqual(o.verdict(taken: []), .waiting("Type the password once more."))
+        o.again = "p w=1"; XCTAssertEqual(o.verdict(taken: []), .wrong("The two passwords are not the same."))
+        o.again = o.password; XCTAssertEqual(o.verdict(taken: []), .ready)
+        // the name of a new machine: there, in bounds, nobody's; a machine that is there already is not named again
+        XCTAssertEqual(o.verdict(taken: ["omarchy"]), .wrong("A machine named Omarchy is there already.")); XCTAssertEqual(o.verdict(taken: nil), .ready)
+        var unnamed = o; unnamed.name = "  "; XCTAssertEqual(unnamed.verdict(taken: []), .waiting("Give the machine a name.")); XCTAssertEqual(unnamed.verdict(taken: nil), .ready)
+        var slash = o; slash.name = "a/b"; if case .wrong = slash.verdict(taken: []) {} else { XCTFail("a name with a slash") }
+        // what Omarchy's form would refuse is said as a sentence
+        var bad = o; bad.user = "Root User"
+        if case .wrong(let why) = bad.verdict(taken: []) { XCTAssertTrue(why.hasPrefix("The account's name") && why.hasSuffix(".")) } else { XCTFail("a user name Omarchy refuses") }
+        bad = o; bad.hostname = "-x"; if case .wrong = bad.verdict(taken: []) {} else { XCTFail("a host name Omarchy refuses") }
+        // the answers: the host name from the machine's name unless one is typed, what was typed trimmed
+        o.name = "My Omarchy 2"; o.fullName = " Viktor K "; o.timezone = "Atlantic/Reykjavik"
+        var a = o.omarchy()
+        XCTAssertEqual(a.hostname, "my-omarchy-2"); XCTAssertEqual(a.fullName, "Viktor K"); XCTAssertEqual(a.password, "p w=1$x"); XCTAssertEqual(a.keyboard, "Norwegian")
+        o.hostname = "box"; a = o.omarchy(); XCTAssertEqual(a.hostname, "box"); XCTAssertNil(OmarchyUnattended.problem(a))
+        // asked in the machine's window instead: nothing of the answers is checked
+        var asked = FirstStartForm.suggested(.omarchy, name: "Omarchy", macUser: "viktor", macLayout: nil); asked.answered = false
+        XCTAssertEqual(asked.verdict(taken: []), .ready)
+        // Windows: no password is an answer, and Microsoft's licence terms are accepted by the user's own tick
+        if case .waiting(let what) = w.verdict(taken: []) { XCTAssertTrue(what.contains("licence terms")) } else { XCTFail("the licence is not accepted yet") }
+        w.acceptsLicense = true; XCTAssertEqual(w.verdict(taken: []), .ready)
+        w.password = "secret"; XCTAssertEqual(w.verdict(taken: []), .waiting("Type the password once more.")); w.again = "secret"; XCTAssertEqual(w.verdict(taken: []), .ready)
+        w.user = "Administrator"; if case .wrong = w.verdict(taken: []) {} else { XCTFail("one of Windows's own account names") }
+        w.user = "Viktor"; w.edition = .home; w.name = "My Windows 11!"
+        let wa = w.windows()
+        XCTAssertEqual(wa.user, "Viktor"); XCTAssertEqual(wa.edition, .home); XCTAssertEqual(wa.keyboard, "nb-NO"); XCTAssertEqual(wa.computer, "MY-WINDOWS-11")
+        XCTAssertTrue(FirstStartSheet.asks(.omarchy) && FirstStartSheet.asks(.windows)); XCTAssertFalse(FirstStartSheet.asks(.arch) || FirstStartSheet.asks(.tiny))
+
+        // kept in the machine's folder until its first start, for the Mac user alone; forgotten when the form says to ask
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-firststart-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let om = ProfileStore.newProfile(named: "O", kind: .omarchy, folder: dir.appendingPathComponent("o"))
+        XCTAssertNil(o.apply(to: om)); XCTAssertEqual(OmarchyUnattended.read(om.machineFolder), a); XCTAssertEqual(OmarchyUnattended.stage(om), .settingUp)
+        // the dialog opened again for it: what was answered, never the password
+        let again = FirstStartSheet.start(.existing(om))
+        XCTAssertEqual(again.hostname, "box"); XCTAssertEqual(again.timezone, "Atlantic/Reykjavik"); XCTAssertEqual(again.password, ""); XCTAssertEqual(again.again, "")
+        XCTAssertNil(asked.apply(to: om)); XCTAssertNil(OmarchyUnattended.read(om.machineFolder)); XCTAssertEqual(OmarchyUnattended.stage(om), .none)
+
+        // Windows: the answers wait for the first start, when the ISO says its language
+        let template = try String(contentsOfFile: #filePath.replacingOccurrences(of: "/mac/Tests/myLinuxTests/LauncherTests.swift", with: "/windows/autounattend-unattended.xml"), encoding: .utf8)
+        let win = ProfileStore.newProfile(named: "W", kind: .windows, folder: dir.appendingPathComponent("w"))
+        XCTAssertFalse(WindowsUnattended.asked(win)); XCTAssertNil(WindowsUnattended.prepare(win, isoLabel: "CCCOMA_A64FRE_NB-NO_DV9", template: template), "nothing kept, nothing done")
+        XCTAssertNil(w.apply(to: win)); XCTAssertEqual(WindowsUnattended.kept(win.machineFolder), wa); XCTAssertTrue(WindowsUnattended.asked(win)); XCTAssertFalse(WindowsUnattended.inProgress(win))
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: WindowsUnattended.pending(win.machineFolder).path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        XCTAssertEqual(FirstStartSheet.start(.existing(win)).edition, .home); XCTAssertEqual(FirstStartSheet.start(.existing(win)).password, "")
+        XCTAssertNotNil(WindowsUnattended.prepare(win, isoLabel: nil, template: nil), "a launcher without the answer file's template does not start the install")
+        XCTAssertNotNil(WindowsUnattended.kept(win.machineFolder), "and keeps the answers")
+        XCTAssertNil(WindowsUnattended.prepare(win, isoLabel: "CCCOMA_A64FRE_NB-NO_DV9", template: template))
+        XCTAssertNil(WindowsUnattended.kept(win.machineFolder)); XCTAssertTrue(WindowsUnattended.inProgress(win)); XCTAssertTrue(WindowsUnattended.asked(win))
+        let xml = try String(contentsOf: WindowsUnattended.file(win.machineFolder), encoding: .utf8)
+        XCTAssertTrue(xml.contains("<UILanguage>nb-NO</UILanguage>")); XCTAssertTrue(xml.contains("<Name>Viktor</Name>")); XCTAssertTrue(xml.contains("<Value>secret</Value>"))
+        XCTAssertTrue(xml.contains("<Key>\(WindowsUnattended.Edition.home.key)</Key>"))
+        // asked in Windows Setup after all, before the start: the kept answers go
+        XCTAssertNil(w.apply(to: win)); var no = w; no.answered = false
+        XCTAssertNil(no.apply(to: win)); XCTAssertNil(WindowsUnattended.kept(win.machineFolder))
+        // and none of them goes to the Trash with a machine
+        XCTAssertNil(w.apply(to: win)); ProfileStore.forgetAnswers(in: win.machineFolder)
+        XCTAssertNil(WindowsUnattended.kept(win.machineFolder)); XCTAssertFalse(WindowsUnattended.inProgress(win))
+    }
     func testTinyAlpineIsAServerThatIsAlpineInside() {
         let p = ProfileStore.newProfile(named: "T", kind: .tiny, folder: URL(fileURLWithPath: "/tmp/m/t"))
         XCTAssertTrue(p.isServer); XCTAssertFalse(p.kind.runsDesktop)

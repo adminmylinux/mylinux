@@ -6,8 +6,10 @@ import Carbon.HIToolbox
 /// terms, the disk, and an account; an answer file can say all of it (windows/autounattend-unattended.xml), and with
 /// it a new machine goes from Microsoft's ISO to a desktop without a hand on it.
 ///
-/// The launcher fills the file in for one machine and keeps it in the machine's folder (`autounattend.xml`, for the
-/// Mac user alone); run-windows.sh puts that one on the machine's tools disc while Windows is not installed. The
+/// The answers come from the command or from the launcher's dialog for a new machine (FirstStartSheet) and are kept
+/// in the machine's folder until its first start (`unattended.answers`, for the Mac user alone): the ISO, which may be
+/// given later, says which language Windows is in. At that start the launcher fills the file in for the machine
+/// (`autounattend.xml`, for the Mac user alone); run-windows.sh puts that one on the machine's tools disc while Windows is not installed. The
 /// licence terms are the person's to accept: the file is only made when the command says so in words
 /// (`--accept-microsoft-license`), and a coding agent's skill tells it to pass that only when the user has said it.
 /// When Windows reports "installed" (setup.ps1, as for any install), the launcher restarts the machine by itself
@@ -15,13 +17,13 @@ import Carbon.HIToolbox
 /// password, is removed then, and the tools disc is made again without it at that start.
 enum WindowsUnattended {
     /// The edition is chosen by its generic key, as Microsoft publishes them for installing (they do not activate).
-    enum Edition: String, CaseIterable {
+    enum Edition: String, CaseIterable, Codable {
         case pro, home
         var key: String { self == .pro ? "VK7JG-NPHTM-C97JM-9MPGT-3V66T" : "YTMG3-N6DKC-DKB77-7M9GH-8HVX7" }
         var title: String { self == .pro ? "Windows 11 Pro" : "Windows 11 Home" }
     }
 
-    struct Answers: Equatable {
+    struct Answers: Equatable, Codable {
         var user: String
         var password = ""
         var edition = Edition.pro
@@ -37,6 +39,47 @@ enum WindowsUnattended {
     /// This machine's install answers itself (and has not finished).
     static func inProgress(_ p: Profile) -> Bool {
         p.kind == .windows && FileManager.default.fileExists(atPath: file(p.machineFolder).path)
+    }
+
+    // ---- from the command or the dialog to the first start ----------------------------------------------------------------
+    static func pending(_ machineFolder: URL) -> URL { machineFolder.appendingPathComponent("unattended.answers") }
+    /// The answers a machine was made with, while it has not started with them.
+    static func kept(_ machineFolder: URL) -> Answers? {
+        (try? Data(contentsOf: pending(machineFolder))).flatMap { try? JSONDecoder().decode(Answers.self, from: $0) }
+    }
+    /// Asked to install by itself: waiting for its first start, or installing.
+    static func asked(_ p: Profile) -> Bool { p.kind == .windows && !p.windowsInstalled && (inProgress(p) || kept(p.machineFolder) != nil) }
+    /// Keeps the answers for the machine's first start, for the Mac user alone: nil, or what went wrong.
+    static func keep(_ a: Answers, machineFolder: URL) -> String? {
+        guard let data = try? JSONEncoder().encode(a) else { return "could not write the answers" }
+        return put(data, at: pending(machineFolder)).map { "could not keep the answers: \($0)" }
+    }
+    /// The answers are not wanted after all (while the machine has not started with them): Windows Setup asks.
+    static func forget(_ machineFolder: URL) {
+        try? FileManager.default.removeItem(at: pending(machineFolder))
+    }
+    /// A start of a machine without Windows in it: answers that were kept become its answer file, in the ISO's
+    /// language. nil, or what went wrong (the machine is not started then: it would ask what was answered).
+    static func prepare(_ p: Profile, isoLabel: String?, template: String? = template()) -> String? {
+        guard p.kind == .windows, var a = kept(p.machineFolder) else { return nil }
+        if !p.windowsInstalled {
+            a.language = language(isoLabel: isoLabel)
+            if let problem = write(a, machineFolder: p.machineFolder, template: template) { return problem }
+        }
+        forget(p.machineFolder)
+        return nil
+    }
+    /// A file for the Mac user alone, put in place whole: nil, or why not.
+    private static func put(_ data: Data, at url: URL) -> String? {
+        let fm = FileManager.default, tmp = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".tmp")
+        do {
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.removeItem(at: tmp)
+            guard fm.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]) else { return "\(url.path) cannot be written" }
+            try? fm.removeItem(at: url)
+            try fm.moveItem(at: tmp, to: url)
+            return nil
+        } catch { return error.localizedDescription }
     }
 
     /// What is wrong with an account for Windows, in words; nil when it can be made.
@@ -120,15 +163,7 @@ enum WindowsUnattended {
         guard let template else { return "this launcher has no answer file for an unattended Windows install" }
         let text = render(template, a)
         guard !text.contains("{{") else { return "the answer file has a place nothing was filled into" }
-        do {
-            try FileManager.default.createDirectory(at: machineFolder, withIntermediateDirectories: true)
-            let url = file(machineFolder), tmp = machineFolder.appendingPathComponent(".autounattend.tmp")
-            try? FileManager.default.removeItem(at: tmp)
-            guard FileManager.default.createFile(atPath: tmp.path, contents: Data(text.utf8), attributes: [.posixPermissions: 0o600]) else { return "could not write \(url.path)" }
-            try? FileManager.default.removeItem(at: url)
-            try FileManager.default.moveItem(at: tmp, to: url)
-            return nil
-        } catch { return "could not write the answer file: \(error.localizedDescription)" }
+        return put(Data(text.utf8), at: file(machineFolder)).map { "could not write the answer file: \($0)" }
     }
 
     /// When each machine's Windows was first seen installed (the restart comes a little later: its first sign-in is settling).

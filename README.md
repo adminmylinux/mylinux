@@ -71,7 +71,10 @@ Since runtime 11.1.1-4 the window is resizable from the start, so Window › Fil
 drag work straight away; until you size it, it follows the guest's resolution as a fixed window did; Control+Command+F toggles full screen in every keyboard mode, and a small floating
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
 patch on the runtime. In the
-launcher it is **Add Omarchy**. Open windows come back after a restart: `omarchy/session` is written into a new
+launcher it is **+ › Omarchy Machine…**: a dialog takes the machine's name and the answers to what Omarchy asks at
+its first start (keyboard, account, password, host name, time zone, and a name and e-mail address for git), and the
+machine then starts straight at its desktop (from 0.7.80; the dialog's switch turned off, Omarchy asks in its window
+as before, and a machine that has not started yet has **Answer Here…** on its page). Open windows come back after a restart: `omarchy/session` is written into a new
 machine's disk before its first boot (`tools/omarchy-bake-session.sh`, with the runtime's `debugfs`; nothing is mounted),
 system-wide and enabled for every account. The layout, each window's command line and a terminal's working directory, is
 saved every minute and at logout and reopened on the same workspaces at login. Apps that restore their own state come
@@ -140,6 +143,13 @@ Images & runtime) or to `tools/get-windows.sh --iso <file>`. That checks that it
 fetches what Windows lacks for this machine: the virtio drivers for the network card, the display and the serial
 ports (the [virtio-win](https://github.com/virtio-win/virtio-win-pkg-scripts) project's driver disc, one pinned
 version checked against a pinned SHA-256; 877 MB to download, 3 MB kept) and the UEFI firmware.
+
+**+ › Windows Machine…** opens a dialog (from 0.7.80) that takes what Windows Setup and Windows's first-run screens
+would ask: the account's name, a password if you want one, the edition, the keyboard, and your acceptance of
+Microsoft's licence terms, which is a box only you tick. With it Windows installs itself, as `mylinux create windows
+--unattended` does (below), in 15 to 40 minutes with nothing to answer. With the dialog's switch turned off, the
+install is the one described here, answered in the machine's window; **Install by Itself…** on the machine's page
+brings the dialog back while Windows is not installed.
 
 The first start is Windows Setup itself, in a window of 1024 × 768 (the title bar's + and Fill Screen enlarge it): you choose the language, an edition ("I don't
 have a product key", or yours) and the one empty disk, and Microsoft's licence terms are shown and accepted there.

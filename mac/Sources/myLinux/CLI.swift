@@ -281,8 +281,6 @@ enum CLI {
     /// What is being done for a machine on the command line's word: a download, then its start.
     struct Job { var phase: String; var what = ""; var manager: ScriptDownloader?; var error: String? }
     private(set) static var jobs: [UUID: Job] = [:]
-    /// A Windows install that answers itself, asked for and not begun: its answers, until the ISO is there to say its language.
-    private static var answers: [UUID: WindowsUnattended.Answers] = [:]
     private static var observer: NSObjectProtocol?
 
     static func serve() {
@@ -362,11 +360,6 @@ enum CLI {
             if let missing = left.list.first { fail("\(missing.name) did not download"); return }
             if let problem = left.problem { fail(problem); return }
             guard let fresh = store.profiles.first(where: { $0.id == id }) else { jobs[id] = nil; return }
-            if var a = answers[id], !fresh.windowsInstalled {
-                a.language = WindowsUnattended.language(isoLabel: settings.windowsISO)
-                if let problem = WindowsUnattended.write(a, machineFolder: fresh.machineFolder) { fail(problem); return }
-                answers[id] = nil
-            }
             jobs[id] = Job(phase: "starting")
             let r = RunManager.shared.runner(for: id)
             r.clearFailure()
@@ -418,11 +411,12 @@ enum CLI {
         if p.kind == .windows {
             let stage = WindowsSetupStage.of(p)
             let answers = WindowsDisplay.keptMemory(p.machineFolder) != nil
-            let unattended = WindowsUnattended.inProgress(p) || CLIService.answers[p.id] != nil
+            let unattended = WindowsUnattended.asked(p) || WindowsUnattended.inProgress(p)
             d["windows"] = ["installed": p.windowsInstalled, "stage": ["answering Windows Setup", "installing", "first-run screens", "installed"][stage.rawValue],
                             "agent": answers, "unattended": unattended,
                             "note": p.windowsInstalled ? (unattended ? "installed: the machine restarts by itself in a moment, then it is ready" : "")
-                                : unattended ? "Windows is installing itself, with nothing to answer: 15 to 40 minutes"
+                                : unattended ? (state == "running" ? "Windows is installing itself, with nothing to answer: 15 to 40 minutes"
+                                                                    : "its first start installs Windows by itself, with nothing to answer: 15 to 40 minutes")
                                              : "Windows Setup and Windows's first-run screens are answered in the machine's window, by a person"]
             ready = ready && p.windowsInstalled && answers
         }
@@ -500,15 +494,17 @@ enum CLI {
             let forOmarchy = ["timezone", "hostname", "full-name", "email"]
             if w.flags.contains("unattended"), kind == .omarchy {
                 // Omarchy's first-start questions, answered beforehand: what is not said is as on this Mac
-                var a = OmarchyUnattended.Answers(user: (w.values["user"] ?? NSUserName()).trimmingCharacters(in: .whitespaces), password: w.values["password"] ?? "")
+                var a = OmarchyUnattended.suggested(machine: name)
+                if let user = w.values["user"] { a.user = user.trimmingCharacters(in: .whitespaces) }
+                a.password = w.values["password"] ?? ""
                 if let k = w.values["keyboard"] {
                     guard let layout = OmarchyUnattended.keyboard(k) else {
                         return .failed("--keyboard is one of Omarchy's keyboards by name (Norwegian, Icelandic, \"English (UK)\" …) or a language and region (nb-NO, is-IS, en-GB)", code: 2)
                     }
                     a.keyboard = layout
-                } else if let layout = OmarchyUnattended.keyboard(layout: WindowsUnattended.macLayout()) { a.keyboard = layout }
-                a.timezone = w.values["timezone"] ?? TimeZone.current.identifier
-                a.hostname = w.values["hostname"] ?? OmarchyUnattended.hostname(name)
+                }
+                if let zone = w.values["timezone"] { a.timezone = zone }
+                if let host = w.values["hostname"] { a.hostname = host }
                 a.fullName = (w.values["full-name"] ?? "").trimmingCharacters(in: .whitespaces)
                 a.email = (w.values["email"] ?? "").trimmingCharacters(in: .whitespaces)
                 if w.values["edition"] != nil { return .failed("--edition is Windows's", code: 2) }
@@ -544,7 +540,11 @@ enum CLI {
             if let port { p.sshPort = port }                    // (a server gets the next free one by itself)
             if let grab { p.grab = grab }
             store.update(p)
-            if let unattended { answers[p.id] = unattended }
+            // (Windows's answers wait for the first start: Runner.start writes the answer file, in the ISO's language)
+            if let unattended, let problem = WindowsUnattended.keep(unattended, machineFolder: p.machineFolder) {
+                _ = store.remove(p.id, trashFiles: true)
+                return .failed(problem)
+            }
             if let omarchy, let problem = OmarchyUnattended.write(omarchy, machineFolder: p.machineFolder) {
                 _ = store.remove(p.id, trashFiles: true)
                 return .failed(problem)
@@ -581,7 +581,7 @@ enum CLI {
             guard w.flags.contains("yes") else { return .failed("deleting \"\(p.name)\" moves the machine and its disk to the Trash: say so with --yes", code: 2) }
             let r = RunManager.shared.runner(for: p.id)
             guard !r.isActive, r.state != .inUseElsewhere, !Runner.diskInUse(p.appsDisk) else { return .failed("\"\(p.name)\" is running: mylinux stop \"\(p.name)\" --wait, then delete") }
-            jobs[p.id] = nil; answers[p.id] = nil
+            jobs[p.id] = nil
             if let left = store.remove(p.id, trashFiles: true) { return .ok(["deleted": p.name, "note": left]) }
             return .ok(["deleted": p.name, "note": "the machine's files are in the Trash"])
         case "erase":
@@ -603,7 +603,7 @@ enum CLI {
             if what == "machines" {
                 var notes: [String] = []
                 for p in store.profiles {
-                    jobs[p.id] = nil; answers[p.id] = nil
+                    jobs[p.id] = nil
                     if let left = store.remove(p.id, trashFiles: true) { notes.append(left) }
                 }
                 return .ok(["erased": names, "note": notes.isEmpty ? "the machines' files are in the Trash; the downloaded systems are kept, so a new machine needs no download"

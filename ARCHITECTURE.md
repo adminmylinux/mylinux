@@ -484,7 +484,11 @@ pointer while it is fullscreen or after ⌘⌃G.
   --accept-microsoft-license`). The answers are `windows/autounattend-unattended.xml` filled in for one machine (the
   ISO's language from its label, the Mac's keyboard layout where Windows has its namesake, the edition by
   Microsoft's generic key for it, the disk wiped and partitioned, the licence terms, a local administrator, no
-  first-run screens, two sign-ins by itself) and kept as `<machine>/autounattend.xml`, mode 600. `run-windows.sh`
+  first-run screens, two sign-ins by itself) and kept as `<machine>/autounattend.xml`, mode 600. The answers
+  themselves wait from the command or the dialog until the machine's first start as `<machine>/unattended.answers`
+  (JSON, mode 600), because the ISO, which may be given later, says the language: `Runner.start` calls
+  `WindowsUnattended.prepare`, which writes the answer file and removes the kept answers, for a start from the
+  launcher's window and from the command line alike (and across a restart of the launcher). `run-windows.sh`
   puts that file on the tools disc in place of `autounattend.xml` while the machine is not installed, and at the
   first installed start removes it and makes the disc again (or removes the disc, where the drivers to make one
   from are gone). `setup.ps1` works as in any install: the network driver waits for the end of the first-run
@@ -510,6 +514,19 @@ pointer while it is fullscreen or after ⌘⌃G.
   `OmarchyUnattended.follow`: the marker goes when the session tool's `status.json` in the share is newer than the
   start (the desktop is up), or after ten minutes; until then `status` is not `ready`. A machine deleted before its
   first start has its answers removed, not moved to the Trash (`ProfileStore.forgetAnswers`, Windows's too).
+
+- `FirstStartSheet.swift`: the dialog a new Omarchy or Windows machine is made with in the launcher's window
+  (+ and File › New Omarchy Machine… / New Windows Machine…): the machine's name and the same answers as `create
+  --unattended` takes, checked by the same rules (`FirstStartForm.verdict`: ready, something still to fill in, or
+  wrong, said in the dialog's footer). A switch at its top turns the answers off, and the machine asks in its window
+  as before. Microsoft's licence terms are a box of the user's own to tick; Create waits for it. Create makes the
+  machine (`ProfileStore.add(copying:kind:named:)`) and keeps the answers: `OmarchyUnattended.write`
+  (`first-start.answers`) or `WindowsUnattended.keep` (`unattended.answers`), both for the Mac user alone. A machine
+  made without the dialog and not started yet (a duplicate, the Welcome sheet's Omarchy) is offered the dialog once,
+  and its page (`MachineView.firstStartNote`, `windowsInstallNote`) says who answers, with Answer Here… / Install by
+  Itself…, Change… (the dialog again, with what was answered and never the password) and a button that forgets the
+  answers. The sheet has a fixed size (fields that do not apply are greyed, not removed). `--render-first-start
+  omarchy|windows <png>` draws it to a file.
 
 ### 7.2 How it runs a machine
 

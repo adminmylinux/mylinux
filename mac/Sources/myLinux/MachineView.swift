@@ -38,6 +38,9 @@ struct MachineView: View {
     }
 
     private var editable: Bool { !runner.isActive && runner.state != .inUseElsewhere }
+    /// Counts the changes to this machine's first-start answers (files beside its disk), so the page reads them again.
+    @State private var answersChanged = 0
+    private func answerHere() { NotificationCenter.default.post(name: FirstStartSheet.showNotification, object: draft.id) }
 
     /// What has to be downloaded before this machine can start, or nil. An existing machine has its own disk and
     /// needs no download; a new one needs its guest, and Omarchy the accelerated QEMU.
@@ -87,7 +90,7 @@ struct MachineView: View {
                 if MachineStatus.running(runner) {
                     Section {} header: { live }
                 }
-                if isServer { serverDownloads } else if isDesktop { desktopDownloads; windowsInstallNote }
+                if isServer { serverDownloads } else if isDesktop { desktopDownloads; firstStartNote; windowsInstallNote }
                 Section {} header: { fold("Machine configuration", "slider.horizontal.3", configSummary, $openConfig) }
                 if openConfig {
                     Group { if isServer { serverConfiguration } else { desktopConfiguration } }.disabled(!editable)
@@ -105,6 +108,8 @@ struct MachineView: View {
             if let saved, saved != draft.cloudFolders { draft.cloudFolders = saved }
         }
         .onAppear { runtime.refresh(settings); images.refresh(settings); if isDesktop { desktopImage.refresh(settings) }; if isServer { server.refresh(settings) } }
+        // the dialog kept or forgot this machine's first-start answers: the page says who answers
+        .onReceive(NotificationCenter.default.publisher(for: FirstStartSheet.changedNotification)) { _ in answersChanged += 1 }
         .toolbar { HeaderToolbar() }
     }
 
@@ -557,15 +562,60 @@ struct MachineView: View {
                 }
     }
 
+    /// A new Omarchy, before its first start: who answers its first-start questions, the dialog (FirstStartSheet) or
+    /// a person in the machine's window.
+    @ViewBuilder private var firstStartNote: some View {
+        if isOmarchy && !draft.desktopCreated {
+            Section("First start") {
+                let _ = answersChanged
+                if let a = OmarchyUnattended.read(draft.machineFolder) {
+                    Text("Omarchy sets itself up at its first start, with nothing to answer: the account \(a.user), the \(a.keyboard) keyboard, the time zone \(a.timezone) and the host name \(a.hostname). It starts straight at its desktop.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Button("Change…") { answerHere() }
+                        Button("Ask in Its Window Instead") { OmarchyUnattended.forget(draft.machineFolder); answersChanged += 1 }
+                    }
+                    .disabled(!editable)
+                } else {
+                    Text("At its first start Omarchy asks, in its window, for a keyboard, an account and its password, a host name and a time zone.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button("Answer Here…") { answerHere() }.disabled(!editable)
+                }
+            }
+        }
+    }
+
     /// What a desktop machine (Omarchy, Arch) needs before its first start, each with its own download.
     /// A Windows machine before Windows is in it: what the first start is, and what to choose there.
     @ViewBuilder private var windowsInstallNote: some View {
-        if isWindows && !draft.windowsInstalled {
+        if isWindows && !draft.windowsInstalled, let a = WindowsUnattended.kept(draft.machineFolder) {
+            // made to install by itself (FirstStartSheet, or mylinux create windows --unattended), and not started yet
             Section("Installing Windows") {
+                let _ = answersChanged
+                Text("Windows installs itself at the first start, with nothing to answer, in 15 to 40 minutes: \(a.edition.title), the account \(a.user)\(a.password.isEmpty ? " without a password (Windows signs in by itself)" : ""), the \(a.keyboard) keyboard. Microsoft's licence terms were accepted for it. It restarts by itself a few times, the last time into the finished machine.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Change…") { answerHere() }
+                    Button("Answer Windows Setup Myself") { WindowsUnattended.forget(draft.machineFolder); answersChanged += 1 }
+                }
+                .disabled(!editable)
+            }
+        } else if isWindows && !draft.windowsInstalled && WindowsUnattended.inProgress(draft) {
+            Section("Installing Windows") {
+                Text("Windows is installing itself with the answers given, with nothing to answer: 15 to 40 minutes. It restarts by itself a few times, the last time into the finished machine.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        } else if isWindows && !draft.windowsInstalled {
+            Section("Installing Windows") {
+                let _ = answersChanged
                 Text("The first start is Windows Setup, in a window of 1024 × 768 (+ and Fill Screen in its title bar enlarge it), for a quarter of an hour to 40 minutes; it restarts by itself a few times. In Setup choose “I don't have a product key” (or enter yours), an edition, and the one empty disk; Microsoft's licence terms are shown there. The first-run screens have no network yet: choose “I don't have internet” there to make a local account (the network comes up when they are over). When the desktop is there, a note says so: choose Machine › Restart in the Mac's menu bar (or Restart on this page), and from then on its display fills the window and follows its size.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 // the same as steps, in a window that stays beside Windows's own while it installs (it opens by itself then)
-                Button("Show the Steps") { WindowsSetupHelp.show(draft, byUser: true) }
+                HStack {
+                    Button("Show the Steps") { WindowsSetupHelp.show(draft, byUser: true) }
+                    // (not once Setup has begun: its answers are read when it starts)
+                    Button("Install by Itself…") { answerHere() }.disabled(!editable)
+                }
             }
         }
     }

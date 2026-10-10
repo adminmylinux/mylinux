@@ -10,6 +10,8 @@ struct ContentView: View {
     @StateObject private var images = ImageManager.shared
     @StateObject private var runtime = RuntimeManager.shared      // observed so the QEMU warning goes when a download lands
     @State private var selection: UUID?
+    /// The dialog a new Omarchy or Windows machine is made with (FirstStartSheet), while it shows.
+    @State private var firstStart: FirstStartSheet.Subject?
 
     private var selected: Profile? { store.profiles.first { $0.id == selection } }
     /// The Overview's place in the selection (no machine has this id).
@@ -31,7 +33,7 @@ struct ContentView: View {
                     ForEach(store.profiles) { p in
                         MachineRow(profile: p, runner: runs.runner(for: p.id)).tag(p.id)
                             .contextMenu {
-                                Button("Duplicate") { selection = store.add(copying: p).id }
+                                Button("Duplicate") { let copy = store.add(copying: p); selection = copy.id; offerAnswers(copy) }
                                 Button("Remove", role: .destructive) { remove(p) }
                                     .disabled(runs.runner(for: p.id).isActive)
                             }
@@ -86,6 +88,7 @@ struct ContentView: View {
         }
         .onAppear {
             if selection == nil { selection = ContentView.overviewID }
+            showAskedFor()      // File › New Omarchy Machine… while this window was closed
             // tests (--start-machine): the page of the machine being started
             if let k = ProcessInfo.processInfo.environment["MYLINUX_TEST_SELECT"], let p = store.profiles.first(where: { $0.kind.rawValue == k }) { selection = p.id }
             images.refresh(settings); runtime.refresh(settings)
@@ -106,16 +109,45 @@ struct ContentView: View {
             WelcomeSheet(images: images, omarchy: .omarchy, arch: .arch, kali: .kali, debian: .debian, alpine: .alpine, tiny: .tiny, runtime: runtime, done: { kinds in
                 showWelcome = false
                 // a machine of each downloaded kind that has none yet, and the first of them selected
-                var first: UUID?
+                var first: UUID?, added: [Profile] = []
                 for kind in kinds where !store.profiles.contains(where: { $0.kind == kind }) {
                     let p = store.add(kind: kind); if first == nil { first = p.id }
+                    added.append(p)
                 }
                 if let first { selection = first }
                 else if let k = kinds.first, let p = store.profiles.first(where: { $0.kind == k }) { selection = p.id }
+                // a new Omarchy among them: its first-start answers, once this sheet has closed
+                if let p = added.first(where: { FirstStartSheet.asks($0.kind) }) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { offerAnswers(p) }
+                }
             })
             .environmentObject(settings)
         }
+        // a new Omarchy or Windows machine: its name and its first-start answers
+        .background {
+            Color.clear.sheet(item: $firstStart) { subject in
+                FirstStartSheet(subject: subject) { id in
+                    firstStart = nil
+                    if let id { selection = id }
+                }
+                .environmentObject(store)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: FirstStartSheet.showNotification)) { n in
+            if let id = n.object as? UUID, let p = store.profiles.first(where: { $0.id == id }) { firstStart = .existing(p) } else { showAskedFor() }
+        }
         .frame(minWidth: 860, minHeight: 720)
+    }
+
+    /// The dialog for the new machine a menu command asked for (FirstStartSheet.ask).
+    private func showAskedFor() {
+        guard let kind = FirstStartSheet.waiting else { return }
+        FirstStartSheet.waiting = nil
+        firstStart = .new(kind, copying: nil)
+    }
+    /// A machine made without the dialog (a duplicate, the Welcome sheet's): the dialog for its first start, when its kind asks.
+    private func offerAnswers(_ p: Profile) {
+        if FirstStartSheet.asks(p.kind), !showWelcome { firstStart = .existing(p) }
     }
 
     /// Everything that can be added, behind one + above the list: the two kinds of machine, the two kinds of remote
@@ -125,8 +157,8 @@ struct ContentView: View {
             Button { selection = store.add(copying: selected?.kind == .mylinux ? selected : nil, kind: .mylinux).id } label: {
                 Label("myLinux Machine", systemImage: "desktopcomputer")
             }
-            Button { selection = store.add(copying: selected?.kind == .omarchy ? selected : nil, kind: .omarchy).id } label: {
-                Label("Omarchy Machine", systemImage: "cube")
+            Button { firstStart = .new(.omarchy, copying: selected?.kind == .omarchy ? selected : nil) } label: {
+                Label("Omarchy Machine…", systemImage: "cube")
             }
             Button { selection = store.add(copying: selected?.kind == .arch ? selected : nil, kind: .arch).id } label: {
                 Label("Arch Linux Machine", systemImage: "triangle")
@@ -134,8 +166,8 @@ struct ContentView: View {
             Button { selection = store.add(copying: selected?.kind == .kali ? selected : nil, kind: .kali).id } label: {
                 Label("Kali Linux Machine", systemImage: "shield.lefthalf.filled")
             }
-            Button { selection = store.add(copying: selected?.kind == .windows ? selected : nil, kind: .windows).id } label: {
-                Label("Windows Machine", systemImage: "macwindow")
+            Button { firstStart = .new(.windows, copying: selected?.kind == .windows ? selected : nil) } label: {
+                Label("Windows Machine…", systemImage: "macwindow")
             }
             Button { selection = store.add(copying: selected?.kind == .debian ? selected : nil, kind: .debian).id } label: {
                 Label("Debian Server", systemImage: "server.rack")

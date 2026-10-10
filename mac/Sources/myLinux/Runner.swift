@@ -130,6 +130,8 @@ final class Runner: ObservableObject {
         } catch {
             state = .failed("Could not create folders: \(error.localizedDescription)"); return
         }
+        // a Windows machine made to install by itself: its answers become the answer file now, in the ISO's language
+        if let problem = WindowsUnattended.prepare(p, isoLabel: settings.windowsISO) { state = .failed(problem); return }
         unlink(serialSocket); unlink(qmpSocket)
         fm.createFile(atPath: logFile.path, contents: nil)
         console = ""

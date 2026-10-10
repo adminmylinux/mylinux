@@ -44,10 +44,11 @@ struct MyLinuxApp: App {
 
     @ViewBuilder private var newItems: some View {
                 Button("New myLinux Machine") { _ = store.add(kind: .mylinux) }.keyboardShortcut("n")
-                Button("New Omarchy Machine") { _ = store.add(kind: .omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
+                // Omarchy and Windows ask a person at their first start: a dialog takes the answers first (FirstStartSheet)
+                Button("New Omarchy Machine…") { FirstStartSheet.ask(.omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Arch Linux Machine") { _ = store.add(kind: .arch) }
                 Button("New Kali Linux Machine") { _ = store.add(kind: .kali) }
-                Button("New Windows Machine") { _ = store.add(kind: .windows) }
+                Button("New Windows Machine…") { FirstStartSheet.ask(.windows) }
                 Button("New Debian Server") { _ = store.add(kind: .debian) }.keyboardShortcut("n", modifiers: [.command, .option])
                 Button("New Alpine Server") { _ = store.add(kind: .alpine) }
                 Button("New Tiny Alpine Server") { _ = store.add(kind: .tiny) }
@@ -155,6 +156,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
             }
             exit(0)
+        }
+        // `myLinux --render-first-start omarchy|windows <png>`: draw the dialog of a new machine to a file
+        // (MYLINUX_RENDER_FILLED=1: with answers in it, as when Create can be pressed)
+        if let i = args.firstIndex(of: "--render-first-start"), i + 2 < args.count, let kind = Profile.Kind(rawValue: args[i + 1]) {
+            if ProcessInfo.processInfo.environment["MYLINUX_RENDER_FILLED"] == "1" {
+                var f = FirstStartForm.suggested(kind, name: kind.title + " 2", macUser: "viktor")
+                f.password = "made up for the picture"; f.again = f.password; f.acceptsLicense = true
+                FirstStartSheet.renderForm = f
+            }
+            let view = NSHostingView(rootView: FirstStartSheet(subject: .new(kind, copying: nil), done: { _ in }).environmentObject(ProfileStore.shared)
+                .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .dark))
+            view.frame = NSRect(origin: .zero, size: view.fittingSize); view.appearance = NSAppearance(named: .darkAqua)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 2]))
+                }
+                exit(0)
+            }
+            return
         }
         // `myLinux --render-settings <png>`: draw the Settings window's content to a file
         if let i = args.firstIndex(of: "--render-settings"), i + 1 < args.count {

@@ -374,7 +374,7 @@ final class ProfileStore: ObservableObject {
     /// The answers a machine was made with and has not used yet (an unattended Windows's, Omarchy's first start's) name
     /// a password: they are removed from a machine's folder before it goes to the Trash, not kept there.
     static func forgetAnswers(in folder: URL) {
-        for name in ["first-start.answers", "autounattend.xml"] { try? FileManager.default.removeItem(at: folder.appendingPathComponent(name)) }
+        for name in ["first-start.answers", "autounattend.xml", "unattended.answers"] { try? FileManager.default.removeItem(at: folder.appendingPathComponent(name)) }
     }
 
     /// What goes to the Trash with a machine: its own folder under machines/ (disk, share, kernel, keys) when no other
