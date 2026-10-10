@@ -402,7 +402,13 @@ enum CLI {
             let argv = SshTerminal.arguments(for: t)
             var ssh: [String: Any] = ["host": "127.0.0.1", "port": p.sshPort, "user": t.username, "key": t.keyFile, "argv": argv,
                                       "command": "mylinux ssh \"\(p.name)\" -- <command>"]
-            if p.isServer { ssh["ready"] = r.sshReady; ready = ready && r.sshReady }
+            if p.isServer {
+                // a server this launcher did not start itself (taken over from the launcher before it, or started
+                // while this one was not running) has not been asked yet whether its SSH answers: asked now, once,
+                // and without a terminal. Otherwise it would run, answer, and never be "ready".
+                if state == "running", !r.sshReady, !r.waitingForSSH { r.openTerminal(p, show: false) }
+                ssh["ready"] = r.sshReady; ready = ready && r.sshReady
+            }
             d["ssh"] = ssh
         }
         if p.kind == .windows {
