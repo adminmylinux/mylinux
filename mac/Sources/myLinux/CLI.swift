@@ -46,6 +46,10 @@ enum CLI {
           mylinux wait <name> [--timeout SECONDS] until it is ready (default 900 seconds)
           mylinux ssh <name> [-- command…]        a server's shell, or one command in it (tiny, alpine, debian)
           mylinux delete <name> --yes             the machine and its disk, into the Trash
+          mylinux erase machines --yes [--stop]   every machine and its disk, into the Trash (--stop shuts running ones down first)
+          mylinux erase everything --yes [--stop] as a new install: the machines, the downloads, the settings, the saved
+                                                  remote passwords and macOS's permissions; the data folder goes to the
+                                                  Trash and the launcher starts again
           mylinux skill install [--agent claude|codex|all]   the skill that teaches a coding agent these commands
           mylinux skill show | path
           mylinux version
@@ -164,7 +168,7 @@ enum CLI {
         }
         guard let w = words(Array(args.dropFirst())) else { err("mylinux: a --word is missing its value (mylinux help)"); return 2 }
         if first == "skill" { return Skill.run(w) }
-        guard ["kinds", "list", "create", "start", "stop", "restart", "status", "wait", "ssh", "delete"].contains(first) else {
+        guard ["kinds", "list", "create", "start", "stop", "restart", "status", "wait", "ssh", "delete", "erase"].contains(first) else {
             err("mylinux: no command \"\(first)\" (mylinux help)"); return 2
         }
         guard reach() else {
@@ -189,6 +193,18 @@ enum CLI {
             var c = all.map { strdup($0) } + [nil]
             execv("/usr/bin/ssh", &c)
             return finish(.failed("ssh could not be started"))
+        case "erase":
+            // --stop: what runs is shut down first, one machine at a time, and waited for; then the launcher is asked
+            if w.flags.contains("stop"), w.flags.contains("yes"), let machines = ask(["list"])?.json["machines"] as? [[String: Any]] {
+                for m in machines where ["running", "starting", "downloading"].contains(m["state"] as? String ?? "") {
+                    guard let name = m["name"] as? String else { continue }
+                    _ = ask(["stop", name])
+                    let stopped = wait(name, timeout: 180, stopped: true)
+                    if stopped.code != 0 { return finish(.failed("\(name) did not shut down: nothing was erased")) }
+                }
+            }
+            guard let r = ask(args) else { return finish(.failed("no answer from the launcher", code: 3)) }
+            return finish(r)
         default:
             guard let r = ask(args) else { return finish(.failed("no answer from the launcher", code: 3)) }
             guard r.code == 0, w.flags.contains("wait"), ["create", "start", "stop"].contains(first),
@@ -520,6 +536,37 @@ enum CLI {
             jobs[p.id] = nil; answers[p.id] = nil
             if let left = store.remove(p.id, trashFiles: true) { return .ok(["deleted": p.name, "note": left]) }
             return .ok(["deleted": p.name, "note": "the machine's files are in the Trash"])
+        case "erase":
+            guard let what = w.plain.first, ["machines", "everything"].contains(what) else {
+                return .failed("erase what? mylinux erase machines --yes (every machine and its disk, into the Trash), or mylinux erase everything --yes (as a new install)", code: 2)
+            }
+            let names = store.profiles.map(\.name)
+            let going = what == "machines"
+                ? "every machine and its disk (\(names.isEmpty ? "there are none" : names.joined(separator: ", "))), into the Trash"
+                : "everything the launcher keeps on this Mac: the machines and their disks (\(names.isEmpty ? "none" : names.joined(separator: ", "))), the downloaded systems and QEMU, the settings, the saved remote passwords and macOS's permissions for it. The data folder goes to the Trash, and the launcher starts again as on a new Mac"
+            guard w.flags.contains("yes") else { return .failed("this erases \(going). Say so with --yes", code: 2) }
+            let running = store.profiles.filter { p in
+                let r = RunManager.shared.runner(for: p.id)
+                return r.isActive || r.state == .inUseElsewhere || Runner.diskInUse(p.appsDisk) || (jobs[p.id].map { $0.error == nil } ?? false)
+            }
+            guard running.isEmpty else {
+                return .failed("\(running.map(\.name).joined(separator: ", ")) \(running.count == 1 ? "is" : "are") running: shut \(running.count == 1 ? "it" : "them") down first, or add --stop. Nothing was erased")
+            }
+            if what == "machines" {
+                var notes: [String] = []
+                for p in store.profiles {
+                    jobs[p.id] = nil; answers[p.id] = nil
+                    if let left = store.remove(p.id, trashFiles: true) { notes.append(left) }
+                }
+                return .ok(["erased": names, "note": notes.isEmpty ? "the machines' files are in the Trash; the downloaded systems are kept, so a new machine needs no download"
+                                                                   : "not everything could be moved to the Trash: " + notes.joined(separator: "; ")])
+            }
+            // everything: after this answer has gone out (the launcher quits to do it)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if let problem = StartOver.clearAll(toTrash: true) { NSLog("erase everything: %@", problem) }
+            }
+            return .ok(["erased": "everything", "machines": names,
+                        "note": "the launcher's data folder is in the Trash (put it back to undo; empty the Trash to free its space); the settings, saved remote passwords and macOS's permissions are reset, and the launcher starts again as on a new Mac. Saved downloads outside that folder are kept"])
         default: return .failed("no command \"\(command)\"", code: 2)
         }
     }

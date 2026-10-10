@@ -505,6 +505,12 @@ mylinux list                                                     # every machine
 mylinux stop tester1 --wait && mylinux delete tester1 --yes      # shut down, then into the Trash with its disk
 ```
 
+`mylinux erase machines --yes` moves every machine and its disk to the Trash, and `mylinux erase everything --yes`
+makes the launcher as on a new Mac (from 0.7.76): what Settings › Clear All Data clears (the machines, the downloaded
+systems and QEMU, the settings, the saved remote passwords, macOS's permissions for the launcher), with the data
+folder moved to the Trash instead of deleted, and the launcher started again. Without `--yes` either says what would
+go; with machines running either refuses and names them, and `--stop` shuts them down first.
+
 `create <kind>` takes `tiny`, `alpine`, `debian`, `omarchy`, `arch`, `kali`, `mylinux` or `windows`; sizes left out
 are the kind's own (`mylinux kinds` lists them and what is downloaded). What a kind needs is downloaded first, a
 saved copy when there is one, and the machine is started; `status` shows where that is (`job`), and `--wait` or

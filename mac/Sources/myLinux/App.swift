@@ -15,7 +15,7 @@ struct MyLinuxApp: App {
         if args.count == 3, args[1] == "--omarchy-clipboard" { exit(OmarchyClipboard.run(socketPath: args[2])) }
         if args.count >= 3, args[1] == "--windows-display" { exit(WindowsDisplay.run(socketPath: args[2], statsFile: args.count > 3 ? args[3] : nil, link: args.count > 4 ? args[4] : nil)) }
         // Clear All Data's second half: once the launcher that asked has quit, its data goes, then a fresh one starts
-        if args.count == 4, args[1] == "--finish-start-over", let pid = Int32(args[2]) { exit(StartOver.finish(after: pid, relaunch: args[3])) }
+        if args.count >= 4, args[1] == "--finish-start-over", let pid = Int32(args[2]) { exit(StartOver.finish(after: pid, relaunch: args[3], trash: args.count > 4 && args[4] == "trash")) }
         // the command line: `mylinux …` (Contents/Resources/bin/mylinux) is this binary with --cli, a client of the launcher that runs
         if args.count >= 2, args[1] == "--cli" { exit(CLI.run(Array(args.dropFirst(2)))) }
     }

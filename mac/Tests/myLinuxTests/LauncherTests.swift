@@ -1071,8 +1071,20 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(CLIService.find(one.uppercased(), store: store)?.id, p.id)
         XCTAssertEqual((ask("list").json["machines"] as? [[String: Any]])?.compactMap { $0["name"] as? String }.sorted(), [one, two])
         XCTAssertEqual((ask("kinds").json["kinds"] as? [[String: Any]])?.count, 8)
+        // erasing is said in full and done only on --yes
+        for what in ["machines", "everything"] {
+            let r = ask("erase", what)
+            XCTAssertEqual(r.code, 2); XCTAssertTrue((r.json["error"] as? String ?? "").contains(one), "what would go is named: \(r.json)")
+            XCTAssertTrue((r.json["error"] as? String ?? "").contains("--yes"))
+        }
+        XCTAssertEqual(ask("erase").code, 2); XCTAssertEqual(ask("erase", "tester1", "--yes").code, 2, "one machine is delete's")
+        XCTAssertEqual(store.profiles.count, before, "nothing went")
         // deleted on --yes, into the Trash (nothing of it was on disk yet)
         XCTAssertEqual(ask("delete", one, "--yes").code, 0); XCTAssertNil(CLIService.find(one, store: store))
+        // and every machine at once
+        let erased = ask("erase", "machines", "--yes")
+        XCTAssertEqual(erased.code, 0, "\(erased.json)"); XCTAssertEqual(erased.json["erased"] as? [String], [two]); XCTAssertTrue(store.profiles.isEmpty)
+        XCTAssertEqual(ask("erase", "machines", "--yes").json["erased"] as? [String], [], "nothing left to erase is not a failure")
         // the skill names this app's own command, and the launcher keeps an installed copy like its own
         if let text = CLI.Skill.text() {
             XCTAssertFalse(text.contains("{{MYLINUX}}")); XCTAssertTrue(text.contains("name: mylinux")); XCTAssertTrue(text.contains("create tiny --name tester1 --memory 1 --disk 20 --wait"))

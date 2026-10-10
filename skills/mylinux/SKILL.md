@@ -25,6 +25,8 @@ that error, do not guess around it. `{{MYLINUX}} help` lists every command.
 | is tester1 up | `status tester1` |
 | run `uname -a` in tester1 | `ssh tester1 -- uname -a` |
 | delete tester1 | `delete tester1 --yes` (see the rules below) |
+| erase all machines | `erase machines --yes` (see the rules below) |
+| erase everything, make the launcher like a new install | `erase everything --yes` (see the rules below) |
 | install windows (and nothing about the licence) | `create windows` and tell them it waits for their answers in its window |
 | install windows unattended, I accept Microsoft's licence terms, user viktor | `create windows --unattended --accept-microsoft-license --user viktor --wait --timeout 3600` |
 
@@ -73,5 +75,13 @@ Files go in and out through the machine's Mac folder: `status` gives `folder`; i
 - Delete only a machine the user named in this conversation and asked you to delete. `delete` moves it and its disk
   to the Trash; say that it can be put back from there.
 - Do not stop or restart a machine you did not start unless the user asks: they may be working in it.
+- `erase machines --yes` moves **every** machine and its disk to the Trash. `erase everything --yes` makes the
+  launcher as on a new Mac: the machines, the downloaded systems, the settings, the saved remote passwords and
+  macOS's permissions for it are gone, its data folder is in the Trash, and it starts again. Run either only when
+  the user asked for exactly that in this conversation, in words that leave no doubt ("erase all my machines",
+  "reset the launcher like a new install"); if they named one machine, that is `delete`. Without `--yes` the command
+  says what would go: show the user that when you are not sure. If machines are running the command refuses and
+  names them: ask the user before adding `--stop`, which shuts them down first. Afterwards say what went and that
+  it can be put back from the Trash until the Trash is emptied.
 - Report what the JSON says: the machine's name, its state, and for a server how to reach it
   (`{{MYLINUX}} ssh NAME`). Do not print the path of its SSH key unless asked.
