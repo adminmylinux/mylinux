@@ -556,7 +556,10 @@ pointer while it is fullscreen or after ⌘⌃G.
   (`ClaudeRequest.desktop = false` leaves Windows's desktop app to Claude Install…) with the subscription as the next
   free alias when a token was given, then Codex with cx and, when ticked, the Mac's own login. The file is removed
   when that ends, however it ends, and the machine's page shows the phase and the outcome
-  (`MachineView.firstStartTools`). A wish never goes to the Trash with a machine.
+  (`MachineView.firstStartTools`). A wish never goes to the Trash with a machine. An Omarchy gets both in one
+  request with `"notify": true`: `claude_setup.py` tells the desktop (notify-send) when it begins and when a new
+  terminal has them, because a terminal opened before that has not read the new aliases, and there Omarchy's own
+  `cx` is Claude Code and `cc` is the C compiler.
 
 ### 7.2 How it runs a machine
 

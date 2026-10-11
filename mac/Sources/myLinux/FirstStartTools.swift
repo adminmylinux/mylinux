@@ -110,28 +110,52 @@ import Foundation
             return
         }
         var lines: [String] = [], ok = true
-        if wish.claude {
-            phases[p.id] = .working("Installing Claude Code")
+        let token = wish.token.components(separatedBy: .whitespacesAndNewlines).joined()
+        let login = wish.codex && wish.codexLogin ? CodexLogin.login(at: CodexInstall.macLogin) : nil
+        /// Claude Code's part of a request: the terminal's, with the subscription as the next free alias when a token was given.
+        func claudeRequest() -> ClaudeRequest {
             var r = ClaudeRequest()
             r.desktop = false                                     // the terminal's Claude Code: the desktop app is Claude Install…'s
-            let token = wish.token.components(separatedBy: .whitespacesAndNewlines).joined()
             if !token.isEmpty {
                 r.token = token; r.account = wish.account.isEmpty ? "claude" : wish.account; r.alias = look.status.nextAlias
                 r.makeDefault = !look.status.defaultToken && !look.status.browserLogin
             }
+            return r
+        }
+        func claudeLine(_ o: ClaudeOutcome) -> String {
+            let version = o.status?.version ?? ""
+            return "Claude Code\(version.isEmpty ? "" : " \(version)")" + (o.alias.isEmpty ? ": installed; sign in inside (claude)" : ": signed in as \(o.account), alias \(o.alias)" + (o.makeDefault ? " (and claude, cc)" : ""))
+        }
+        if p.kind != .windows {
+            // one request for both: the script inside does Claude Code's steps and then Codex's, and tells the desktop
+            // once when it begins and once when a new terminal has them
+            phases[p.id] = .working(wish.claude && wish.codex ? "Installing Claude Code and Codex" : wish.claude ? "Installing Claude Code" : "Installing Codex")
+            var r = wish.claude ? claudeRequest() : ClaudeRequest()
+            r.claude = wish.claude; r.notify = true
+            if wish.codex { r.codexInstall = true; r.codexLogin = login.flatMap { String(data: $0, encoding: .utf8) } ?? "" }
             look.run(r)
             await settle { look.page == .working }
-            if let o = look.outcome, o.ok {
-                let version = o.status?.version ?? ""
-                lines.append("Claude Code\(version.isEmpty ? "" : " \(version)")" + (o.alias.isEmpty ? ": installed; sign in inside (claude)" : ": signed in as \(o.account), alias \(o.alias)" + (o.makeDefault ? " (and claude, cc)" : "")))
-            } else {
-                ok = false; lines.append("Claude Code: " + Self.failure(look.outcome?.steps ?? look.steps))
+            let steps = look.outcome?.steps ?? look.steps
+            let failed = steps.filter { $0.state == "failed" }
+            if wish.claude {
+                let mine = failed.filter { !$0.step.hasPrefix("codex") }
+                if let o = look.outcome, mine.isEmpty, o.status != nil { lines.append(claudeLine(o)) } else { ok = false; lines.append("Claude Code: " + Self.failure(mine.isEmpty ? steps : mine)) }
             }
-        }
-        if wish.codex {
-            phases[p.id] = .working("Installing Codex")
-            let login = wish.codexLogin ? CodexLogin.login(at: CodexInstall.macLogin) : nil
-            if p.kind == .windows {
+            if wish.codex {
+                let mine = failed.filter { $0.step.hasPrefix("codex") }
+                if let s = look.outcome?.status, mine.isEmpty, look.outcome?.ok == true || failed.allSatisfy({ !$0.step.hasPrefix("codex") }) {
+                    lines.append("Codex\(s.codexVersion.isEmpty ? "" : " \(s.codexVersion)"): installed, alias cx" + (s.codexLogin ? ", signed in" : "; sign in inside (codex)"))
+                } else { ok = false; lines.append("Codex: " + Self.failure(mine.isEmpty ? steps : mine)) }
+            }
+        } else {
+            if wish.claude {
+                phases[p.id] = .working("Installing Claude Code")
+                look.run(claudeRequest())
+                await settle { look.page == .working }
+                if let o = look.outcome, o.ok { lines.append(claudeLine(o)) } else { ok = false; lines.append("Claude Code: " + Self.failure(look.outcome?.steps ?? look.steps)) }
+            }
+            if wish.codex {
+                phases[p.id] = .working("Installing Codex")
                 let m = CodexInstallModel(machine: p)
                 m.answerTimeout = AgentCommands.patience; m.setupTimeout = AgentCommands.setupPatience
                 m.check()
@@ -146,19 +170,6 @@ import Foundation
                 } else {
                     ok = false
                     if case .unreachable(let why) = m.page { lines.append("Codex: \(why)") } else { lines.append("Codex: " + Self.failure(m.outcome?.steps ?? m.steps)) }
-                }
-            } else {
-                let m = ClaudeInstallModel(machine: p)
-                m.answerTimeout = AgentCommands.patience; m.setupTimeout = AgentCommands.setupPatience
-                var r = ClaudeRequest()
-                r.claude = false; r.codexInstall = true; r.codexLogin = login.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                m.run(r)
-                await settle { m.page == .working }
-                if let o = m.outcome, o.ok {
-                    let s = o.status
-                    lines.append("Codex\((s?.codexVersion ?? "").isEmpty ? "" : " \(s?.codexVersion ?? "")"): installed, alias cx" + (s?.codexLogin == true ? ", signed in" : "; sign in inside (codex)"))
-                } else {
-                    ok = false; lines.append("Codex: " + Self.failure(m.outcome?.steps ?? m.steps))
                 }
             }
         }

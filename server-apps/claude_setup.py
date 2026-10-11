@@ -12,7 +12,10 @@
                                   (mylinux codex NAME --install): Codex installed when missing with OpenAI's
                                   installer, the alias cx, and, when the request carries it, the Mac's Codex login
                                   as ~/.codex/auth.json (what "Codex login from the Mac" copies, asked from inside);
-                                  "claude": false leaves Claude Code's own steps out
+                                  "claude": false leaves Claude Code's own steps out. With "notify": true (the
+                                  new-machine dialog's installs, which nobody opened a wizard for) the desktop is
+                                  told when it begins and when it is done: a terminal opened before that has not
+                                  read the new aliases
 
 The launcher writes this file and the request into the machine's Mac share and leaves "claude status <id>" or "claude
 apply <id>" for Omarchy's session agent (omarchy/session), which starts it; the wizard reads the answers from the
@@ -340,6 +343,20 @@ def secrets_in(login: str) -> list[str]:
     return found
 
 
+def notify(text: str) -> None:
+    """A note on this desktop (notify-send), for a setup nobody is watching a wizard for. Omarchy's own cx is Claude
+    Code and it has no cc: in a terminal opened before the setup is done, cc is the C compiler and cx is not Codex,
+    so the desktop says when a new terminal has them."""
+    tool = shutil.which("notify-send", path=search_path())
+    if not tool:
+        return
+    try:
+        subprocess.run([tool, "-a", "myLinux Launcher", "-t", "15000", "myLinux Launcher", text], stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def save_account(name: str, account: str, token: str) -> None:
     ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(ACCOUNTS_DIR, 0o700)
@@ -463,6 +480,7 @@ def checked(request) -> tuple[dict, str | None]:
     login = codex.get("login") if isinstance(codex.get("login"), str) else ""
     r["codex"] = {"install": codex.get("install") is True, "login": login}
     r["claude"] = request.get("claude") is not False
+    r["notify"] = request.get("notify") is True
     if login:
         try:
             fine = isinstance(json.loads(login), dict)
@@ -496,10 +514,18 @@ def apply(ident: str) -> dict:
     ok = True
     before = status()
     adding = bool(r["token"])
+    codex = r["codex"]["install"] or bool(r["codex"]["login"])
+    what = " and ".join([w for w, on in (("Claude Code", r["claude"]), ("Codex", codex)) if on])
+    if r["notify"] and what:
+        notify(f"Setting up {what} in this machine. Wait for the word that it is done before you open a terminal for it.")
     if r["claude"]:
         ok = apply_claude(r, progress, before, adding)
-    if r["codex"]["install"] or r["codex"]["login"]:
+    if codex:
         ok = apply_codex(r, progress, before) and ok
+    if r["notify"] and what:
+        commands = ([f"{r['alias']} (and cc, claude)" if r["makeDefault"] else r["alias"]] if adding and r["claude"] else ["cc"] if r["claude"] else []) + (["cx"] if codex else [])
+        notify(f"{what}: set up. Open a new terminal: {', '.join(commands)}." if ok
+               else f"{what}: the setup did not finish. myLinux Launcher on the Mac says why (this machine's page).")
     return {"ok": ok, "steps": progress.steps, "alias": r["alias"] if adding else "", "account": r["account"] if adding else "",
             "makeDefault": adding and r["makeDefault"], "status": status()}
 

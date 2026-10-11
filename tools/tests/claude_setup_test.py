@@ -326,6 +326,19 @@ def main() -> int:
         y = Box(root, "codex-offline")
         result, _, _ = y.apply({"claude": False, "statusLine": False, "codex": {"install": True}}, STUB_FAIL="codex")
         check("Codex's installer out of reach: told", result["ok"] is False and {z["step"]: z["state"] for z in result["steps"]}["codex"] == "failed", result)
+        # asked to say so on the desktop (the new-machine dialog's installs): a word when it begins and when it is done
+        n = Box(root, "notify")
+        (n.stub / "notify-send").write_text('#!/bin/sh\nfor a in "$@"; do last=$a; done\nprintf \'%s\\n\' "$last" >> "$STUB_DIR/notes"\n')
+        (n.stub / "notify-send").chmod(0o755)
+        result, _, _ = n.apply({"alias": "cc1", "account": "gmail", "token": TOKEN, "makeDefault": True, "defaultAliases": DEFAULT_ALIASES, "notify": True, "codex": {"install": True}})
+        notes = (n.stub / "notes").read_text().splitlines()
+        check("the desktop is told when the setup begins and when a new terminal has it", result["ok"] is True and len(notes) == 2
+              and notes[0].startswith("Setting up Claude Code and Codex") and notes[1] == "Claude Code and Codex: set up. Open a new terminal: cc1 (and cc, claude), cx.", notes)
+        check("  (and no token in it)", TOKEN not in "".join(notes))
+        result, _, _ = n.apply({"claude": False, "statusLine": False, "codex": {"install": True}})
+        check("a wizard's own request says nothing on the desktop", len((n.stub / "notes").read_text().splitlines()) == 2)
+        result, _, _ = Box(root, "notify-none").apply({"claude": False, "notify": True, "codex": {"install": True}})
+        check("without notify-send the setup is the same", result["ok"] is True, result)
         # with a subscription in the same request: Claude Code's steps, then Codex's
         z = Box(root, "both")
         result, _, _ = z.apply({"alias": "cc1", "account": "gmail", "token": TOKEN, "makeDefault": True, "defaultAliases": DEFAULT_ALIASES, "codex": {"install": True}})

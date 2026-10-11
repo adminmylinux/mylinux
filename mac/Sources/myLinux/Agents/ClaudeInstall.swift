@@ -231,6 +231,10 @@ struct ClaudeRequest: Equatable {
     /// In Windows, Claude's desktop app with its taskbar pin too (off for the new-machine dialog's "Install Claude
     /// Code", which is the terminal's).
     var desktop = true
+    /// The machine's desktop is told when the setup begins and when it is done (an Omarchy: notify-send). For the
+    /// new-machine dialog's installs, which run with no wizard open: a terminal opened before they are done has
+    /// not read the new aliases, and Omarchy's own cx is Claude Code.
+    var notify = false
     /// Codex, in a Linux machine: installed when missing, and signed in with this login file's text when given.
     var codexInstall = false, codexLogin = ""
 
@@ -256,6 +260,7 @@ struct ClaudeRequest: Equatable {
         var out: [String: Any] = ["defaultAliases": defaultAliases, "statusLine": claude]
         if !claude { out["claude"] = false }
         if !desktop { out["desktop"] = false }
+        if notify { out["notify"] = true }
         if codexInstall || !codexLogin.isEmpty { out["codex"] = ["install": codexInstall, "login": codexLogin] }
         if !cleanToken.isEmpty {
             out["alias"] = alias.trimmingCharacters(in: .whitespaces); out["account"] = account.trimmingCharacters(in: .whitespaces)
