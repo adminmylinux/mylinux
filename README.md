@@ -71,7 +71,8 @@ Since runtime 11.1.1-4 the window is resizable from the start, so Window › Fil
 drag work straight away; until you size it, it follows the guest's resolution as a fixed window did; Control+Command+F toggles full screen in every keyboard mode, and a small floating
 box with an exit button appears while in full screen. They come from `tools/qemu-runtime-patches/`, myLinux's own
 patch on the runtime. In the
-launcher it is **+ › Omarchy Machine…**: a dialog takes the machine's name and the answers to what Omarchy asks at
+launcher it is **+ › Omarchy Machine…**: a dialog, in two columns, takes the machine's name, its memory, its disk's
+size and the Mac folder it shares (its own "Mac" unless you choose another), and the answers to what Omarchy asks at
 its first start (keyboard, account, password, host name, time zone, and a name and e-mail address for git), and the
 machine then starts straight at its desktop (from 0.7.80; the dialog's switch turned off, Omarchy asks in its window
 as before, and a machine that has not started yet has **Answer Here…** on its page). Open windows come back after a restart: `omarchy/session` is written into a new
@@ -146,7 +147,7 @@ version checked against a pinned SHA-256; 877 MB to download, 3 MB kept) and the
 
 **+ › Windows Machine…** opens a dialog (from 0.7.80) that takes what Windows Setup and Windows's first-run screens
 would ask: the account's name, a password if you want one, the edition, the keyboard, and your acceptance of
-Microsoft's licence terms, which is a box only you tick. With it Windows installs itself, as `mylinux create windows
+Microsoft's licence terms, which is a box only you tick; with the machine's name, memory and disk size beside them. With it Windows installs itself, as `mylinux create windows
 --unattended` does (below), in 15 to 40 minutes with nothing to answer. With the dialog's switch turned off, the
 install is the one described here, answered in the machine's window; **Install by Itself…** on the machine's page
 brings the dialog back while Windows is not installed.

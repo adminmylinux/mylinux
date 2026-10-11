@@ -520,8 +520,11 @@ pointer while it is fullscreen or after ⌘⌃G.
   first start has its answers removed, not moved to the Trash (`ProfileStore.forgetAnswers`, Windows's too).
 
 - `FirstStartSheet.swift`: the dialog a new Omarchy or Windows machine is made with in the launcher's window
-  (+ and File › New Omarchy Machine… / New Windows Machine…): the machine's name and the same answers as `create
-  --unattended` takes, checked by the same rules (`FirstStartForm.verdict`: ready, something still to fill in, or
+  (+ and File › New Omarchy Machine… / New Windows Machine…), a grid of two columns (name and user, the password
+  twice, keyboard and time zone or edition, memory and disk size, host name and the Mac folder to share): the
+  machine's name, memory (automatic unless a size is chosen), disk size and, for an Omarchy, its shared folder
+  (`FirstStartForm.settings(into:)`; a folder run-omarchy.sh would refuse is refused in the dialog,
+  `shareProblem`), and the same answers as `create --unattended` takes, checked by the same rules (`FirstStartForm.verdict`: ready, something still to fill in, or
   wrong, said in the dialog's footer). A switch at its top turns the answers off, and the machine asks in its window
   as before. Microsoft's licence terms are a box of the user's own to tick; Create waits for it. Create makes the
   machine (`ProfileStore.add(copying:kind:named:)`) and keeps the answers: `OmarchyUnattended.write`

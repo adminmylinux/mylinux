@@ -109,7 +109,11 @@ struct MachineView: View {
         }
         .onAppear { runtime.refresh(settings); images.refresh(settings); if isDesktop { desktopImage.refresh(settings) }; if isServer { server.refresh(settings) } }
         // the dialog kept or forgot this machine's first-start answers: the page says who answers
-        .onReceive(NotificationCenter.default.publisher(for: FirstStartSheet.changedNotification)) { _ in answersChanged += 1 }
+        .onReceive(NotificationCenter.default.publisher(for: FirstStartSheet.changedNotification)) { n in
+            answersChanged += 1
+            // (the dialog also keeps the machine's name, memory, disk size and shared folder: this page's copy follows)
+            if n.object as? UUID == draft.id, let saved = store.profiles.first(where: { $0.id == draft.id }), saved != draft { draft = saved }
+        }
         .toolbar { HeaderToolbar() }
     }
 

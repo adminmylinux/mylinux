@@ -1256,8 +1256,8 @@ final class OmarchyProfileTests: XCTestCase {
         o.again = "p w=1"; XCTAssertEqual(o.verdict(taken: []), .wrong("The two passwords are not the same."))
         o.again = o.password; XCTAssertEqual(o.verdict(taken: []), .ready)
         // the name of a new machine: there, in bounds, nobody's; a machine that is there already is not named again
-        XCTAssertEqual(o.verdict(taken: ["omarchy"]), .wrong("A machine named Omarchy is there already.")); XCTAssertEqual(o.verdict(taken: nil), .ready)
-        var unnamed = o; unnamed.name = "  "; XCTAssertEqual(unnamed.verdict(taken: []), .waiting("Give the machine a name.")); XCTAssertEqual(unnamed.verdict(taken: nil), .ready)
+        XCTAssertEqual(o.verdict(taken: ["omarchy"]), .wrong("A machine named Omarchy is there already.")); XCTAssertEqual(o.verdict(taken: ["other"]), .ready)
+        var unnamed = o; unnamed.name = "  "; XCTAssertEqual(unnamed.verdict(taken: []), .waiting("Give the machine a name."))
         var slash = o; slash.name = "a/b"; if case .wrong = slash.verdict(taken: []) {} else { XCTFail("a name with a slash") }
         // what Omarchy's form would refuse is said as a sentence
         var bad = o; bad.user = "Root User"
@@ -1280,6 +1280,30 @@ final class OmarchyProfileTests: XCTestCase {
         let wa = w.windows()
         XCTAssertEqual(wa.user, "Viktor"); XCTAssertEqual(wa.edition, .home); XCTAssertEqual(wa.keyboard, "nb-NO"); XCTAssertEqual(wa.computer, "MY-WINDOWS-11")
         XCTAssertTrue(FirstStartSheet.asks(.omarchy) && FirstStartSheet.asks(.windows)); XCTAssertFalse(FirstStartSheet.asks(.arch) || FirstStartSheet.asks(.tiny))
+        // the machine's own settings, in the same dialog: memory (automatic unless a size is chosen), the disk's size, and
+        // for an Omarchy the Mac folder it shows inside
+        XCTAssertEqual(o.memoryGB, 0); XCTAssertEqual(o.diskGB, 32); XCTAssertEqual(w.diskGB, 64); XCTAssertEqual(o.share, "")
+        XCTAssertTrue(o.sharesFolder); XCTAssertFalse(w.sharesFolder, "Windows reads no Mac folder")
+        var made = ProfileStore.newProfile(named: "x", kind: .omarchy, folder: URL(fileURLWithPath: "/tmp/m/x"))
+        o.settings(into: &made)
+        XCTAssertEqual(made.name, "My Omarchy 2"); XCTAssertTrue(made.memoryAuto); XCTAssertEqual(made.appsSizeGB, 32); XCTAssertEqual(made.shareDir, "/tmp/m/x/Mac", "its own folder unless another is chosen")
+        var sized = o; sized.memoryGB = 6; sized.diskGB = 128; sized.share = "/Users/somebody/Projects"
+        sized.settings(into: &made)
+        XCTAssertFalse(made.memoryAuto); XCTAssertEqual(made.memoryGB, 6); XCTAssertEqual(made.appsSizeGB, 128); XCTAssertEqual(made.shareDir, "/Users/somebody/Projects")
+        XCTAssertEqual(sized.verdict(taken: []), .ready)
+        var windowsMade = ProfileStore.newProfile(named: "x", kind: .windows, folder: URL(fileURLWithPath: "/tmp/m/w"))
+        var wsized = w; wsized.share = "/Users/somebody/Projects"; wsized.settings(into: &windowsMade)
+        XCTAssertEqual(windowsMade.shareDir, "", "no share for Windows, whatever the form holds")
+        var small = w; small.diskGB = 16
+        if case .wrong(let why) = small.verdict(taken: []) { XCTAssertTrue(why.contains("Disk size")) } else { XCTFail("Windows needs 32 GB") }
+        // a folder that is not one to share is refused here, as run-omarchy.sh would refuse it at the start
+        let home = "/Users/somebody", machines = "/Users/somebody/Library/Application Support/myLinux/machines"
+        for bad in ["/", home, home + "/Library", home + "/Library/Preferences", "/System", "/Applications", home + "/a,b"] {
+            XCTAssertNotNil(FirstStartForm.shareProblem(bad, home: home, machines: machines), bad)
+        }
+        for good in ["", home + "/Projects", home + "/Documents/work", machines + "/omarchy/Mac", "/Volumes/Disk/shared"] {
+            XCTAssertNil(FirstStartForm.shareProblem(good, home: home, machines: machines), good)
+        }
 
         // kept in the machine's folder until its first start, for the Mac user alone; forgotten when the form says to ask
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-firststart-\(UUID().uuidString)")
