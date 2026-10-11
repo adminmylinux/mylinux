@@ -130,6 +130,8 @@ final class Runner: ObservableObject {
         } catch {
             state = .failed("Could not create folders: \(error.localizedDescription)"); return
         }
+        // an Omarchy to make, with Claude Code and Codex asked for in its dialog: their setup goes into the new disk
+        FirstStartTools.prepareBoot(p)
         // a Windows machine made to install by itself: its answers become the answer file now, in the ISO's language
         if let problem = WindowsUnattended.prepare(p, isoLabel: settings.windowsISO) { state = .failed(problem); return }
         unlink(serialSocket); unlink(qmpSocket)

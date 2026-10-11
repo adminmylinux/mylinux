@@ -6,10 +6,20 @@ import Foundation
 /// which it works through), and Codex with the alias cx; not the desktop apps.
 ///
 /// The wish waits in the machine's folder (`first-start.tools`, for the Mac user alone: it can hold the Claude token
-/// that was typed into the dialog) from Create to the first time the machine's helper answers, which is when its
-/// desktop is there (an Omarchy that set itself up, a Windows that installed itself and restarted, or either after a
-/// person answered its questions). Then the wizards' own models do the work (as `mylinux claude` and `mylinux codex`
-/// drive them, AgentCommands), the file is removed whatever came of it, and the machine's page says how it went.
+/// that was typed into the dialog) from Create to the machine's first start.
+///
+/// An Omarchy is set up in its first boot, before its desktop exists (`prepareBoot`): at that start the launcher
+/// writes the setup script and its request beside the new disk, run-omarchy.sh puts them into it
+/// (tools/omarchy-bake-answers.sh), and Omarchy's first-start setup runs them in the new account
+/// (omarchy/answers/provision). So the first terminal anybody can open has cc, cc1 and cx. Set up after the desktop
+/// is there, as it was at first, a terminal opened in the desktop's first seconds had Omarchy's own cx, which is
+/// Claude Code, and no cc: the user met exactly that, twice. Once the machine's helper answers, the launcher looks at
+/// what is there, puts right what the boot could not (the status line needs the network), and says how it went.
+///
+/// A Windows, and an Omarchy whose disk could not be written into, is set up when the machine's helper first answers,
+/// which is when its desktop is there (a Windows that installed itself and restarted). Then the wizards' own models
+/// do the work (as `mylinux claude` and `mylinux codex` drive them, AgentCommands), the file is removed whatever came
+/// of it, and the machine's page says how it went.
 @MainActor final class FirstStartTools: ObservableObject {
     static let shared = FirstStartTools()
 
@@ -48,7 +58,48 @@ import Foundation
             return nil
         } catch { return "could not keep what to install: \(error.localizedDescription)" }
     }
-    nonisolated static func forget(_ machineFolder: URL) { try? FileManager.default.removeItem(at: file(machineFolder)) }
+    nonisolated static func forget(_ machineFolder: URL) {
+        for url in [file(machineFolder), bootRequest(machineFolder), bootScript(machineFolder), bootMarker(machineFolder)] { try? FileManager.default.removeItem(at: url) }
+    }
+
+    // ---- an Omarchy: in its first boot ---------------------------------------------------------------------------------
+    /// What the first boot was asked to set up (nothing secret): kept until the launcher has looked at how it went.
+    struct Boot: Codable, Equatable { var claude = false; var codex = false; var token = false }
+    nonisolated static func bootRequest(_ machineFolder: URL) -> URL { machineFolder.appendingPathComponent("first-start.tools-request") }
+    nonisolated static func bootScript(_ machineFolder: URL) -> URL { machineFolder.appendingPathComponent("first-start.tools-script") }
+    nonisolated static func bootMarker(_ machineFolder: URL) -> URL { machineFolder.appendingPathComponent("first-start.tools-boot") }
+    nonisolated static func boot(_ machineFolder: URL) -> Boot? {
+        (try? Data(contentsOf: bootMarker(machineFolder))).flatMap { try? JSONDecoder().decode(Boot.self, from: $0) }
+    }
+    /// The request the setup script takes for a wish, in a machine that has nothing yet: the subscription as cc1 and
+    /// as plain claude's login, Codex with the login when one is given.
+    nonisolated static func request(for wish: Wish, codexLogin: String, defaultAliases: [[String: String]]) -> [String: Any] {
+        var r = ClaudeRequest()
+        r.claude = wish.claude
+        let token = wish.token.components(separatedBy: .whitespacesAndNewlines).joined()
+        if wish.claude, !token.isEmpty { r.token = token; r.account = wish.account.isEmpty ? "claude" : wish.account; r.alias = "cc1"; r.makeDefault = true }
+        if wish.codex { r.codexInstall = true; r.codexLogin = wish.codexLogin ? codexLogin : "" }
+        return r.json(defaultAliases: defaultAliases)
+    }
+    /// Runner.start, for an Omarchy whose disk is still to be made: the wish becomes a request and the setup script
+    /// beside the disk, for run-omarchy.sh to put into it. Anything missing, and the wish simply waits for the desktop.
+    /// (`script`, `loginFile`: a test's; the launcher's own script and this Mac's Codex login otherwise, read only when asked for.)
+    nonisolated static func prepareBoot(_ p: Profile, script given: String? = nil, loginFile: URL = CodexInstall.macLogin) {
+        guard p.kind == .omarchy, !p.desktopCreated, !FileManager.default.fileExists(atPath: p.appsDisk),
+              let wish = kept(p.machineFolder), !wish.isEmpty, let script = given ?? ClaudeInstall.bundledScript() else { return }
+        let folder = p.machineFolder, fm = FileManager.default
+        let login = wish.codex && wish.codexLogin ? CodexLogin.login(at: loginFile) : nil
+        let json = request(for: wish, codexLogin: login.flatMap { String(data: $0, encoding: .utf8) } ?? "", defaultAliases: ClaudeInstall.defaultAliases())
+        guard let data = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]),
+              let marker = try? JSONEncoder().encode(Boot(claude: wish.claude, codex: wish.codex, token: wish.claude && !wish.token.isEmpty)) else { return }
+        for url in [bootRequest(folder), bootScript(folder), bootMarker(folder)] { try? fm.removeItem(at: url) }
+        guard fm.createFile(atPath: bootRequest(folder).path, contents: data, attributes: [.posixPermissions: 0o600]),
+              (try? script.write(to: bootScript(folder), atomically: true, encoding: .utf8)) != nil,
+              (try? marker.write(to: bootMarker(folder))) != nil else {
+            for url in [bootRequest(folder), bootScript(folder), bootMarker(folder)] { try? fm.removeItem(at: url) }
+            return
+        }
+    }
 
     /// A name for a subscription from the account's name: one word of letters, digits, . _ @ - (as the wizard asks for one).
     nonisolated static func accountName(_ user: String) -> String {
@@ -69,11 +120,57 @@ import Foundation
         Self.forget(p.machineFolder); phases[p.id] = nil; nextTry[p.id] = nil
     }
 
+    /// An Omarchy that was set up in its first boot, now that its helper answers: what is there, said on the machine's
+    /// page; what the boot could not do without the network (the status line) is done now.
+    private func lookAfterBoot(_ boot: Boot, _ p: Profile) async {
+        let look = ClaudeInstallModel(machine: p)
+        look.answerTimeout = AgentCommands.patience; look.setupTimeout = AgentCommands.setupPatience
+        look.check()
+        await settle { look.page == .checking }
+        guard case .status = look.page else {
+            nextTry[p.id] = Date().addingTimeInterval(20)
+            if phases[p.id] != .waiting { phases[p.id] = .waiting }
+            return
+        }
+        var s = look.status
+        if boot.claude, !s.repairs.isEmpty, !(boot.token && !s.hasToken) {
+            phases[p.id] = .working("Finishing Claude Code")
+            var r = ClaudeRequest(); r.desktop = false; r.notify = true
+            look.run(r)
+            await settle { look.page == .working }
+            s = look.outcome?.status ?? s
+        }
+        var lines: [String] = [], ok = true
+        if boot.claude {
+            if boot.token && !s.hasToken { ok = false; lines.append("Claude Code: the setup in the machine's first boot did not get to the subscription") }
+            else if let a = s.accounts.first { lines.append("Claude Code\(s.version.isEmpty ? "" : " \(s.version)"): signed in as \(a.account), alias \(a.alias)" + (s.defaultToken ? " (and claude, cc)" : "")) }
+            else { lines.append("Claude Code\(s.version.isEmpty ? "" : " \(s.version)"): installed; sign in inside (claude)") }
+        }
+        if boot.codex {
+            if s.codexInstalled && s.codexCx { lines.append("Codex\(s.codexVersion.isEmpty ? "" : " \(s.codexVersion)"): installed, alias cx" + (s.codexLogin ? ", signed in" : "; sign in inside (codex)")) }
+            else { ok = false; lines.append("Codex: the setup in the machine's first boot did not finish") }
+        }
+        try? FileManager.default.removeItem(at: Self.bootMarker(p.machineFolder))
+        nextTry[p.id] = nil
+        phases[p.id] = ok ? .done(lines) : .failed(lines)
+    }
+
     /// RunManager's tick, for a running Omarchy or Windows: a wish is carried out when the machine's helper answers.
     func follow(_ p: Profile, runner: Runner, now: Date = Date()) {
         guard FirstStartSheet.asks(p.kind), !busy.contains(p.id) else { return }
         guard let wish = Self.kept(p.machineFolder) else {
-            if case .waiting = phases[p.id] { phases[p.id] = nil }       // forgotten meanwhile
+            // nothing waits; unless the first boot did the work (an Omarchy): then how that went is looked at
+            guard let boot = Self.boot(p.machineFolder) else {
+                if case .waiting = phases[p.id] { phases[p.id] = nil }   // forgotten meanwhile
+                return
+            }
+            guard runner.state == .running || runner.state == .inUseElsewhere, OmarchyUnattended.stage(p) != .settingUp else { return }
+            if let t = nextTry[p.id], now < t { return }
+            busy.insert(p.id)
+            Task { @MainActor in
+                await lookAfterBoot(boot, p)
+                busy.remove(p.id)
+            }
             return
         }
         guard runner.state == .running || runner.state == .inUseElsewhere else { return }

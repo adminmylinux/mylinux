@@ -134,6 +134,16 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinu
         [ ! -f "$MACHINE/first-start.unattended" ] || echo asked > "$MACHINE/first-start.unattended"
       }
     fi
+    # Claude Code and Codex, ticked in the machine's dialog (FirstStartTools): set up in this disk's first boot, before
+    # its desktop is there. Not in the disk: the launcher does it once the desktop is up, as it did before.
+    if [ -f "$MACHINE/first-start.tools-request" ]; then
+      if tools/omarchy-bake-answers.sh "$DISK.new" - omarchy/answers "$MACHINE/first-start.tools-request" "$MACHINE/first-start.tools-script"; then
+        rm -f "$MACHINE/first-start.tools"
+      else
+        echo "run-omarchy.sh: Claude Code and Codex are set up once the desktop is there, by the launcher" >&2
+        rm -f "$MACHINE/first-start.tools-boot"
+      fi
+    fi
   fi
   cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/$REVFILE" "$MACHINE/boot/$REVFILE" 2>/dev/null || true
   mv "$DISK.new" "$DISK"
@@ -142,6 +152,7 @@ elif [ "${DRYRUN:-0}" != 1 ] && [ "$DESKTOP" = omarchy ]; then
   tools/omarchy-update-session.sh "$DISK" omarchy/session || true
 fi
 [ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.answers"      # they name a password: in the new disk by now, or of no use
+[ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.tools-request" "$MACHINE/first-start.tools-script"     # (a token can be in it)
 SERIAL="${SERIAL:-file:$MACHINE/console.log}"
 case "$SERIAL" in
   file:*) CONSOLE="file,id=hvc0,path=${SERIAL#file:}" ;;

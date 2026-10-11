@@ -572,7 +572,8 @@ struct MachineView: View {
     @ViewBuilder private var firstStartTools: some View {
         let phase = tools.phases[draft.id]
         let wish = FirstStartTools.kept(draft.machineFolder)
-        if FirstStartSheet.asks(draft.kind), phase != nil || wish != nil {
+        let boot = FirstStartTools.boot(draft.machineFolder)
+        if FirstStartSheet.asks(draft.kind), phase != nil || wish != nil || boot != nil {
             Section("Claude Code and Codex") {
                 let _ = answersChanged
                 switch phase {
@@ -591,6 +592,11 @@ struct MachineView: View {
                              + (wish.codex && wish.codexLogin ? ", and signs Codex in with this Mac's login" : "") + ".")
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button("Don't Install") { tools.cancel(draft); answersChanged += 1 }
+                    } else if let boot {
+                        // (an Omarchy that is starting for the first time: its first boot does it)
+                        let names = [boot.claude ? "Claude Code" : nil, boot.codex ? "Codex" : nil].compactMap { $0 }.joined(separator: " and ")
+                        Text("\(names) \(boot.claude && boot.codex ? "are" : "is") set up in this machine's first boot, before its desktop: the first terminal has \(boot.claude ? (boot.token ? "cc1, cc" : "cc") : "")\(boot.claude && boot.codex ? " and " : "")\(boot.codex ? "cx" : "").")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

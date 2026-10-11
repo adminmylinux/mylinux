@@ -556,10 +556,18 @@ pointer while it is fullscreen or after ⌘⌃G.
   (`ClaudeRequest.desktop = false` leaves Windows's desktop app to Claude Install…) with the subscription as the next
   free alias when a token was given, then Codex with cx and, when ticked, the Mac's own login. The file is removed
   when that ends, however it ends, and the machine's page shows the phase and the outcome
-  (`MachineView.firstStartTools`). A wish never goes to the Trash with a machine. An Omarchy gets both in one
-  request with `"notify": true`: `claude_setup.py` tells the desktop (notify-send) when it begins and when a new
-  terminal has them, because a terminal opened before that has not read the new aliases, and there Omarchy's own
-  `cx` is Claude Code and `cc` is the C compiler.
+  (`MachineView.firstStartTools`). A wish never goes to the Trash with a machine. A new Omarchy is set up in its
+  first boot instead, before its desktop exists: at the first start `FirstStartTools.prepareBoot` writes the
+  script's request (`first-start.tools-request`, mode 600) and the script beside the new disk, `run-omarchy.sh`
+  bakes them into `/var/lib/mylinux/tools` (`tools/omarchy-bake-answers.sh`, with or without answers) and removes
+  them and the wish from the Mac, and `omarchy/answers/provision` runs the script as the new account once Omarchy's
+  own setup has made it, then removes the request. When the machine's helper answers, the launcher looks at what is
+  there (`lookAfterBoot`), does what the boot could not, and says how it went. The reason: set up after the desktop
+  was there, a terminal opened in its first seconds had not read the new aliases, and there Omarchy's own `cx` is
+  Claude Code and `cc` is the C compiler; the user met that twice. Where the disk cannot be written into, the late
+  way remains, in one request with `"notify": true`, which has `claude_setup.py` tell the desktop (notify-send) when
+  it begins and when a new terminal has the commands. The script calls `sync` before it says it is done: a machine
+  switched off moments after the setup came back with an empty aliases file.
 
 ### 7.2 How it runs a machine
 

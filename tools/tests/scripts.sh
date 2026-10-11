@@ -359,6 +359,18 @@ if [ -n "$DEBUGFS" ]; then
   out=$("$DEBUGFS" -R "stat /var/lib/mylinux/bin/gum" "$AF/disk.img" 2>/dev/null); has "the gum that gives them can run" "$out" "Mode:  0755"
   out=$("$DEBUGFS" -R "cat /etc/systemd/system/omarchy-provision-owner.service.d/20-mylinux-answers.conf" "$AF/disk.img" 2>/dev/null)
   has "Omarchy's setup service runs the setup with them" "$out" "ExecStart=/var/lib/mylinux/provision"
+  # Claude Code and Codex, asked for in the launcher's dialog: their request and the setup script into the same disk
+  printf '{"token": "sk-ant-oat01-MADEupMADEupMADEup0123456789", "alias": "cc1"}\n' > "$AF/first-start.tools-request"
+  cp "$REPO/server-apps/claude_setup.py" "$AF/first-start.tools-script"
+  out=$(cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-answers.sh "$AF/disk.img" - omarchy/answers "$AF/first-start.tools-request" "$AF/first-start.tools-script" 2>&1); rc=$?
+  is_rc "bakes the setup of Claude Code and Codex without answers (Omarchy asks, then they are set up)" $rc 0
+  has "says so" "$out" "before the desktop"; case "$out" in *MADEup*) ko "and never the token" ;; *) ok "and never the token" ;; esac
+  out=$("$DEBUGFS" -R "stat /var/lib/mylinux/tools/request.json" "$AF/disk.img" 2>/dev/null); has "the request is root's alone" "$out" "Mode:  0600"
+  out=$("$DEBUGFS" -R "cat /var/lib/mylinux/tools/request.json" "$AF/disk.img" 2>/dev/null); has "as the launcher wrote it" "$out" '"alias": "cc1"'
+  out=$("$DEBUGFS" -R "cat /var/lib/mylinux/tools/claude_setup.py" "$AF/disk.img" 2>/dev/null); has "with the script that carries it out" "$out" "def apply("
+  out=$("$DEBUGFS" -R "cat /var/lib/mylinux/answers" "$AF/disk.img" 2>/dev/null); has "and the answers baked before are still there" "$out" "username=tester"
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-answers.sh "$AF/disk.img" - omarchy/answers >/dev/null 2>&1); rc=$?
+  is_rc "neither answers nor a request is refused" $rc 2
   printf 'username=tester\n' > "$AF/no-password.answers"
   (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-answers.sh "$AF/disk.img" "$AF/no-password.answers" >/dev/null 2>&1); rc=$?
   is_rc "answers without a password are refused" $rc 2
@@ -384,6 +396,12 @@ out=$(MYLINUX_ANSWERS="$T/nowhere" "$GS/gum" input --prompt "Username> " </dev/n
 (bash -n "$REPO/omarchy/answers/provision"); rc=$?; is_rc "omarchy/answers/provision is a script bash reads" $rc 0
 grep -q 'omarchy-provision-owner --attempt' "$REPO/omarchy/answers/provision" && grep -q 'shred -u "$dir/answers"' "$REPO/omarchy/answers/provision" && rc=0 || rc=1
 is_rc "it runs Omarchy's own setup and removes the answers when that ends" $rc 0
+grep -q 'claude_setup.py. apply 00000001' "$REPO/omarchy/answers/provision" && grep -q 'shred -u "$dir/tools/request.json"' "$REPO/omarchy/answers/provision" && grep -q 'runuser -l "$user"' "$REPO/omarchy/answers/provision" && rc=0 || rc=1
+is_rc "and sets Claude Code and Codex up in the new account, as that account, before the desktop" $rc 0
+grep -q 'tools/omarchy-bake-answers.sh "$DISK.new" - omarchy/answers "$MACHINE/first-start.tools-request"' "$W/run-omarchy.sh" && grep -q 'rm -f "$MACHINE/first-start.tools-request" "$MACHINE/first-start.tools-script"' "$W/run-omarchy.sh" && rc=0 || rc=1
+is_rc "run-omarchy.sh bakes that request into a new disk and removes it from the Mac" $rc 0
+grep -q 'os.sync()' "$REPO/server-apps/claude_setup.py" && rc=0 || rc=1
+is_rc "the setup's files are on the disk before it says it is done" $rc 0
 (python3 "$REPO/tools/omarchy-clipboard.py" --selftest >/dev/null 2>&1); rc=$?
 is_rc "omarchy-clipboard.py selftest (protocol, echo filtering)" $rc 0
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 AUDIO=0 CPUS=2 SSH=1 FORWARD=2222:22 sh run-omarchy.sh 2>&1)

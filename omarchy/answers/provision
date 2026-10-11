@@ -1,10 +1,16 @@
 #!/bin/bash
-# myLinux: Omarchy's first-start setup with the answers the launcher was given (`mylinux create omarchy
-# --unattended`). The setup service runs this in place of omarchy-provision-owner for the one start that has answers
-# (20-mylinux-answers.conf): Omarchy's own setup, straight at its questions (--attempt: past the "Press Return to
-# Start Setup" screen), with ./bin/gum answering them. When it ends, however it ends, the answers (the password is
-# among them) and everything of this are removed; if it did not go through, Omarchy's own setup follows as it always
-# runs, for a person to answer.
+# myLinux: Omarchy's first-start setup for a machine the launcher was told about beforehand. The setup service runs
+# this in place of omarchy-provision-owner for that one start (20-mylinux-answers.conf):
+#   - with the answers to Omarchy's questions (`mylinux create omarchy --unattended`, or the launcher's dialog):
+#     Omarchy's own setup, straight at its questions (--attempt: past the "Press Return to Start Setup" screen), with
+#     ./bin/gum answering them; if that does not go through, Omarchy's own setup follows as it always runs, for a
+#     person to answer. Without answers, it is that setup from the start.
+#   - with ./tools (Install Claude Code and Install Codex in the launcher's dialog): once the account is made, Claude
+#     Code and Codex are set up in it (tools/claude_setup.py, as Claude Install… runs it), here, before the desktop is
+#     there: the first terminal anybody can open has cc, cc1 and cx. Set up later instead, a terminal opened in the
+#     desktop's first seconds has Omarchy's own cx, which is Claude Code, and no cc.
+# When it ends, however it ends, the answers (the password is among them), the request (it can hold a Claude token and
+# a Codex login) and everything of this are removed.
 dir=/var/lib/mylinux
 dropin=/etc/systemd/system/omarchy-provision-owner.service.d
 
@@ -29,7 +35,7 @@ text_size() {
   done
   setfont "${best:-default8x16}" 2>/dev/null || true
 }
-if [[ $(tty 2>/dev/null) == /dev/tty* ]]; then
+if [ -r "$dir/answers" ] && [[ $(tty 2>/dev/null) == /dev/tty* ]]; then
   for colour in 01a1b26 1f7768e 29ece6a 3e0af68 47aa2f7 5bb9af7 67dcfff 7a9b1d6 8414868 9f7768e A9ece6a Be0af68 C7aa2f7 Dbb9af7 E7dcfff Fc0caf5; do
     printf '\e]P%s' "$colour"
   done
@@ -37,11 +43,41 @@ if [[ $(tty 2>/dev/null) == /dev/tty* ]]; then
   settle 100 15; text_size; settle 30 5
 fi
 
-MYLINUX_ANSWERS=$dir/answers PATH=$dir/bin:$PATH /usr/bin/omarchy-provision-owner --attempt
-status=$?
-shred -u "$dir/answers" 2>/dev/null || rm -f "$dir/answers"
-rm -rf "$dir/bin" "$dir/provision" /run/mylinux-answers "$dropin/20-mylinux-answers.conf"
+if [ -r "$dir/answers" ]; then
+  MYLINUX_ANSWERS=$dir/answers PATH=$dir/bin:$PATH /usr/bin/omarchy-provision-owner --attempt
+  status=$?
+  shred -u "$dir/answers" 2>/dev/null || rm -f "$dir/answers"
+  rm -rf "$dir/bin" /run/mylinux-answers
+  if [ "$status" != 0 ]; then
+    echo "myLinux: the setup with the answers given did not finish ($status): Omarchy's own setup follows" >&2
+    /usr/bin/omarchy-provision-owner
+    status=$?
+  fi
+else
+  /usr/bin/omarchy-provision-owner
+  status=$?
+fi
+
+# Claude Code and Codex in the account that was just made (the first one), as that account
+if [ "$status" = 0 ] && [ -r "$dir/tools/request.json" ] && [ -r "$dir/tools/claude_setup.py" ]; then
+  user=$(awk -F: '$3 >= 1000 && $3 < 60000 { print $1; exit }' /etc/passwd)
+  if [ -n "$user" ]; then
+    share=$(mktemp -d /tmp/mylinux-tools.XXXXXX)
+    mkdir -p "$share/.mylinux/claude"
+    install -m 600 "$dir/tools/request.json" "$share/.mylinux/claude/request-00000001.json"
+    install -m 644 "$dir/tools/claude_setup.py" "$share/claude_setup.py"
+    chown -R "$user:" "$share"
+    printf '\n\n   Setting up Claude Code and Codex for %s ...\n' "$user"
+    # the status line comes from mylinux.app: a moment for the network of a machine that has just started
+    for _ in $(seq 1 15); do curl -fsI --max-time 3 https://mylinux.app >/dev/null 2>&1 && break; sleep 1; done
+    runuser -l "$user" -c "MYLINUX_SHARE='$share' PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 '$share/claude_setup.py' apply 00000001" >/dev/null 2>&1 </dev/null
+    # how it went, for the launcher to read through the machine's helper later (no secret is in it)
+    install -m 644 "$share/.mylinux/claude/result-00000001.json" /var/lib/mylinux-tools-result.json 2>/dev/null
+    sync
+    rm -rf "$share"
+  fi
+fi
+shred -u "$dir/tools/request.json" 2>/dev/null
+rm -rf "$dir/tools" "$dir/provision" "$dropin/20-mylinux-answers.conf"
 rmdir "$dropin" "$dir" 2>/dev/null
-[ "$status" = 0 ] && exit 0
-echo "myLinux: the setup with the answers given did not finish ($status): Omarchy's own setup follows" >&2
-exec /usr/bin/omarchy-provision-owner
+exit "$status"

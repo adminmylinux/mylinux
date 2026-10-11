@@ -635,6 +635,12 @@ def main(argv: list[str]) -> int:
         result = apply(ident)
     except Exception as e:                        # whatever went wrong, the wizard is told
         result = {"ok": False, "steps": [{"step": "setup", "title": "Claude setup", "state": "failed", "detail": f"{type(e).__name__}: {e}"}]}
+    # what was written is on the disk before anybody is told it is done: a machine switched off moments later (its
+    # window closed, say) came back with an empty aliases file and an empty subscription
+    try:
+        os.sync()
+    except OSError:
+        pass
     write_share(f"result-{ident}.json", result)
     return 0 if result.get("ok") else 1
 

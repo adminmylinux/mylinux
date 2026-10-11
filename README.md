@@ -77,9 +77,10 @@ its first start (keyboard, account, password, host name, time zone, and a name a
 machine then starts straight at its desktop. Two boxes at its foot, **Install Claude Code** and **Install Codex**,
 have the launcher set up the terminal's Claude Code (with the token from `claude setup-token` you type there, or
 none) and Codex (signed in with this Mac's Codex login if you leave that ticked) once the machine is up, with nobody
-opening Claude Install… or Codex Install…; the machine's page says how it went, and Omarchy's desktop says when it
-begins and when it is done: open a terminal after that, since one opened earlier still has Omarchy's own `cx`
-(Claude Code) and no `cc` (from 0.7.84; the dialog itself from
+opening Claude Install… or Codex Install…; the machine's page says how it went. A new Omarchy is set up in its first
+boot, before its desktop exists (from 0.7.86), so the first terminal you can open has `cc`, `cc1` and `cx`: set up
+after the desktop was there, a terminal opened in its first seconds still had Omarchy's own `cx` (Claude Code) and no
+`cc` (the boxes from 0.7.84; the dialog itself from
 0.7.80; its switch turned off, Omarchy asks in its window
 as before, and a machine that has not started yet has **Answer Here…** on its page). Open windows come back after a restart: `omarchy/session` is written into a new
 machine's disk before its first boot (`tools/omarchy-bake-session.sh`, with the runtime's `debugfs`; nothing is mounted),

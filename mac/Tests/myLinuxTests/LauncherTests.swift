@@ -1321,6 +1321,41 @@ final class OmarchyProfileTests: XCTestCase {
         reopened.installClaude = false; reopened.installCodex = false
         XCTAssertNil(reopened.apply(to: tm)); XCTAssertNil(FirstStartTools.kept(tdir), "unticked: nothing waits")
         XCTAssertNil(wants.apply(to: tm)); ProfileStore.forgetAnswers(in: tdir); XCTAssertNil(FirstStartTools.kept(tdir), "and a wish never goes to the Trash with a machine")
+        // an Omarchy: set up in its first boot. At its first start the wish becomes the script's request beside the new
+        // disk (the subscription as cc1 and plain claude's login, Codex with the login given), for run-omarchy.sh to bake
+        let bdir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-boot-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: bdir) }
+        let bm = ProfileStore.newProfile(named: "B", kind: .omarchy, folder: bdir)
+        let loginFile = bdir.appendingPathComponent("login.json")
+        try FileManager.default.createDirectory(at: bdir, withIntermediateDirectories: true)
+        try #"{"tokens": {"access_token": "made-up"}}"#.write(to: loginFile, atomically: true, encoding: .utf8)
+        FirstStartTools.prepareBoot(bm, script: "def apply(): pass", loginFile: loginFile)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: FirstStartTools.bootRequest(bdir).path), "nothing was asked for: nothing is made")
+        XCTAssertNil(wants.apply(to: bm))
+        FirstStartTools.prepareBoot(bm, script: "def apply(): pass", loginFile: loginFile)
+        let baked = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: FirstStartTools.bootRequest(bdir))) as? [String: Any])
+        XCTAssertEqual(baked["token"] as? String, "sk-ant-oat01-MADEupMADEupMADEup0123456789"); XCTAssertEqual(baked["alias"] as? String, "cc1")
+        XCTAssertEqual(baked["account"] as? String, "viktor"); XCTAssertEqual(baked["makeDefault"] as? Bool, true); XCTAssertEqual(baked["statusLine"] as? Bool, true)
+        XCTAssertEqual((baked["codex"] as? [String: Any])?["install"] as? Bool, true); XCTAssertEqual((baked["codex"] as? [String: Any])?["login"] as? String, #"{"tokens": {"access_token": "made-up"}}"#)
+        XCTAssertNotNil(baked["defaultAliases"] as? [[String: String]])
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: FirstStartTools.bootRequest(bdir).path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        XCTAssertEqual(try String(contentsOf: FirstStartTools.bootScript(bdir), encoding: .utf8), "def apply(): pass")
+        XCTAssertEqual(FirstStartTools.boot(bdir), FirstStartTools.Boot(claude: true, codex: true, token: true), "what the boot was asked, with nothing secret in it")
+        XCTAssertNotNil(FirstStartTools.kept(bdir), "the wish stays until the disk has it (run-omarchy.sh removes it then)")
+        // Codex alone, signed in inside by the user; and nothing of it for a Windows, or for a disk that is there already
+        let codexOnly = FirstStartTools.request(for: FirstStartTools.Wish(claude: false, codex: true, codexLogin: false), codexLogin: "x", defaultAliases: [])
+        XCTAssertEqual(codexOnly["claude"] as? Bool, false); XCTAssertNil(codexOnly["token"]); XCTAssertEqual((codexOnly["codex"] as? [String: Any])?["login"] as? String, "")
+        FirstStartTools.forget(bdir)
+        for url in [FirstStartTools.file(bdir), FirstStartTools.bootRequest(bdir), FirstStartTools.bootScript(bdir), FirstStartTools.bootMarker(bdir)] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), url.lastPathComponent)
+        }
+        XCTAssertNil(wants.apply(to: bm)); try "x".write(toFile: bm.appsDisk, atomically: true, encoding: .utf8)
+        FirstStartTools.prepareBoot(bm, script: "def apply(): pass", loginFile: loginFile)
+        XCTAssertNil(FirstStartTools.boot(bdir), "a machine that has started before is set up through its helper")
+        let wdir = bdir.appendingPathComponent("w"), wm = ProfileStore.newProfile(named: "W", kind: .windows, folder: wdir)
+        var wwants = w; wwants.installCodex = true
+        XCTAssertNil(wwants.apply(to: wm)); FirstStartTools.prepareBoot(wm, script: "def apply(): pass", loginFile: loginFile)
+        XCTAssertNil(FirstStartTools.boot(wdir), "a Windows is set up once it is installed, through its helper")
         // the terminal's Claude Code: the request leaves Windows's desktop app out
         var terminal = ClaudeRequest(); terminal.desktop = false
         XCTAssertEqual(terminal.json(defaultAliases: [])["desktop"] as? Bool, false); XCTAssertNil(ClaudeRequest().json(defaultAliases: [])["desktop"])

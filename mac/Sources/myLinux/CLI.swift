@@ -653,7 +653,8 @@ enum CLI {
         case "start":
             let (p, problem) = machine(); guard let p else { return problem! }
             let r = RunManager.shared.runner(for: p.id)
-            if !(r.isActive || r.state == .inUseElsewhere || Runner.diskInUse(p.appsDisk)) { begin(p.id, iso: w.values["iso"], store: store, settings: settings) }
+            // (how its last run ended is not this start's: a machine whose QEMU was killed would answer "failed" at once)
+            if !(r.isActive || r.state == .inUseElsewhere || Runner.diskInUse(p.appsDisk)) { r.clearFailure(); begin(p.id, iso: w.values["iso"], store: store, settings: settings) }
             return said(p)
         case "stop":
             let (p, problem) = machine(); guard let p else { return problem! }
@@ -664,7 +665,7 @@ enum CLI {
         case "restart":
             let (p, problem) = machine(); guard let p else { return problem! }
             let r = RunManager.shared.runner(for: p.id)
-            if r.isActive || r.canStopElsewhere { r.restart(p) } else { begin(p.id, store: store, settings: settings) }
+            if r.isActive || r.canStopElsewhere { r.restart(p) } else { r.clearFailure(); begin(p.id, store: store, settings: settings) }
             return said(p)
         case "delete":
             let (p, problem) = machine(); guard let p else { return problem! }
