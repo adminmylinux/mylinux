@@ -165,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if ProcessInfo.processInfo.environment["MYLINUX_RENDER_FILLED"] == "1" {
                 var f = FirstStartForm.suggested(kind, name: kind.title + " 2", macUser: "viktor")
                 f.password = "made up for the picture"; f.again = f.password; f.acceptsLicense = true
+                f.installClaude = true; f.installCodex = true; f.claudeToken = "sk-ant-oat01-made-up-for-the-picture-0123456789"
                 FirstStartSheet.renderForm = f
             }
             let view = NSHostingView(rootView: FirstStartSheet(subject: .new(kind, copying: nil), done: { _ in }).environmentObject(ProfileStore.shared)

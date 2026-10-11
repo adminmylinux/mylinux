@@ -28,6 +28,15 @@ struct FirstStartForm: Equatable {
     var edition = WindowsUnattended.Edition.pro
     /// Microsoft's licence terms, which an install that answers itself accepts for the user: theirs to tick.
     var acceptsLicense = false
+    /// Claude Code and Codex, the terminal's, installed by the launcher once the machine is up (FirstStartTools).
+    var installClaude = false
+    /// A token from `claude setup-token`; empty: Claude Code is installed and the user signs in inside.
+    var claudeToken = ""
+    /// The machine has a token kept from before (the dialog opened again): an empty field leaves it as it is.
+    var keepsToken = false
+    var installCodex = false
+    /// Codex is signed in with this Mac's own Codex login.
+    var codexLogin = true
 
     /// A form as on this Mac: its user name (when the kind takes it), its keyboard, its time zone. No password.
     static func suggested(_ kind: Profile.Kind, name: String, macUser: String = NSUserName(), macLayout: String? = WindowsUnattended.macLayout()) -> FirstStartForm {
@@ -99,6 +108,7 @@ struct FirstStartForm: Equatable {
         settings(into: &draft)
         if let problem = draft.problems.first { return .wrong(problem) }
         if sharesFolder, let problem = Self.shareProblem(share) { return .wrong(problem) }
+        if installClaude, let problem = FirstStartTools.tokenProblem(claudeToken) { return .wrong(problem) }
         guard answered else { return .ready }
         func sentence(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() + (s.hasSuffix(".") ? "" : ".") }
         if user.trimmingCharacters(in: .whitespaces).isEmpty { return .waiting("Name the account.") }
@@ -113,9 +123,20 @@ struct FirstStartForm: Equatable {
         return .ready
     }
 
+    /// What the launcher is to install in the machine once it is up. `kept`: the wish the machine has already (its
+    /// token stays when the field is left empty).
+    func tools(kept: FirstStartTools.Wish? = nil, macUser: String = NSUserName()) -> FirstStartTools.Wish {
+        let typed = claudeToken.components(separatedBy: .whitespacesAndNewlines).joined()
+        let account = user.trimmingCharacters(in: .whitespaces)
+        return FirstStartTools.Wish(claude: installClaude, token: !installClaude ? "" : typed.isEmpty && keepsToken ? kept?.token ?? "" : typed,
+                                    account: FirstStartTools.accountName(account.isEmpty ? macUser : account),
+                                    codex: installCodex, codexLogin: installCodex && codexLogin)
+    }
+
     /// Keeps the answers for the machine's first start (or forgets them, when the form says to ask in the window):
     /// nil, or what went wrong.
     func apply(to p: Profile) -> String? {
+        if let problem = FirstStartTools.keep(tools(kept: FirstStartTools.kept(p.machineFolder)), machineFolder: p.machineFolder) { return problem }
         guard answered else {
             if kind == .windows { WindowsUnattended.forget(p.machineFolder) } else { OmarchyUnattended.forget(p.machineFolder) }
             return nil
@@ -184,6 +205,9 @@ struct FirstStartSheet: View {
             f.memoryGB = p.memoryAuto ? 0 : p.memoryGB; f.diskGB = p.appsSizeGB
             // (the folder a new machine gets, "Mac" beside its disk, is "its own": shown so, and left as it is)
             if p.shareDir != p.machineFolder.appendingPathComponent("Mac").path { f.share = p.shareDir }
+            if let wish = FirstStartTools.kept(p.machineFolder) {
+                f.installClaude = wish.claude; f.keepsToken = !wish.token.isEmpty; f.installCodex = wish.codex; f.codexLogin = wish.codexLogin || !wish.codex
+            }
             if p.kind == .windows, let a = WindowsUnattended.kept(p.machineFolder) {
                 f.user = a.user; f.edition = a.edition; f.keyboard = a.keyboard
             } else if p.kind == .omarchy, let a = OmarchyUnattended.read(p.machineFolder) {
@@ -194,6 +218,8 @@ struct FirstStartSheet: View {
     }
 
     private var isWindows: Bool { subject.kind == .windows }
+    /// This Mac has a Codex login file (looked at, not read).
+    private var macHasCodexLogin: Bool { FileManager.default.fileExists(atPath: CodexInstall.macLogin.path) }
     /// The machine the dialog is about, when it is there already.
     private var existing: Profile? { if case .existing(let p) = subject { return p }; return nil }
     private var verdict: FirstStartForm.Verdict {
@@ -285,6 +311,25 @@ struct FirstStartSheet: View {
                         }
                         .disabled(!form.answered)
                     }
+                    // what the launcher installs in the machine's terminal once it is up (FirstStartTools)
+                    GridRow { Divider().gridCellColumns(2) }
+                    GridRow {
+                        Toggle("Install Claude Code", isOn: $form.installClaude).toggleStyle(.checkbox)
+                        Toggle("Install Codex (ChatGPT's coding agent)", isOn: $form.installCodex).toggleStyle(.checkbox)
+                    }
+                    GridRow {
+                        cell("Claude token") {
+                            SecureField("", text: $form.claudeToken, prompt: Text(form.keepsToken ? "kept; a new one replaces it" : "from claude setup-token, or none"))
+                                .accessibilityLabel("Claude token")
+                        }
+                        .disabled(!form.installClaude)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Toggle("Sign it in with this Mac's Codex login", isOn: $form.codexLogin).toggleStyle(.checkbox)
+                            Text(macHasCodexLogin ? "a copy of this Mac's ~/.codex/auth.json goes into the machine" : "this Mac has no Codex login to give: sign in inside")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .disabled(!form.installCodex || !macHasCodexLogin)
+                    }
                 }
                 .textFieldStyle(.roundedBorder)
             }
@@ -295,7 +340,7 @@ struct FirstStartSheet: View {
             footer
         }
         // a fixed size: nothing in it comes or goes, a field that does not apply is greyed
-        .frame(width: 640, height: isWindows ? 510 : 580)
+        .frame(width: 640, height: isWindows ? 640 : 710)
     }
 
     /// One field of the grid: its name above it, and the field as wide as its column.
@@ -365,6 +410,8 @@ struct FirstStartSheet: View {
                     case .ready:
                         Text(!form.answered ? (isWindows ? "Windows Setup asks in the machine's window." : "Omarchy asks in the machine's window.")
                              : isWindows ? "Its first start installs Windows, in 15 to 40 minutes." : "Its first start goes straight to the desktop.")
+                            .foregroundStyle(.secondary)
+                        + Text(form.installClaude || form.installCodex ? " \([form.installClaude ? "Claude Code" : nil, form.installCodex ? "Codex" : nil].compactMap { $0 }.joined(separator: " and ")) \(form.installClaude && form.installCodex ? "are" : "is") installed in its terminal once it is up." : "")
                             .foregroundStyle(.secondary)
                     case .waiting(let what): Text(what).foregroundStyle(.secondary)
                     case .wrong(let what): Text(what).foregroundStyle(.orange)

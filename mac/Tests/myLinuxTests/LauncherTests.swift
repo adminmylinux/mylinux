@@ -1296,6 +1296,34 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(windowsMade.shareDir, "", "no share for Windows, whatever the form holds")
         var small = w; small.diskGB = 16
         if case .wrong(let why) = small.verdict(taken: []) { XCTAssertTrue(why.contains("Disk size")) } else { XCTFail("Windows needs 32 GB") }
+        // "Install Claude Code" and "Install Codex", ticked in the dialog: what the launcher installs once the machine is up
+        XCTAssertTrue(o.tools().isEmpty, "nothing is installed unasked")
+        var wants = o; wants.installClaude = true; wants.installCodex = true; wants.claudeToken = "  sk-ant-oat01-MADEupMADEupMADEup0123456789\n"
+        XCTAssertEqual(wants.verdict(taken: []), .ready)
+        XCTAssertEqual(wants.tools(), FirstStartTools.Wish(claude: true, token: "sk-ant-oat01-MADEupMADEupMADEup0123456789", account: "viktor", codex: true, codexLogin: true))
+        var short = wants; short.claudeToken = "abc"
+        if case .wrong(let why) = short.verdict(taken: []) { XCTAssertTrue(why.contains("claude setup-token")) } else { XCTFail("a token that is not one") }
+        short.installClaude = false; XCTAssertEqual(short.verdict(taken: []), .ready, "a token nobody asked to use is not checked"); XCTAssertEqual(short.tools().token, "", "nor kept")
+        var noToken = wants; noToken.claudeToken = ""; noToken.installCodex = false; noToken.codexLogin = true
+        XCTAssertEqual(noToken.tools(), FirstStartTools.Wish(claude: true, token: "", account: "viktor", codex: false, codexLogin: false), "Claude Code alone, signed in inside by the user")
+        XCTAssertEqual(["viktor", "Viktor K", "", "ünï", "a@b.c"].map(FirstStartTools.accountName), ["viktor", "Viktor-K", "claude", "n", "a@b.c"])
+        let tdir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-tools-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tdir) }
+        let tm = ProfileStore.newProfile(named: "T", kind: .omarchy, folder: tdir)
+        XCTAssertNil(wants.apply(to: tm))
+        XCTAssertEqual(FirstStartTools.kept(tdir), wants.tools())
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: FirstStartTools.file(tdir).path)[.posixPermissions] as? NSNumber)?.intValue, 0o600, "it can hold a token")
+        // the dialog opened again: the boxes as they were, never the token, which stays unless a new one is typed
+        var reopened = FirstStartSheet.start(.existing(tm))
+        XCTAssertTrue(reopened.installClaude && reopened.installCodex && reopened.keepsToken); XCTAssertEqual(reopened.claudeToken, "")
+        reopened.password = "x"; reopened.again = "x"
+        XCTAssertNil(reopened.apply(to: tm)); XCTAssertEqual(FirstStartTools.kept(tdir)?.token, "sk-ant-oat01-MADEupMADEupMADEup0123456789")
+        reopened.installClaude = false; reopened.installCodex = false
+        XCTAssertNil(reopened.apply(to: tm)); XCTAssertNil(FirstStartTools.kept(tdir), "unticked: nothing waits")
+        XCTAssertNil(wants.apply(to: tm)); ProfileStore.forgetAnswers(in: tdir); XCTAssertNil(FirstStartTools.kept(tdir), "and a wish never goes to the Trash with a machine")
+        // the terminal's Claude Code: the request leaves Windows's desktop app out
+        var terminal = ClaudeRequest(); terminal.desktop = false
+        XCTAssertEqual(terminal.json(defaultAliases: [])["desktop"] as? Bool, false); XCTAssertNil(ClaudeRequest().json(defaultAliases: [])["desktop"])
         // a folder that is not one to share is refused here, as run-omarchy.sh would refuse it at the start
         let home = "/Users/somebody", machines = "/Users/somebody/Library/Application Support/myLinux/machines"
         for bad in ["/", home, home + "/Library", home + "/Library/Preferences", "/System", "/Applications", home + "/a,b"] {

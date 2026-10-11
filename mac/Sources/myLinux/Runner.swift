@@ -649,6 +649,8 @@ final class RunManager: ObservableObject {
                         }
                         // an Omarchy made with its first-start answers: set up when its desktop is seen
                         if p.kind == .omarchy { MainActor.assumeIsolated { OmarchyUnattended.follow(p, runner: r) } }
+                        // "Install Claude Code" and "Install Codex", ticked in the machine's dialog: once its helper answers
+                        if FirstStartSheet.asks(p.kind) { MainActor.assumeIsolated { FirstStartTools.shared.follow(p, runner: r) } }
                         if cloudAsked { self.cloudRequest(p.id, store: store) }
                         if codexAsked { CodexLogin.answer(p) }
                     }

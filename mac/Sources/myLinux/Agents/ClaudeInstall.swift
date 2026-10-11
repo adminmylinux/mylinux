@@ -228,6 +228,9 @@ struct ClaudeRequest: Equatable {
     var makeDefault = false
     /// Claude Code's own steps (off for `mylinux codex NAME --install` in a Linux machine, which is Codex alone).
     var claude = true
+    /// In Windows, Claude's desktop app with its taskbar pin too (off for the new-machine dialog's "Install Claude
+    /// Code", which is the terminal's).
+    var desktop = true
     /// Codex, in a Linux machine: installed when missing, and signed in with this login file's text when given.
     var codexInstall = false, codexLogin = ""
 
@@ -252,6 +255,7 @@ struct ClaudeRequest: Equatable {
     func json(defaultAliases: [[String: String]]) -> [String: Any] {
         var out: [String: Any] = ["defaultAliases": defaultAliases, "statusLine": claude]
         if !claude { out["claude"] = false }
+        if !desktop { out["desktop"] = false }
         if codexInstall || !codexLogin.isEmpty { out["codex"] = ["install": codexInstall, "login": codexLogin] }
         if !cleanToken.isEmpty {
             out["alias"] = alias.trimmingCharacters(in: .whitespaces); out["account"] = account.trimmingCharacters(in: .whitespaces)

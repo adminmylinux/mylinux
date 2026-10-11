@@ -82,6 +82,7 @@ struct MachineView: View {
     @AppStorage("fold.files") private var openFiles = false
     @AppStorage("fold.diagnostics") private var openDiagnostics = false
     @ObservedObject private var stats = MachineStats.shared
+    @ObservedObject private var tools = FirstStartTools.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,7 +91,7 @@ struct MachineView: View {
                 if MachineStatus.running(runner) {
                     Section {} header: { live }
                 }
-                if isServer { serverDownloads } else if isDesktop { desktopDownloads; firstStartNote; windowsInstallNote }
+                if isServer { serverDownloads } else if isDesktop { desktopDownloads; firstStartNote; windowsInstallNote; firstStartTools }
                 Section {} header: { fold("Machine configuration", "slider.horizontal.3", configSummary, $openConfig) }
                 if openConfig {
                     Group { if isServer { serverConfiguration } else { desktopConfiguration } }.disabled(!editable)
@@ -564,6 +565,36 @@ struct MachineView: View {
                     Text("Reachable from this Mac only. Omarchy starts its SSH server for this boot; log in with the account you made in Omarchy.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
+    }
+
+    /// "Install Claude Code" and "Install Codex", ticked in the machine's dialog: waiting for the machine to be up, at
+    /// work, or how it went (FirstStartTools).
+    @ViewBuilder private var firstStartTools: some View {
+        let phase = tools.phases[draft.id]
+        let wish = FirstStartTools.kept(draft.machineFolder)
+        if FirstStartSheet.asks(draft.kind), phase != nil || wish != nil {
+            Section("Claude Code and Codex") {
+                let _ = answersChanged
+                switch phase {
+                case .working(let what):
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("\(what) in the machine's terminal…").font(.callout) }
+                case .done(let lines):
+                    ForEach(lines, id: \.self) { Label($0, systemImage: "checkmark.circle.fill").foregroundStyle(.primary).font(.callout) }
+                case .failed(let lines):
+                    ForEach(lines, id: \.self) { Label($0, systemImage: $0.contains(": installed") || $0.contains(": signed in") ? "checkmark.circle.fill" : "exclamationmark.triangle.fill").font(.callout) }
+                    Text("Claude Install… and Codex Install… in the machine's ⌘ menu do it again.").font(.caption).foregroundStyle(.secondary)
+                default:
+                    if let wish {
+                        let names = [wish.claude ? "Claude Code" : nil, wish.codex ? "Codex" : nil].compactMap { $0 }.joined(separator: " and ")
+                        Text("Once this machine is up, the launcher installs \(names) in its terminal"
+                             + (wish.claude ? (wish.token.isEmpty ? " (Claude Code without a token: you sign in inside)" : " (Claude Code with the token you gave, as \(wish.account))") : "")
+                             + (wish.codex && wish.codexLogin ? ", and signs Codex in with this Mac's login" : "") + ".")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Button("Don't Install") { tools.cancel(draft); answersChanged += 1 }
+                    }
+                }
+            }
+        }
     }
 
     /// A new Omarchy, before its first start: who answers its first-start questions, the dialog (FirstStartSheet) or

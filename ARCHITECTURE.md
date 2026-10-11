@@ -548,6 +548,16 @@ pointer while it is fullscreen or after ⌘⌃G.
   Microsoft Store (`winget install --id 9PLM9XGG6VKS --source msstore`), the one place in that script where terms
   are accepted, and only when the request says the user has accepted them.
 
+- `FirstStartTools.swift`: "Install Claude Code" and "Install Codex" in the new-machine dialog. What is ticked is
+  kept as `<machine>/first-start.tools` (JSON, mode 600: it can hold the Claude token typed into the dialog) and
+  carried out by the launcher when the machine's helper first answers (`RunManager`'s tick calls `follow`; not
+  while an Omarchy still sets itself up or a Windows is not installed and restarted yet; asked again every 20
+  seconds until then). It drives the wizards' models as `AgentCommands` does: the terminal's Claude Code
+  (`ClaudeRequest.desktop = false` leaves Windows's desktop app to Claude Install…) with the subscription as the next
+  free alias when a token was given, then Codex with cx and, when ticked, the Mac's own login. The file is removed
+  when that ends, however it ends, and the machine's page shows the phase and the outcome
+  (`MachineView.firstStartTools`). A wish never goes to the Trash with a machine.
+
 ### 7.2 How it runs a machine
 
 `Runner` (one per profile, kept by `RunManager` in `Runner.swift`) starts `/bin/sh run.sh` or `run-omarchy.sh`

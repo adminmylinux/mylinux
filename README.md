@@ -74,7 +74,11 @@ patch on the runtime. In the
 launcher it is **+ › Omarchy Machine…**: a dialog, in two columns, takes the machine's name, its memory, its disk's
 size and the Mac folder it shares (its own "Mac" unless you choose another), and the answers to what Omarchy asks at
 its first start (keyboard, account, password, host name, time zone, and a name and e-mail address for git), and the
-machine then starts straight at its desktop (from 0.7.80; the dialog's switch turned off, Omarchy asks in its window
+machine then starts straight at its desktop. Two boxes at its foot, **Install Claude Code** and **Install Codex**,
+have the launcher set up the terminal's Claude Code (with the token from `claude setup-token` you type there, or
+none) and Codex (signed in with this Mac's Codex login if you leave that ticked) once the machine is up, with nobody
+opening Claude Install… or Codex Install…; the machine's page says how it went (from 0.7.84; the dialog itself from
+0.7.80; its switch turned off, Omarchy asks in its window
 as before, and a machine that has not started yet has **Answer Here…** on its page). Open windows come back after a restart: `omarchy/session` is written into a new
 machine's disk before its first boot (`tools/omarchy-bake-session.sh`, with the runtime's `debugfs`; nothing is mounted),
 system-wide and enabled for every account. The layout, each window's command line and a terminal's working directory, is
