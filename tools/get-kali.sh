@@ -11,8 +11,8 @@ set -eu
 cd "$(dirname "$0")/.."
 . tools/download-cache.sh
 REPO=adminmylinux/mylinux-releases
-TAG=kali-2026.10.07
-SUMS_SHA256=6ca22bc08f93f7cb400836af9c29d07d2138dac1df738dd1929744982c4d0bc0
+TAG=kali-2026.10.15
+SUMS_SHA256=90da7ae45705354e084bd29f2a72c70cb6f827833b1079afe3343ae16fa8d1dd
 PINNED=$TAG
 FILES="vmlinuz-linux initramfs-linux.img rootfs.ext4.zst"
 OUT="${MYLINUX_OUT:-out}"
