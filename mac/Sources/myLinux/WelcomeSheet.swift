@@ -34,7 +34,7 @@ struct WelcomeSheet: View {
     static let offers = [
         Offer(kind: .mylinux, name: "myLinux", size: "110 MB", bytes: 110e6,
               text: "A small Linux desktop with a Mac feel that starts in seconds and runs from memory, so every start is clean. Your home folder, browsers and coding agents live on their own disk."),
-        Offer(kind: .omarchy, name: "Omarchy", size: "1.4 GB", bytes: 1.4e9,
+        Offer(kind: .omarchy, name: "Omarchy", size: "1.7 GB", bytes: 1.7e9,
               text: "Arch Linux with the Hyprland tiling desktop, run from the keyboard. Command works as its Super key, the clipboard is shared with the Mac, and your windows come back after a restart."),
         Offer(kind: .arch, name: "Arch Linux", size: "2 GB", bytes: 2.0e9,
               text: "Arch Linux with the KDE Plasma desktop: a taskbar, a start menu, Dolphin, Konsole and Firefox. The window resizes the desktop, the clipboard is shared, and pacman keeps it current."),

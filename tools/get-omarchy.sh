@@ -4,7 +4,7 @@
 # for run-omarchy.sh. The guest only exists inside that project's signed release disk image, so this downloads the
 # image of one pinned release, checks it against the pinned SHA-256, checks the app's signature and team, copies out
 # the kernel, initramfs and compressed root disk, and checks those against the checksums that ship beside them.
-# Nothing from the disk image is run. About 1.4 GB to download, 1.5 GB kept.
+# Nothing from the disk image is run. About 1.7 GB to download, 1.8 GB kept.
 # Usage: tools/get-omarchy.sh            the pinned release
 #        tools/get-omarchy.sh --remove   delete the downloaded guest (machines keep their own disks)
 #        tools/get-omarchy.sh --check    the saved and the pinned release (tools/download-cache.sh)
@@ -12,8 +12,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 . tools/download-cache.sh
-TAG=v0.4.1
-DMG_SHA256=e2f172f67e5d8a99df8e46fa6f7814a061c0af249f100a6bdc7836b922f47674
+TAG=v0.6.0
+DMG_SHA256=6e2e5b7b9d728b3ba697f3814418bee55f11aa3a54f3c82403566f8564fa36bc
 TEAM=RZC79MPD34
 URL="https://github.com/omacom/try-omarchy/releases/download/$TAG/TryOmarchy.dmg"
 OUT="${MYLINUX_OUT:-out}"
@@ -46,7 +46,7 @@ if [ -n "${MYLINUX_OMARCHY_DMG:-}" ]; then
   DMG="$MYLINUX_OMARCHY_DMG"; echo "using $DMG ..."
 else
   DMG="$STAGE/TryOmarchy.dmg"
-  echo "downloading Try Omarchy $TAG (1.4 GB) ..."
+  echo "downloading Try Omarchy $TAG (1.7 GB) ..."
   curl -fL --retry 3 --retry-delay 2 --progress-bar -o "$DMG" "$URL"
 fi
 echo "checking the download ..."

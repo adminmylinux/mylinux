@@ -256,7 +256,7 @@ final class RuntimeManager: ScriptDownloader {
 }
 
 /// A desktop guest, kept in <out>/<kind>; every machine of that kind has its disk unpacked from it on its first start.
-/// Omarchy (tools/get-omarchy.sh): downloaded once (1.4 GB) from the Try Omarchy project's signed release. Arch Linux
+/// Omarchy (tools/get-omarchy.sh): downloaded once (1.7 GB) from the Try Omarchy project's signed release. Arch Linux
 /// with Plasma (tools/get-arch.sh): about 2 GB, our build (tools/build-arch-image.sh) from mylinux-releases. Kali
 /// Linux with Xfce (tools/get-kali.sh): about 2 GB, our build (tools/build-kali-image.sh) from Kali's packages.
 /// Windows (tools/get-windows.sh) is not downloaded by the launcher: it is Microsoft's, and Microsoft's page gives
@@ -277,12 +277,12 @@ final class DesktopImageManager: ScriptDownloader {
     init(_ kind: Profile.Kind) { self.kind = kind; super.init() }
 
     /// For the download rows: the size and where it comes from.
-    var size: String { kind == .windows ? "about 8 GB" : kind == .arch || kind == .kali ? "about 2 GB" : "1.4 GB" }
+    var size: String { kind == .windows ? "about 8 GB" : kind == .arch || kind == .kali ? "about 2 GB" : "1.7 GB" }
     var detail: String {
         kind == .windows ? "the Arm64 ISO you download from Microsoft (about 8 GB), and the virtio drivers (877 MB to fetch, 3 MB kept)"
         : kind == .kali ? "about 2 GB, Kali's Xfce desktop and its top tools, built by myLinux from Kali's packages"
         : kind == .arch ? "about 2 GB, Arch Linux ARM with KDE Plasma, built by myLinux"
-                      : "1.4 GB, from the Try Omarchy project's signed release"
+                      : "1.7 GB, from the Try Omarchy project's signed release"
     }
 
     func refresh(_ settings: AppSettings = .shared) {

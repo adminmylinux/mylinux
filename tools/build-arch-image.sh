@@ -77,6 +77,9 @@ bsdtar -xpf alarm.tar.gz -C "$MNT"
 
 for m in proc sys dev dev/pts run tmp var/cache/pacman/pkg; do mkdir -p "$MNT/$m"; done
 mount -t proc proc "$MNT/proc"; mount --rbind /sys "$MNT/sys"; mount --rbind /dev "$MNT/dev"
+# followers of the build machine's, not sharing back (as arch-chroot does): OrbStack's /dev and /sys carry dozens of
+# mounts of their own, and shared they could not be unmounted afterwards ("target is busy"), so nothing was compressed
+mount --make-rslave "$MNT/sys"; mount --make-rslave "$MNT/dev"
 mount -t tmpfs tmpfs "$MNT/run"; mount -t tmpfs tmpfs "$MNT/tmp"
 # the packages are kept here between builds: a failed or repeated build does not fetch them again
 mkdir -p "$WORK/pkgcache"; mount --bind "$WORK/pkgcache" "$MNT/var/cache/pacman/pkg"

@@ -81,6 +81,9 @@ debootstrap --arch=arm64 --keyring="$WORK/kali-archive-keyring.gpg" --components
 
 for m in proc sys dev dev/pts run tmp var/cache/apt/archives; do mkdir -p "$MNT/$m"; done
 mount -t proc proc "$MNT/proc"; mount --rbind /sys "$MNT/sys"; mount --rbind /dev "$MNT/dev"
+# followers of the build machine's, not sharing back (as arch-chroot does): OrbStack's /dev and /sys carry dozens of
+# mounts of their own, and shared they could not be unmounted afterwards ("target is busy"), so nothing was compressed
+mount --make-rslave "$MNT/sys"; mount --make-rslave "$MNT/dev"
 mount -t tmpfs tmpfs "$MNT/run"; mount -t tmpfs tmpfs "$MNT/tmp"
 mount --bind "$WORK/aptcache" "$MNT/var/cache/apt/archives"
 cp -L /etc/resolv.conf "$MNT/etc/resolv.conf.build"

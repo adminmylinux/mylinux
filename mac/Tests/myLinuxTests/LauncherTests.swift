@@ -1181,8 +1181,10 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertNil(OmarchyUnattended.keyboard(layout: nil))
         XCTAssertEqual(["icelandic", "is-IS", "English (UK)", "nb-no", " German "].map { OmarchyUnattended.keyboard($0) }, ["Icelandic", "Icelandic", "English (UK)", "Norwegian", "German"])
         XCTAssertNil(OmarchyUnattended.keyboard("klingon"))
+        XCTAssertEqual(OmarchyUnattended.keyboard("Portuguese (Brazil)"), "Portuguese (Brazil, ABNT2)", "its name before guest v0.6.0 still works")
+        XCTAssertEqual(OmarchyUnattended.keyboard(layout: "com.apple.keylayout.USInternational-PC"), "English (US, International with dead keys)")
         XCTAssertEqual(Set(OmarchyUnattended.layouts.map(\.name)).count, OmarchyUnattended.layouts.count)
-        XCTAssertEqual(OmarchyUnattended.layouts.count, 48, "Omarchy's setup form offers 48")
+        XCTAssertEqual(OmarchyUnattended.layouts.count, 49, "Omarchy's setup form offers 49 (guest v0.6.0)")
         XCTAssertEqual(["Omarchy", "My Omarchy 2!", "", "ünï"].map(OmarchyUnattended.hostname), ["omarchy", "my-omarchy-2", "omarchy", "n"])
         // what Omarchy's own form would refuse is refused here, in words
         var good = OmarchyUnattended.Answers(user: "viktor", password: "p w=1$x")

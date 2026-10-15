@@ -33,12 +33,13 @@ enum OmarchyUnattended {
         return word.trimmingCharacters(in: .whitespacesAndNewlines) == "asked" ? .asking : .settingUp
     }
 
-    /// Omarchy's keyboards, as its setup form names them (install/provisioning/setup-form.sh), each with the Mac's
-    /// layouts of the same keys and the languages and regions it is the usual keyboard of.
+    /// Omarchy's keyboards, as its setup form names them (install/provisioning/setup-form.sh, Try Omarchy guest
+    /// v0.6.0), each with the Mac's layouts of the same keys and the languages and regions it is the usual keyboard of.
     static let layouts: [(name: String, mac: [String], locales: [String])] = [
-        ("English (US)", ["US", "ABC", "USExtended", "USInternational-PC", "Australian", "Canadian"], ["en-US", "en-AU", "en-CA"]),
+        ("English (US)", ["US", "ABC", "USExtended", "Australian", "Canadian"], ["en-US", "en-AU", "en-CA"]),
         ("English (UK)", ["British", "British-PC"], ["en-GB"]),
         ("English (US, Dvorak)", ["Dvorak"], []), ("English (US, Colemak)", ["Colemak"], []),
+        ("English (US, International with dead keys)", ["USInternational-PC"], []),
         ("Azerbaijani", [], ["az-AZ"]), ("Belarusian", ["Byelorussian"], ["be-BY"]), ("Belgian", ["Belgian"], ["nl-BE", "fr-BE"]),
         ("Bulgarian", ["Bulgarian"], ["bg-BG"]), ("Croatian", ["Croatian", "Croatian-PC"], ["hr-HR"]), ("Czech", ["Czech"], ["cs-CZ"]),
         ("Danish", ["Danish"], ["da-DK"]), ("Dutch", ["Dutch"], ["nl-NL"]), ("Estonian", ["Estonian"], ["et-EE"]),
@@ -51,7 +52,7 @@ enum OmarchyUnattended {
         ("Kyrgyz", ["Kyrgyz-Cyrillic"], ["ky-KG"]), ("Lao", [], ["lo-LA"]), ("Latvian", ["Latvian"], ["lv-LV"]),
         ("Lithuanian", ["Lithuanian"], ["lt-LT"]), ("Macedonian", ["Macedonian"], ["mk-MK"]),
         ("Norwegian", ["Norwegian", "NorwegianExtended"], ["nb-NO", "nn-NO", "no-NO"]), ("Polish", ["Polish", "PolishPro"], ["pl-PL"]),
-        ("Portuguese", ["Portuguese"], ["pt-PT"]), ("Portuguese (Brazil)", ["Brazilian", "Brazilian-Pro", "Brazilian-ABNT2"], ["pt-BR"]),
+        ("Portuguese", ["Portuguese"], ["pt-PT"]), ("Portuguese (Brazil, ABNT2)", ["Brazilian", "Brazilian-Pro", "Brazilian-ABNT2"], ["pt-BR"]),
         ("Romanian", ["Romanian", "Romanian-Standard"], ["ro-RO"]), ("Russian", ["Russian", "RussianWin", "Russian-Phonetic"], ["ru-RU"]),
         ("Serbian", ["Serbian-Latin"], ["sr-RS"]), ("Slovak", ["Slovak", "Slovak-QWERTY"], ["sk-SK"]), ("Slovenian", ["Slovenian"], ["sl-SI"]),
         ("Spanish", ["Spanish", "Spanish-ISO"], ["es-ES"]), ("Spanish (Latin American)", ["LatinAmerican"], ["es-MX", "es-419"]),
@@ -61,7 +62,8 @@ enum OmarchyUnattended {
     /// What --keyboard takes: Omarchy's name for a keyboard ("Icelandic", "english (uk)"), or a language and region
     /// as the unattended Windows takes them (is-IS, nb-NO). Omarchy's name for it, or nil.
     static func keyboard(_ word: String) -> String? {
-        let w = word.trimmingCharacters(in: .whitespaces).lowercased()
+        var w = word.trimmingCharacters(in: .whitespaces).lowercased()
+        if w == "portuguese (brazil)" { w = "portuguese (brazil, abnt2)" }      // its name before guest v0.6.0
         return layouts.first { $0.name.lowercased() == w }?.name ?? layouts.first { $0.locales.contains { $0.lowercased() == w } }?.name
     }
     /// Omarchy's keyboard for a Mac layout ("com.apple.keylayout.Norwegian"), or nil when it has no namesake.

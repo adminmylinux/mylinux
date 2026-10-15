@@ -195,7 +195,7 @@ private struct ImagesSettingsPage: View {
                 status: settings.developerMode ? "From the checkout's out/ folder" : (images.present ? "Installed · \(images.revision ?? "")" : nil),
                 action: settings.developerMode ? nil : (images.present ? "Update" : "Download"), start: { images.download(settings) })
             Divider()
-            row(icon: MachineIcon.image(.omarchy), name: "Omarchy", size: "1.4 GB", loader: omarchy,
+            row(icon: MachineIcon.image(.omarchy), name: "Omarchy", size: "1.7 GB", loader: omarchy,
                 status: omarchy.present ? "Installed · \(omarchy.revision ?? "")" : nil,
                 action: omarchy.present ? "Update" : "Download", start: { omarchy.download(settings) })
             Divider()
