@@ -109,6 +109,20 @@ file_is "the older saved release is recorded" "$F/IMAGE-REVISION" "v8"
 printf 'v9' > "$C/mylinux/IMAGE-REVISION"
 out=$(cd "$W" && PATH="$W/bin:$PATH" sh tools/get-image.sh --check 2>&1)
 has "without MYLINUX_CACHE nothing is saved" "$out" "cached: none"
+# Arch Linux and Kali from their saved download: the copy went into the staging folder that was already there, one
+# folder too deep, and the install failed with "the checksum list does not cover the guest files" (until 0.7.90)
+cp "$REPO/tools/get-arch.sh" "$REPO/tools/get-kali.sh" "$W/tools/"
+for k in arch:ARCH kali:KALI; do
+  d=${k%%:*}; rev=${k#*:}-REVISION
+  mkdir -p "$C/$d"
+  for f in vmlinuz-linux initramfs-linux.img rootfs.ext4.zst; do printf '%s %s' "$d" "$f" > "$C/$d/$f"; done
+  (cd "$C/$d" && shasum -a 256 vmlinuz-linux initramfs-linux.img rootfs.ext4.zst > SHA256SUMS)
+  printf '%s-saved\n' "$d" > "$C/$d/$rev"
+  rm -rf "$F"
+  (cd "$W" && PATH="$W/bin:$PATH" MYLINUX_FROM_CACHE=1 MYLINUX_OUT="$F" MYLINUX_CACHE="$C" sh "tools/get-$d.sh" >/dev/null 2>&1); rc=$?
+  is_rc "get-$d.sh installs its saved download" $rc 0
+  file_is "get-$d.sh: the saved guest is in place" "$F/$d/rootfs.ext4.zst" "$d rootfs.ext4.zst"
+done
 
 echo "run.sh (DRYRUN)"
 out=$(cd / && DRYRUN=1 SHARE_DIR="$T/my share" APPS_IMG="$T/app's disk.img" NAME="test vm" sh "$W/run.sh" -qmp none 2>&1); rc=$?

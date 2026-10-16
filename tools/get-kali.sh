@@ -37,7 +37,7 @@ verify() {   # the three files against SHA256SUMS, which for the pinned release 
 }
 if [ -n "$CACHED" ] && [ "$CACHED" = "$TAG" ]; then
   echo "installing Kali Linux $TAG from the saved download ..."
-  cache_clone "$CACHE/kali" "$STAGE/new"
+  rm -rf "$STAGE/new"; cache_clone "$CACHE/kali" "$STAGE/new"
   verify "$STAGE/new" || exit 1
 else
   BASE="https://github.com/$REPO/releases/download/$TAG"
