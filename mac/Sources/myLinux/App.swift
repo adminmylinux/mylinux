@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         signal(SIGPIPE, SIG_IGN)                 // a closed serial socket must not end the app
         if MachineApp.active { MachineApp.run(); return }     // a machine's own app: its terminal, nothing else
         StatusMenu.shared.install()              // the menu bar item: the way out of a full keyboard grab
+        QuitClosesSheets.install()               // a quit with the Welcome sheet (any sheet) open closes it and quits
         ImageManager.shared.refresh()
         RuntimeManager.shared.refresh()
         RuntimeManager.shared.installBundledIfNeeded()   // a release build carries the QEMU runtime: no download
@@ -160,10 +161,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(0)
         }
         // `myLinux --render-first-start omarchy|windows <png>`: draw the dialog of a new machine to a file
-        // (MYLINUX_RENDER_FILLED=1: with answers in it, as when Create can be pressed)
+        // (MYLINUX_RENDER_FILLED=1: with answers in it, as when Create can be pressed; MYLINUX_RENDER_NAME, _USER, _KEYBOARD
+        // and _TIMEZONE put others in, for the website's pictures)
         if let i = args.firstIndex(of: "--render-first-start"), i + 2 < args.count, let kind = Profile.Kind(rawValue: args[i + 1]) {
-            if ProcessInfo.processInfo.environment["MYLINUX_RENDER_FILLED"] == "1" {
-                var f = FirstStartForm.suggested(kind, name: kind.title + " 2", macUser: "viktor")
+            let env = ProcessInfo.processInfo.environment
+            if env["MYLINUX_RENDER_FILLED"] == "1" {
+                var f = FirstStartForm.suggested(kind, name: env["MYLINUX_RENDER_NAME"] ?? kind.title + " 2", macUser: env["MYLINUX_RENDER_USER"] ?? "viktor")
+                if let k = env["MYLINUX_RENDER_KEYBOARD"] { f.keyboard = k }
+                if let z = env["MYLINUX_RENDER_TIMEZONE"] { f.timezone = z }
                 f.password = "made up for the picture"; f.again = f.password; f.acceptsLicense = true
                 f.installClaude = true; f.installCodex = true; f.claudeToken = "sk-ant-oat01-made-up-for-the-picture-0123456789"
                 FirstStartSheet.renderForm = f

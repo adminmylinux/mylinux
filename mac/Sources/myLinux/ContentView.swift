@@ -96,18 +96,23 @@ struct ContentView: View {
             // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
             DesktopImageManager.omarchy.refresh(settings); DesktopImageManager.arch.refresh(settings); DesktopImageManager.kali.refresh(settings); DesktopImageManager.windows.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings); ServerImageManager.tiny.refresh(settings)
             // (no machines and nothing downloaded: a new install, or one whose data was cleared; not a remembered flag,
-            // which outlives the data and kept a fresh start from showing it)
-            if !settings.developerMode, store.profiles.isEmpty, !images.present, !DesktopImageManager.omarchy.present, !DesktopImageManager.arch.present, !DesktopImageManager.kali.present,
+            // which outlives the data and kept a fresh start from showing it). And again when the launcher quit with it
+            // open: its marker is in the data folder, so it goes with the data.
+            if FileManager.default.fileExists(atPath: WelcomeSheet.openMarker.path) { showWelcome = true }
+            else if !settings.developerMode, store.profiles.isEmpty, !images.present, !DesktopImageManager.omarchy.present, !DesktopImageManager.arch.present, !DesktopImageManager.kali.present,
                !ServerImageManager.debian.present, !ServerImageManager.alpine.present, !ServerImageManager.tiny.present {
                 showWelcome = true
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
+        .onChange(of: showWelcome) { _, on in if on { WelcomeSheet.markOpen(true) } }
+        // a quit closes the sheets first (QuitClosesSheets); the Welcome sheet's marker stays for the next start
+        .onReceive(NotificationCenter.default.publisher(for: QuitClosesSheets.closeSheets)) { _ in showWelcome = false; firstStart = nil }
         // tests (MYLINUX_TEST_TOUR): a page by id
         .onReceive(NotificationCenter.default.publisher(for: ContentView.selectNotification)) { n in if let id = n.object as? UUID { selection = id } }
         .sheet(isPresented: $showWelcome) {
             WelcomeSheet(images: images, omarchy: .omarchy, arch: .arch, kali: .kali, debian: .debian, alpine: .alpine, tiny: .tiny, runtime: runtime, done: { kinds in
-                showWelcome = false
+                showWelcome = false; WelcomeSheet.markOpen(false)
                 // a machine of each downloaded kind that has none yet, and the first of them selected
                 var first: UUID?, added: [Profile] = []
                 for kind in kinds where !store.profiles.contains(where: { $0.kind == kind }) {

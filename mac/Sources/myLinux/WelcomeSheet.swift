@@ -6,6 +6,17 @@ import AppKit
 /// with progress on each row, and adds a machine of each kind that has none yet.
 struct WelcomeSheet: View {
     static let showNotification = Notification.Name("mylinux.showWelcome")
+    /// In the data folder while the sheet is up: a launcher that quits with it open shows it again at its next start.
+    /// Later, Done and Continue in Background remove it; a quit (which closes the sheet) does not.
+    static var openMarker: URL { Paths.support.appendingPathComponent("welcome-open") }
+    static func markOpen(_ open: Bool) {
+        if open {
+            try? FileManager.default.createDirectory(at: Paths.support, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: openMarker.path, contents: nil)
+        } else {
+            try? FileManager.default.removeItem(at: openMarker)
+        }
+    }
     @EnvironmentObject var settings: AppSettings
     @ObservedObject var images: ImageManager
     @ObservedObject var omarchy: DesktopImageManager
