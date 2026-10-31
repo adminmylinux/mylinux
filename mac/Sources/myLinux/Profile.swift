@@ -338,7 +338,8 @@ final class ProfileStore: ObservableObject {
         // again as the "new" machine), gets a suffix
         var folder = URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()
         var n = 2
-        while profiles.contains(where: { $0.appsDisk == p.appsDisk || $0.shareDir == p.shareDir })
+        // Windows has no share folder: two empty ones are no clash (and would never stop matching)
+        while profiles.contains(where: { $0.appsDisk == p.appsDisk || (!p.shareDir.isEmpty && $0.shareDir == p.shareDir) })
                 || ProfileStore.leftOver(URL(fileURLWithPath: p.appsDisk).deletingLastPathComponent()) {
             folder = Paths.machines.appendingPathComponent("\(Paths.slug(name))-\(n)", isDirectory: true); n += 1
             let fresh = ProfileStore.newProfile(named: name, kind: kind, folder: folder)

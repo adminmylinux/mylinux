@@ -266,6 +266,14 @@ final class DebianProfileTests: XCTestCase {
         XCTAssertEqual(a.name, "Debian"); XCTAssertEqual(b.name, "Debian 2")
         try? FileManager.default.removeItem(at: dir)
     }
+    /// A second Windows was a hang: both have no share folder, and "" == "" sent the free-folder search round forever.
+    func testASecondWindowsGetsItsOwnFolder() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-windows-test-\(UUID().uuidString)")
+        let store = ProfileStore(file: dir.appendingPathComponent("profiles.json"))
+        let a = store.add(kind: .windows), b = store.add(kind: .windows)
+        XCTAssertEqual(b.name, "Windows 2"); XCTAssertNotEqual(a.appsDisk, b.appsDisk)
+        try? FileManager.default.removeItem(at: dir)
+    }
 }
 
 final class RemoveMachineTests: XCTestCase {
