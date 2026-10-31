@@ -1719,6 +1719,17 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(catcher.clicks, 1, "the click goes on to the window")
         XCTAssertFalse(v.grabbing, "and grabs no keys for a connection that is not there")
     }
+    func testAUserNameGivenAfterARefusedLoginIsRememberedForThatTailnetMachine() {
+        // the Tailscale window remembered an empty VNC user name for omarchy-msi, whose wayvnc wants "viktor": every
+        // try was "invalid username or password"; the user name given in the window's login question now sticks
+        let peer = Tailscale.Peer(id: "test-\(UUID().uuidString)", name: "omarchy-test", dnsName: "omarchy-test.tail0.ts.net", ip: "100.64.9.9", os: "linux", online: true, lastSeen: nil)
+        defer { UserDefaults.standard.removeObject(forKey: Tailscale.userKey(peer, .vnc)) }
+        UserDefaults.standard.set("", forKey: Tailscale.userKey(peer, .vnc))
+        var p = Tailscale.profile(for: peer, kind: .vnc)
+        XCTAssertEqual(p.username, "")
+        p.username = "viktor"; Tailscale.rememberUser(p)
+        XCTAssertEqual(Tailscale.profile(for: peer, kind: .vnc).username, "viktor")
+    }
     func testVncDesktopsSendEveryKeyByDefaultOnceMoved() throws {
         XCTAssertEqual(RemoteProfile(kind: .vnc).keyboard, .all)
         XCTAssertEqual(RemoteProfile(kind: .ssh).keyboard, .mac)

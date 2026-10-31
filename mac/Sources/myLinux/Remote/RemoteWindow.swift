@@ -11,7 +11,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         FileHandle.standardError.write("event \(e.type == .keyDown ? "key" : "click") window=\(e.window?.title ?? "none") key=\(NSApp.keyWindow?.title ?? "none") responder=\(String(describing: type(of: e.window?.firstResponder as Any)))\n".data(using: .utf8)!)
         return e
     }
-    let profile: RemoteProfile
+    private(set) var profile: RemoteProfile
+    /// a login the server refused ("invalid username or password"): the retry asks for both again, as the same would fail
+    private var askLogin = false
     private var vnc: VncConnection?
     private var vncView: VncView?
     /// The terminals of this tab. `ssh` is the one with the keyboard (or the first), which the actions type into.
@@ -162,7 +164,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             v.onGrabChanged = { [weak self] in self?.window?.toolbar?.validateVisibleItems(); self?.updateStatus(); self?.updateTitle() }
             window?.makeFirstResponder(v)
             // a saved password connects at once; otherwise ask (leave it empty for servers without a password)
-            if !c.password.isEmpty || RemoteWindowController.noPasswordHosts.contains(profile.host) { c.start() }
+            if askLogin { askLogin = false; askLoginAgain(c) }
+            else if !c.password.isEmpty || RemoteWindowController.noPasswordHosts.contains(profile.host) { c.start() }
             else { askPassword { pw in if pw.isEmpty { RemoteWindowController.noPasswordHosts.insert(self.profile.host) }; c.password = pw; c.start() } }
         } else {
             let o = NSSplitView(frame: terminalRect); o.isVertical = true; o.dividerStyle = .thin; o.autoresizingMask = [.width, .height]
@@ -214,6 +217,29 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         for i in 0..<(n - 1) { sv.setPosition(total * CGFloat(i + 1) / CGFloat(n), ofDividerAt: i) }
     }
 
+    /// The user name and the password again, after the server refused them; the user name is remembered (a saved
+    /// machine's profile, or the Tailscale window's name for that machine), the password when "Remember" is ticked.
+    private func askLoginAgain(_ c: VncConnection) {
+        let alert = NSAlert(); alert.messageText = "\(profile.host) refused the login"
+        alert.informativeText = "The user name and password its VNC server takes (wayvnc's on Omarchy: the ones in its ~/.config/wayvnc/config)."
+        let user = NSTextField(frame: NSRect(x: 0, y: 30, width: 260, height: 24)); user.stringValue = profile.username; user.placeholderString = "user name"
+        let pass = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24)); pass.placeholderString = "password"
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 54)); box.addSubview(user); box.addSubview(pass)
+        alert.accessoryView = box
+        alert.showsSuppressionButton = true; alert.suppressionButton?.title = "Remember in Keychain"
+        alert.addButton(withTitle: "Connect"); alert.addButton(withTitle: "Cancel"); alert.window.initialFirstResponder = profile.username.isEmpty ? user : pass
+        alert.beginSheetModal(for: window!) { [self] r in
+            guard r == .alertFirstButtonReturn else { showOverlay("Not connected — click to try again", retry: true); return }
+            profile.username = user.stringValue.trimmingCharacters(in: .whitespaces)
+            if RemoteStore.shared.profiles.contains(where: { $0.id == profile.id }) { RemoteStore.shared.update(profile) } else { Tailscale.rememberUser(profile) }
+            if alert.suppressionButton?.state == .on, RemoteSecrets.setPassword(pass.stringValue, for: profile) {
+                var p = profile; p.hasPassword = true; RemoteStore.shared.update(p)
+            }
+            RemoteWindowController.noPasswordHosts.remove(profile.host)
+            c.profile = profile; c.password = pass.stringValue; c.start()
+        }
+    }
+
     private func askPassword(_ then: @escaping (String) -> Void) {
         let alert = NSAlert(); alert.messageText = "Password for \(profile.username.isEmpty ? profile.host : profile.username + "@" + profile.host)"
         alert.informativeText = "Tick “Remember” to keep it in the Keychain."
@@ -252,7 +278,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                     FileHandle.standardError.write("test hook: typed \(text.count) characters\n".data(using: .utf8)!)
                 }
             }
-        case .failed(let m): showOverlay("Failed: \(m)\n(click to retry)", retry: true)
+        case .failed(let m):
+            askLogin = m.localizedCaseInsensitiveContains("password")      // "invalid username or password", "wrong password, or the server refused"
+            showOverlay("Failed: \(m)\n(click to retry)", retry: true)
         case .closed: showOverlay("Disconnected (click to reconnect)", retry: true)
         case .untrusted(let info, let changed): trustSheet(info, changed: changed)
         case .idle: break

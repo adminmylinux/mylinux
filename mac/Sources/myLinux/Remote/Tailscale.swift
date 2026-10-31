@@ -305,11 +305,15 @@ enum Tailscale {
         p.name = peer.name
         p.host = peer.host
         p.username = UserDefaults.standard.string(forKey: userKey(peer, kind)) ?? ""
+        userKeys[p.id] = userKey(peer, kind)
         p.hasPassword = RemoteSecrets.password(for: p) != nil
         return p
     }
 
     static func userKey(_ peer: Peer, _ kind: RemoteProfile.Kind) -> String { "tailscale.user.\(kind.rawValue).\(peer.id)" }
+    /// The user-name key of each profile made here, so a window can remember a user name given later (a refused login)
+    private static var userKeys: [UUID: String] = [:]
+    static func rememberUser(_ p: RemoteProfile) { if let k = userKeys[p.id] { UserDefaults.standard.set(p.username, forKey: k) } }
 
     static func stableID(_ text: String) -> UUID {
         var b = Array(SHA256.hash(data: Data(text.utf8)).prefix(16))
@@ -442,7 +446,7 @@ final class TailscaleModel: ObservableObject {
         let alert = NSAlert()
         alert.messageText = kind == .ssh ? "SSH to \(peer.name) as" : "VNC to \(peer.name)"
         alert.informativeText = kind == .ssh ? "The user name on \(peer.name). It is remembered for next time."
-            : "A user name, only if its VNC server asks for one (wayvnc with a login does). Leave it empty otherwise. It is remembered for next time."
+            : "The user name its VNC server takes, if it asks for one: wayvnc with a login (as on Omarchy) takes the one in its config. Leave it empty for a server without a login. It is remembered for next time."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.stringValue = current; field.placeholderString = kind == .ssh ? "user name" : "user name (optional)"
         alert.accessoryView = field

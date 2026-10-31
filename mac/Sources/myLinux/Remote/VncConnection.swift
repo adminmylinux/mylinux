@@ -8,7 +8,7 @@ import CVncClient
 final class VncConnection {
     enum State: Equatable { case idle, connecting, connected, untrusted(CertPin.Info, changed: Bool), failed(String), closed }
 
-    let profile: RemoteProfile
+    var profile: RemoteProfile          // (its user name changes when a refused login is answered again)
     var password = ""
     private(set) var state = State.idle { didSet { let s = state; DispatchQueue.main.async { [self] in onState?(s) } } }   // the value set, not the one current when the main queue gets to it
     private(set) var surface: IOSurface?
