@@ -369,6 +369,28 @@ final class TailscaleModel: ObservableObject {
     func signIn() { begin("login", words: "Waiting for the sign-in in your browser…") }
     func turnOn() { begin("up", words: "Connecting…") }
 
+    /// `tailscale logout`, once the user has said so: the Mac leaves the tailnet for every app on it, not only the
+    /// launcher, until it signs in again (here, or in the Tailscale app).
+    func logOut() {
+        guard let c = client else { return }
+        let a = NSAlert()
+        a.messageText = "Log out of Tailscale on this Mac?"
+        a.informativeText = "This Mac leaves \(status?.tailnet ?? "the tailnet") for every app on it, not only myLinux Launcher, until you sign in again here or in the Tailscale app."
+        a.addButton(withTitle: "Log Out"); a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        problem = ""; busy = "Logging out…"
+        Task.detached(priority: .userInitiated) {
+            let r = Tailscale.run(c.tool, c.arguments + ["logout"], timeout: 20)
+            await MainActor.run {
+                self.busy = ""
+                if r?.0 != 0 {
+                    self.problem = "tailscale logout did not work: " + (r.map { String(decoding: $0.1, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) } ?? "it did not answer")
+                }
+                self.refresh()
+            }
+        }
+    }
+
     private func begin(_ command: String, words: String) {
         guard let c = client else { return }
         problem = ""
@@ -491,6 +513,9 @@ struct TailscaleView: View {
             Spacer()
             if model.phase == .running {
                 TextField("Search", text: $model.search).textFieldStyle(.roundedBorder).frame(width: 200)
+            }
+            if model.phase == .running {
+                Button("Log Out") { model.logOut() }.disabled(!model.busy.isEmpty).help("Log this Mac out of Tailscale")
             }
             Button { model.refresh() } label: { Image(systemName: "arrow.clockwise") }.help("Look again")
         }
