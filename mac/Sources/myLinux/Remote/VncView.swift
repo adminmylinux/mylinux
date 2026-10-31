@@ -103,6 +103,8 @@ final class VncView: NSView {
     override func rightMouseDragged(with e: NSEvent) { pointer(e) }
     override func otherMouseDragged(with e: NSEvent) { pointer(e) }
     override func mouseDown(with e: NSEvent) {
+        // no connection (failed, ended, not yet up): the click is the window's ("click to retry"), and grabs no keys
+        guard conn.state == .connected else { super.mouseDown(with: e); return }
         window?.makeFirstResponder(self)
         if keyboard == .all && !grabbing && KeyboardGrab.permitted { setGrab(true, keep: keep) }      // a click: every key to the remote again, as in Omarchy's window
         mask |= 1; pointer(e)

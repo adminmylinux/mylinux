@@ -190,7 +190,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             guard let self, let t, self.terminals.contains(where: { $0 === t }) else { return }      // closed with ⌘W
             NSLog("remote %@: ssh exited %@", self.profile.title, String(describing: code))
             if self.terminals.count > 1 { self.remove(terminal: t); return }
-            self.showOverlay("Disconnected" + (code.map { $0 == 0 ? "" : " (ssh exited with status \($0))" } ?? "") + " — click to reconnect")
+            self.showOverlay("Disconnected" + (code.map { $0 == 0 ? "" : " (ssh exited with status \($0))" } ?? "") + " — click to reconnect", retry: true)
         }
         t.onTitle = { [weak self, weak t] title in
             guard let self, self.ssh === t else { return }
@@ -221,7 +221,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         alert.showsSuppressionButton = true; alert.suppressionButton?.title = "Remember in Keychain"
         alert.addButton(withTitle: "Connect"); alert.addButton(withTitle: "Cancel"); alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window!) { [self] r in
-            guard r == .alertFirstButtonReturn else { showOverlay("Not connected — click to try again"); return }
+            guard r == .alertFirstButtonReturn else { showOverlay("Not connected — click to try again", retry: true); return }
             if alert.suppressionButton?.state == .on, RemoteSecrets.setPassword(field.stringValue, for: profile) {
                 var p = profile; p.hasPassword = true; RemoteStore.shared.update(p)
             }
@@ -252,8 +252,8 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
                     FileHandle.standardError.write("test hook: typed \(text.count) characters\n".data(using: .utf8)!)
                 }
             }
-        case .failed(let m): showOverlay("Failed: \(m)\n(click to retry)")
-        case .closed: showOverlay("Disconnected (click to reconnect)")
+        case .failed(let m): showOverlay("Failed: \(m)\n(click to retry)", retry: true)
+        case .closed: showOverlay("Disconnected (click to reconnect)", retry: true)
         case .untrusted(let info, let changed): trustSheet(info, changed: changed)
         case .idle: break
         }
@@ -268,19 +268,21 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         alert.alertStyle = changed ? .critical : .informational
         alert.addButton(withTitle: changed ? "Replace and connect" : "Trust and connect"); alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window!) { [self] r in
-            if r == .alertFirstButtonReturn { vnc?.trust() } else { showOverlay("Not connected — click to try again") }
+            if r == .alertFirstButtonReturn { vnc?.trust() } else { showOverlay("Not connected — click to try again", retry: true) }
         }
     }
 
-    private func showOverlay(_ text: String) {
-        overlay.stringValue = text; overlay.isHidden = false
+    /// retry: a click anywhere in the window connects again (a failed or ended connection), not only one on the message
+    private var retryOnClick = false
+    private func showOverlay(_ text: String, retry: Bool = false) {
+        overlay.stringValue = text; overlay.isHidden = false; retryOnClick = retry
         overlay.sizeToFit()
         let s = NSSize(width: overlay.frame.width + 40, height: overlay.frame.height + 24)
         overlay.frame = NSRect(x: (contentArea.width - s.width) / 2, y: contentArea.midY - s.height / 2, width: s.width, height: s.height)
     }
     private func hideOverlay() { overlay.isHidden = true }
     override func mouseDown(with e: NSEvent) {
-        if !overlay.isHidden, overlay.frame.contains(window!.contentView!.convert(e.locationInWindow, from: nil)) { hideOverlay(); connect() }
+        if !overlay.isHidden, retryOnClick || overlay.frame.contains(window!.contentView!.convert(e.locationInWindow, from: nil)) { hideOverlay(); connect() }
         else { super.mouseDown(with: e) }
     }
 

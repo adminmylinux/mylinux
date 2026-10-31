@@ -1703,6 +1703,22 @@ final class RemoteSessionTests: XCTestCase {
         wait(for: [failed], timeout: 20)
         XCTAssertTrue(message.contains("did not answer within 10 seconds"), message)
     }
+    func testAClickOnAVncDesktopThatFailedIsTheWindowsAndGrabsNoKeys() throws {
+        // "Failed: cannot connect … (click to retry)": a click on the black picture did nothing (it went to the dead
+        // view, which grabbed every key for it); it now goes on to the window, which connects again
+        var p = RemoteProfile(kind: .vnc); p.name = "refused"; p.host = "127.0.0.1"; p.port = 1   // nothing listens
+        let c = VncConnection(profile: p)
+        let failed = expectation(description: "failed")
+        c.onState = { st in if case .failed = st { failed.fulfill() } }
+        c.start()
+        wait(for: [failed], timeout: 10)
+        final class Catcher: NSResponder { var clicks = 0; override func mouseDown(with e: NSEvent) { clicks += 1 } }
+        let v = VncView(conn: c, keyboard: .all), catcher = Catcher()
+        v.nextResponder = catcher
+        v.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        XCTAssertEqual(catcher.clicks, 1, "the click goes on to the window")
+        XCTAssertFalse(v.grabbing, "and grabs no keys for a connection that is not there")
+    }
     func testVncDesktopsSendEveryKeyByDefaultOnceMoved() throws {
         XCTAssertEqual(RemoteProfile(kind: .vnc).keyboard, .all)
         XCTAssertEqual(RemoteProfile(kind: .ssh).keyboard, .mac)
