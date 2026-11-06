@@ -1,0 +1,3 @@
+# From https://www.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc (signed by the Kernel.org checksum autosigner, B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1);
+# this tree's patch directory comes after board/qemu/patches, so these hashes are the ones checked
+sha256  3c2f44ef6acc021a7ad444d9a2e6ec1ef488ff09368793d0004a6080f69d621e  linux-6.18.60.tar.xz
