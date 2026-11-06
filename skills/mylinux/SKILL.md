@@ -1,6 +1,6 @@
 ---
 name: mylinux
-description: Create, start, stop, inspect and use virtual machines in myLinux Launcher on this Mac (Tiny Alpine, Alpine, Debian, Omarchy, Arch Linux, Kali, Windows). Use when the user says /mylinux, or asks to install, create, make, start, stop, restart, list or delete a machine or VM, wants a throwaway Linux box to try or test something in, or wants a command run inside one of their machines.
+description: Create, start, stop, inspect and use virtual machines in myLinux Launcher on this Mac (Tiny Alpine, Alpine, Debian, Omarchy, Arch Linux, Kali, Fedora, Rocky Linux, CentOS Stream, Windows). Use when the user says /mylinux, or asks to install, create, make, start, stop, restart, list or delete a machine or VM, wants a throwaway Linux box to try or test something in, or wants a command run inside one of their machines.
 ---
 
 # myLinux Launcher
@@ -56,7 +56,8 @@ Privacy & Security › Accessibility and `start` the machine again, or make the 
 - `tiny` (Tiny Alpine): the smallest server. 18 MB to download, starts in seconds, runs well in 1 GB. The one to
   pick for "a small Linux to test something in".
 - `alpine`, `debian`: servers with a cloud image. No desktop: a shell over SSH.
-- `omarchy`, `arch`, `kali`, `mylinux`: Linux desktops, each in its own window. Downloads of 1 to 2 GB the first time.
+- `omarchy`, `arch`, `kali`, `fedora`, `rocky`, `centos`, `mylinux`: Linux desktops, each in its own window. Downloads
+  of 1 to 2 GB the first time. `fedora`, `rocky` (Rocky Linux) and `centos` (CentOS Stream) are GNOME, with dnf.
 - A new `omarchy` asks a person its first-start questions in its window (keyboard, account, password, host name, time
   zone), unless they are answered beforehand:
   `create omarchy --unattended --password PW [--user NAME] [--keyboard Norwegian|nb-NO] [--timezone Europe/Oslo]
@@ -82,8 +83,8 @@ Privacy & Security › Accessibility and `start` the machine again, or make the 
 ## Waiting
 
 `create` and `start` answer at once; `--wait` holds on until the machine is `ready` (a server: its SSH answers; a
-desktop: it is running; an Omarchy made with `--unattended`: its desktop is up; Windows: installed and signed in). The default is 900 seconds; a first Omarchy, Arch or Kali
-needs a download and an unattended Windows installs for a while, so give those `--timeout 3600`. When the wait runs out (exit status 4) nothing is wrong: the work
+desktop: it is running; an Omarchy made with `--unattended`: its desktop is up; Windows: installed and signed in). The default is 900 seconds; a first Omarchy, Arch, Kali,
+Fedora, Rocky or CentOS needs a download and an unattended Windows installs for a while, so give those `--timeout 3600`. When the wait runs out (exit status 4) nothing is wrong: the work
 goes on. Look at `status` (`job` says what is being downloaded and how far it is), tell the user, and `wait` again.
 `wait NAME [--timeout SECONDS]` is the same wait as a command of its own.
 

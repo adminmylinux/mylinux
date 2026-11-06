@@ -151,6 +151,7 @@ enum SavedDownloads {
         ("mylinux", "myLinux image", "IMAGE-REVISION"), ("omarchy", "Omarchy", "OMARCHY-REVISION"),
         ("debian", "Debian", "DEBIAN-REVISION"), ("alpine", "Alpine", "ALPINE-REVISION"),
         ("arch", "Arch Linux", "ARCH-REVISION"), ("tiny", "Tiny Alpine", "TINY-REVISION"), ("kali", "Kali Linux", "KALI-REVISION"),
+        ("fedora", "Fedora", "FEDORA-REVISION"), ("rocky", "Rocky Linux", "ROCKY-REVISION"), ("centos", "CentOS Stream", "CENTOS-REVISION"),
     ]
 
     /// At launch: Linuxes installed before saving existed are saved too (APFS clones: no time, no extra space).
@@ -259,6 +260,8 @@ final class RuntimeManager: ScriptDownloader {
 /// Omarchy (tools/get-omarchy.sh): downloaded once (1.7 GB) from the Try Omarchy project's signed release. Arch Linux
 /// with Plasma (tools/get-arch.sh): about 2 GB, our build (tools/build-arch-image.sh) from mylinux-releases. Kali
 /// Linux with Xfce (tools/get-kali.sh): about 2 GB, our build (tools/build-kali-image.sh) from Kali's packages.
+/// Fedora, Rocky Linux and CentOS Stream with GNOME (tools/get-fedora.sh and so on): our builds
+/// (tools/build-rpm-image.sh) from each one's own packages.
 /// Windows (tools/get-windows.sh) is not downloaded by the launcher: it is Microsoft's, and Microsoft's page gives
 /// its Arm64 ISO to a person, not to a script. The user downloads it there and chooses the file; the script keeps it
 /// and fetches the virtio drivers and the firmware. A machine installs itself from it with Windows Setup.
@@ -266,8 +269,14 @@ final class DesktopImageManager: ScriptDownloader {
     static let omarchy = DesktopImageManager(.omarchy)
     static let arch = DesktopImageManager(.arch)
     static let kali = DesktopImageManager(.kali)
+    static let fedora = DesktopImageManager(.fedora)
+    static let rocky = DesktopImageManager(.rocky)
+    static let centos = DesktopImageManager(.centos)
     static let windows = DesktopImageManager(.windows)
-    static func shared(_ kind: Profile.Kind) -> DesktopImageManager { kind == .arch ? arch : kind == .kali ? kali : kind == .windows ? windows : omarchy }
+    static func shared(_ kind: Profile.Kind) -> DesktopImageManager {
+        switch kind { case .arch: return arch; case .kali: return kali; case .windows: return windows
+                      case .fedora: return fedora; case .rocky: return rocky; case .centos: return centos; default: return omarchy }
+    }
     static let microsoftPage = URL(string: "https://www.microsoft.com/software-download/windows11arm64")!
 
     let kind: Profile.Kind
@@ -277,10 +286,11 @@ final class DesktopImageManager: ScriptDownloader {
     init(_ kind: Profile.Kind) { self.kind = kind; super.init() }
 
     /// For the download rows: the size and where it comes from.
-    var size: String { kind == .windows ? "about 8 GB" : kind == .arch || kind == .kali ? "about 2 GB" : "1.7 GB" }
+    var size: String { kind == .windows ? "about 8 GB" : kind == .arch || kind == .kali ? "about 2 GB" : kind == .fedora ? "1.6 GB" : kind == .rocky ? "630 MB" : kind == .centos ? "610 MB" : "1.7 GB" }
     var detail: String {
         kind == .windows ? "the Arm64 ISO you download from Microsoft (about 8 GB), and the virtio drivers (877 MB to fetch, 3 MB kept)"
         : kind == .kali ? "about 2 GB, Kali's Xfce desktop and its top tools, built by myLinux from Kali's packages"
+        : kind.isGnome ? "\(size), \(kind.title) with GNOME and Firefox, built by myLinux from \(kind.title)'s packages"
         : kind == .arch ? "about 2 GB, Arch Linux ARM with KDE Plasma, built by myLinux"
                       : "1.7 GB, from the Try Omarchy project's signed release"
     }

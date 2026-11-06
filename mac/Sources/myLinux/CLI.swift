@@ -36,7 +36,7 @@ enum CLI {
                                                   [--wait [--timeout SECONDS]]
                                                   [--keys all|mac|none]  a desktop's keyboard: every key to it, ⌘ kept by the Mac, or as typed
                                                   a new machine, downloaded when needed, and started
-                                                  kinds: tiny (Tiny Alpine), alpine, debian, omarchy, arch, kali, mylinux, windows
+                                                  kinds: tiny (Tiny Alpine), alpine, debian, omarchy, arch, kali, fedora, rocky, centos, mylinux, windows
                                                   windows: --iso FILE the first time (Microsoft's Arm64 ISO);
                                                   --unattended --accept-microsoft-license [--user NAME] [--password PW]
                                                   [--edition pro|home] [--keyboard nb-NO] installs it without a question
@@ -76,6 +76,8 @@ enum CLI {
         "tiny": .tiny, "tinyalpine": .tiny, "tiny-alpine": .tiny, "tiny_alpine": .tiny,
         "alpine": .alpine, "debian": .debian, "omarchy": .omarchy, "arch": .arch, "archlinux": .arch, "arch-linux": .arch,
         "kali": .kali, "kalilinux": .kali, "kali-linux": .kali, "windows": .windows, "windows11": .windows, "win11": .windows, "win": .windows,
+        "fedora": .fedora, "rocky": .rocky, "rockylinux": .rocky, "rocky-linux": .rocky,
+        "centos": .centos, "centosstream": .centos, "centos-stream": .centos, "stream": .centos,
         "mylinux": .mylinux,
     ]
     static func kind(_ word: String) -> Profile.Kind? { kindWords[word.lowercased().replacingOccurrences(of: " ", with: "")] }
@@ -538,7 +540,7 @@ enum CLI {
         case "claude", "codex": return AgentCommands.handle(command, w, store: store, settings: settings)
         case "ping": return .ok(["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"])
         case "kinds":
-            let kinds: [Profile.Kind] = [.tiny, .alpine, .debian, .omarchy, .arch, .kali, .mylinux, .windows]
+            let kinds: [Profile.Kind] = [.tiny, .alpine, .debian, .omarchy, .arch, .kali, .fedora, .rocky, .centos, .mylinux, .windows]
             return .ok(["kinds": kinds.map { k -> [String: Any] in
                 let p = ProfileStore.newProfile(named: "x", kind: k)
                 let downloaded = k.isServer ? settings.serverImagePresent(k) : k.runsDesktop ? settings.desktopPresent(k) : settings.imagePresent
@@ -555,7 +557,7 @@ enum CLI {
             return said(p)
         case "create":
             guard let word = w.plain.first, let kind = CLI.kind(word) else {
-                return .failed("which kind? tiny, alpine, debian, omarchy, arch, kali, mylinux or windows (mylinux kinds)", code: 2)
+                return .failed("which kind? tiny, alpine, debian, omarchy, arch, kali, fedora, rocky, centos, mylinux or windows (mylinux kinds)", code: 2)
             }
             var name = store.uniqueName(kind == .mylinux ? "Machine" : kind.title)
             if let given = w.values["name"]?.trimmingCharacters(in: .whitespaces) {

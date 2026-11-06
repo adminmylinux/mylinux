@@ -22,7 +22,7 @@ enum MachineApp {
         let id = p.id.uuidString.lowercased()
         switch p.kind {
         case .mylinux: return "dev.mylinux.vm.\(id)"
-        case .omarchy, .arch, .kali, .windows: return "dev.mylinux.vm.omarchy.\(id)"      // the desktops' wrapper (run-omarchy.sh, run-windows.sh)
+        case .omarchy, .arch, .kali, .windows, .fedora, .rocky, .centos: return "dev.mylinux.vm.omarchy.\(id)"      // the desktops' wrapper (run-omarchy.sh, run-windows.sh)
         case .debian, .alpine, .tiny: return "dev.mylinux.machine.\(id)"
         }
     }
@@ -279,6 +279,7 @@ enum MachineLink {
                     alert.informativeText = p.kind == .arch
                         ? "In Arch Linux, Dolphin mounts shares: type smb://<server>/<share> in its address bar (Ctrl+L), for example smb://10.0.2.2/Public for this Mac's."
                         : p.kind == .kali ? "In Kali Linux, Thunar mounts shares: type smb://<server>/<share> in its address bar (Ctrl+L), for example smb://10.0.2.2/Public for this Mac's."
+                        : p.kind.isGnome ? "In \(p.kind.title), Files mounts shares: Other Locations › Connect to Server, smb://<server>/<share>, for example smb://10.0.2.2/Public for this Mac's."
                         : p.kind == .windows ? "In Windows, File Explorer mounts shares: type \\\\<server>\\<share> in its address bar, for example \\\\10.0.2.2\\Public for this Mac's (File Sharing on the Mac, with Windows File Sharing on for your account). Right-click This PC › Map network drive… gives it a drive letter."
                         : "Mounting shares is there in Omarchy, Debian and Alpine; myLinux does not have it yet."
                     alert.runModal()
@@ -288,6 +289,7 @@ enum MachineLink {
                     let problem: String? = p.kind == .omarchy ? await ServerApps.openInOmarchy(p)
                         : p.kind == .arch ? "Arch Linux installs apps with pacman: in Konsole, sudo pacman -S <name> (pacman -Ss <word> searches)."
                         : p.kind == .kali ? "Kali Linux installs apps with apt: in a terminal, sudo apt install <name> (apt search <word> searches); sudo apt install kali-linux-default brings Kali's full default set of tools."
+                        : p.kind.isGnome ? "\(p.kind.title) installs apps with dnf: in a terminal, sudo dnf install <name> (dnf search <word> searches)."
                         : p.kind == .windows ? "Windows installs apps with winget: in Terminal, winget install <name> (winget search <word> searches), or from the Microsoft Store. Snippets… in this menu has the common ones."
                         : "myLinux has its own: Super+Space (⌥Space) finds, runs and installs apps."
                     guard let problem else { return }

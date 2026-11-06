@@ -94,12 +94,13 @@ struct ContentView: View {
             images.refresh(settings); runtime.refresh(settings)
             runs.startWatching(store)
             // a fresh install: offer the Linux machines, once (File › Download Linux… brings it back)
-            DesktopImageManager.omarchy.refresh(settings); DesktopImageManager.arch.refresh(settings); DesktopImageManager.kali.refresh(settings); DesktopImageManager.windows.refresh(settings); ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings); ServerImageManager.tiny.refresh(settings)
+            DesktopImageManager.omarchy.refresh(settings); DesktopImageManager.arch.refresh(settings); DesktopImageManager.kali.refresh(settings); DesktopImageManager.windows.refresh(settings); for k: Profile.Kind in [.fedora, .rocky, .centos] { DesktopImageManager.shared(k).refresh(settings) }; ServerImageManager.debian.refresh(settings); ServerImageManager.alpine.refresh(settings); ServerImageManager.tiny.refresh(settings)
             // (no machines and nothing downloaded: a new install, or one whose data was cleared; not a remembered flag,
             // which outlives the data and kept a fresh start from showing it). And again when the launcher quit with it
             // open: its marker is in the data folder, so it goes with the data.
             if FileManager.default.fileExists(atPath: WelcomeSheet.openMarker.path) { showWelcome = true }
             else if !settings.developerMode, store.profiles.isEmpty, !images.present, !DesktopImageManager.omarchy.present, !DesktopImageManager.arch.present, !DesktopImageManager.kali.present,
+               ![Profile.Kind.fedora, .rocky, .centos].contains(where: { DesktopImageManager.shared($0).present }),
                !ServerImageManager.debian.present, !ServerImageManager.alpine.present, !ServerImageManager.tiny.present {
                 showWelcome = true
             }
@@ -170,6 +171,15 @@ struct ContentView: View {
             }
             Button { selection = store.add(copying: selected?.kind == .kali ? selected : nil, kind: .kali).id } label: {
                 Label("Kali Linux Machine", systemImage: "shield.lefthalf.filled")
+            }
+            Button { selection = store.add(copying: selected?.kind == .fedora ? selected : nil, kind: .fedora).id } label: {
+                Label("Fedora Machine", systemImage: "infinity")
+            }
+            Button { selection = store.add(copying: selected?.kind == .rocky ? selected : nil, kind: .rocky).id } label: {
+                Label("Rocky Linux Machine", systemImage: "circle.bottomhalf.filled")
+            }
+            Button { selection = store.add(copying: selected?.kind == .centos ? selected : nil, kind: .centos).id } label: {
+                Label("CentOS Stream Machine", systemImage: "rhombus")
             }
             Button { firstStart = .new(.windows, copying: selected?.kind == .windows ? selected : nil) } label: {
                 Label("Windows Machine…", systemImage: "macwindow")

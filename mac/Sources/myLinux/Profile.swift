@@ -10,17 +10,21 @@ struct Profile: Codable, Identifiable, Hashable {
     /// the distribution's cloud image, `appsDisk` their root disk, no window; the launcher reaches them through the
     /// serial console and an SSH terminal on `sshPort`. Arch is a desktop like Omarchy (run-omarchy.sh with
     /// DESKTOP=arch): Arch Linux ARM with KDE Plasma, built by tools/build-arch-image.sh. Kali is the third desktop
-    /// there (DESKTOP=kali): Kali Linux with its Xfce desktop, built by tools/build-kali-image.sh from Kali's packages. Tiny is a third server
+    /// there (DESKTOP=kali): Kali Linux with its Xfce desktop, built by tools/build-kali-image.sh from Kali's packages.
+    /// Fedora, Rocky Linux and CentOS Stream are GNOME desktops there too (DESKTOP=fedora, rocky, centos), built by
+    /// tools/build-rpm-image.sh from each distribution's own packages. Tiny is a third server
     /// (run-tiny.sh): Tiny Alpine, Alpine's mini root filesystem on myLinux's kernel, no cloud image and no firmware.
     /// Windows (run-windows.sh) is Windows 11 for Arm, installed by Microsoft's own Setup from the ISO the user downloaded:
     /// a desktop in the same window as the others, `appsDisk` its disk, no share folder (Windows reads no 9p).
     enum Kind: String, Codable {
-        case mylinux, omarchy, debian, alpine, arch, tiny, kali, windows
+        case mylinux, omarchy, debian, alpine, arch, tiny, kali, windows, fedora, rocky, centos
         var isServer: Bool { self == .debian || self == .alpine || self == .tiny }
-        /// A desktop on the QEMU runtime: Omarchy, Arch with Plasma and Kali (run-omarchy.sh), and Windows (run-windows.sh).
-        var runsDesktop: Bool { self == .omarchy || self == .arch || self == .kali || self == .windows }
+        /// A desktop on the QEMU runtime: Omarchy, Arch with Plasma, Kali and the GNOME ones (run-omarchy.sh), and Windows (run-windows.sh).
+        var runsDesktop: Bool { self == .omarchy || self == .arch || self == .kali || self == .windows || isGnome }
+        /// Fedora, Rocky Linux and CentOS Stream: GNOME, one build script (tools/build-rpm-image.sh), the same insides.
+        var isGnome: Bool { self == .fedora || self == .rocky || self == .centos }
         var title: String {
-            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .tiny: return "Tiny Alpine"; case .kali: return "Kali Linux"; case .windows: return "Windows" }
+            switch self { case .mylinux: return "myLinux"; case .omarchy: return "Omarchy"; case .debian: return "Debian"; case .alpine: return "Alpine"; case .arch: return "Arch Linux"; case .tiny: return "Tiny Alpine"; case .kali: return "Kali Linux"; case .windows: return "Windows"; case .fedora: return "Fedora"; case .rocky: return "Rocky Linux"; case .centos: return "CentOS Stream" }
         }
         /// A server's account inside: "debian" (bash, sudo) or Alpine's own "alpine" (ash until the install script, doas).
         /// Tiny Alpine is Alpine: the same account, install script and snippets.
@@ -89,7 +93,7 @@ struct Profile: Codable, Identifiable, Hashable {
         let tier = macGB < 12 ? 0 : macGB < 24 ? 1 : 2       // 8 GB · 16 GB · 24 GB and more
         switch kind {
         case .mylinux: return [3, 4, 6][tier]
-        case .omarchy, .arch, .kali, .windows: return [4, 6, 8][tier]
+        case .omarchy, .arch, .kali, .windows, .fedora, .rocky, .centos: return [4, 6, 8][tier]
         case .debian: return [2, 2, 4][tier]
         case .alpine, .tiny: return [2, 2, 4][tier]      // idles in 60 MB (Tiny in 40); Claude Code and Codex's server need the room
         }
@@ -208,7 +212,7 @@ struct Profile: Codable, Identifiable, Hashable {
             if !sound { env["AUDIO"] = "0" }
             if !clipboard { env["CLIPBOARD"] = "0" }
             if sshPort != 0 { env["SSH"] = "1"; env["FORWARD"] = "\(sshPort):22" }
-            if kind != .omarchy && kind != .windows { env["DESKTOP"] = kind.rawValue }      // arch, kali
+            if kind != .omarchy && kind != .windows { env["DESKTOP"] = kind.rawValue }      // arch, kali, fedora, rocky, centos
             let extra = CloudFolder.extraShares(cloudFolders, mac: macFolders)
             if !extra.isEmpty { env["EXTRA_SHARES"] = extra }
             env.merge(appBundleEnvironment) { $1 }

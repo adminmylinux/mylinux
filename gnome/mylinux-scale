@@ -1,0 +1,10 @@
+#!/bin/sh
+# myLinux: GNOME's scale for this start's display, set before GNOME starts (mylinux-scale.service): two guest pixels
+# per point on a Retina display (mylinux.scale=2 on the kernel line), else one. A system default, so it follows the
+# display at every start; GNOME works out its monitor configuration once, at sign-in, from what is there then (a
+# setting made after that took effect only at the next resize). A scale chosen in Settings › Displays is GNOME's own
+# monitor configuration and stays.
+s=$(sed -n 's/.*mylinux\.scale=\([0-9]\).*/\1/p' /proc/cmdline)
+f=/etc/dconf/db/local.d/01-mylinux-scale
+want=$(printf '[org/gnome/desktop/interface]\nscaling-factor=uint32 %s' "${s:-1}")
+[ "$(cat "$f" 2>/dev/null)" = "$want" ] || { printf '%s\n' "$want" > "$f" && dconf update; }

@@ -111,8 +111,9 @@ out=$(cd "$W" && PATH="$W/bin:$PATH" sh tools/get-image.sh --check 2>&1)
 has "without MYLINUX_CACHE nothing is saved" "$out" "cached: none"
 # Arch Linux and Kali from their saved download: the copy went into the staging folder that was already there, one
 # folder too deep, and the install failed with "the checksum list does not cover the guest files" (until 0.7.90)
-cp "$REPO/tools/get-arch.sh" "$REPO/tools/get-kali.sh" "$W/tools/"
-for k in arch:ARCH kali:KALI; do
+# (and the GNOME ones, whose shared part is get-rpm-desktop.sh)
+cp "$REPO/tools/get-arch.sh" "$REPO/tools/get-kali.sh" "$REPO/tools/get-rpm-desktop.sh" "$REPO/tools/get-fedora.sh" "$REPO/tools/get-rocky.sh" "$REPO/tools/get-centos.sh" "$W/tools/"
+for k in arch:ARCH kali:KALI fedora:FEDORA rocky:ROCKY centos:CENTOS; do
   d=${k%%:*}; rev=${k#*:}-REVISION
   mkdir -p "$C/$d"
   for f in vmlinuz-linux initramfs-linux.img rootfs.ext4.zst; do printf '%s %s' "$d" "$f" > "$C/$d/$f"; done
@@ -227,6 +228,13 @@ has "myLinux: a cloud folder is shared with its mount tag" "$out" "mount_tag=dro
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 QMP="$T/q.sock" sh run-omarchy.sh 2>&1); has "QMP socket for a clean stop" "$out" "unix:$T/q.sock,server=on,wait=off"
 case "$out" in *audiodev*) ok "sound device by default" ;; *) ko "sound device by default" ;; esac
 has "clipboard port for Omarchy's agent by default" "$out" "name=dev.tryomarchy.clipboard"
+for d in fedora rocky centos; do
+  o2=$(cd "$W" && DRYRUN=1 DESKTOP=$d SCALE=2 RES=1600x1000 sh run-omarchy.sh 2>&1); rc=$?
+  is_rc "DESKTOP=$d starts" $rc 0
+  has "$d: SELinux off (its files carry no labels) and the scale for GNOME" "$o2" "mylinux.scale=2 selinux=0"
+  has "$d: its own disk" "$o2" "/$d-machine/$d.ext4"
+done
+case "$(cd "$W" && DRYRUN=1 DESKTOP=kali RES=1600x1000 sh run-omarchy.sh 2>&1)" in *selinux=0*) ko "Kali's kernel line has no selinux=0" ;; *) ok "Kali's kernel line has no selinux=0" ;; esac
 out=$(cd "$W" && DRYRUN=1 RES=1600x1000 CLIPBOARD=0 sh run-omarchy.sh 2>&1)
 case "$out" in *tryomarchy.clipboard*) ko "CLIPBOARD=0 leaves the port out" ;; *) ok "CLIPBOARD=0 leaves the port out" ;; esac
 out=$(cd "$W" && DRYRUN=1 SCALE=1 RES=1600x1000 SHARE_DIR="$T/om/Mac Files" sh run-omarchy.sh 2>&1); has "dry run: no session tools copied into the share" "$out" "DISK="

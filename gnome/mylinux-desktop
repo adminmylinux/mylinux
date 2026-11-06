@@ -1,0 +1,9 @@
+#!/bin/sh
+# myLinux: the clipboard agent of the GNOME desktops (Fedora, Rocky Linux, CentOS Stream), started at sign-in
+# (/etc/xdg/autostart/mylinux-desktop.desktop) and kept running: kali/mylinux-clipboard, X11's clipboard through
+# Xwayland, which GNOME keeps in step with its own. GNOME follows the window's size by itself (it takes the display's
+# preferred mode when it changes); the scale is set before it starts (mylinux-scale).
+while :; do
+  /usr/local/bin/mylinux-clipboard 2>>"${XDG_RUNTIME_DIR:-/tmp}/mylinux-clipboard.log"
+  sleep 3
+done

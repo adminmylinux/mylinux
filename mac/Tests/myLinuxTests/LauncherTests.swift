@@ -846,6 +846,23 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())", "the same QEMU wrapper as Omarchy's and Arch's")
         XCTAssertEqual(p.kind.snippetOS, "kali"); XCTAssertEqual(Profile.recommendedMemoryGB(.kali, macGB: 36), 8)
     }
+    func testFedoraRockyAndCentOSAreGnomeDesktopsStartedLikeKali() {
+        for (kind, title) in [(Profile.Kind.fedora, "Fedora"), (.rocky, "Rocky Linux"), (.centos, "CentOS Stream")] {
+            let p = ProfileStore.newProfile(named: "G", kind: kind, folder: URL(fileURLWithPath: "/tmp/m/g"))
+            XCTAssertTrue(p.kind.runsDesktop); XCTAssertTrue(p.kind.isGnome); XCTAssertFalse(p.isServer); XCTAssertEqual(p.kind.title, title)
+            XCTAssertEqual(p.script, "run-omarchy.sh")
+            XCTAssertEqual(p.appsDisk, "/tmp/m/g/\(kind.rawValue).ext4"); XCTAssertEqual(p.shareDir, "/tmp/m/g/Mac")
+            XCTAssertEqual(p.grab, "opt", "GNOME is a Ctrl desktop: ⌘ stays with the Mac"); XCTAssertTrue(p.clipboard)
+            let env = p.environment(outDir: URL(fileURLWithPath: "/tmp/out"), serialSocket: "/tmp/s", qmpSocket: "/tmp/q")
+            XCTAssertEqual(env["DESKTOP"], kind.rawValue); XCTAssertEqual(env["APP_ICON"], "tools/icons/machine-\(kind.rawValue).icns")
+            XCTAssertTrue(p.problems.isEmpty, "\(p.problems)")
+            XCTAssertEqual(MachineApp.bundleID(p), "dev.mylinux.vm.omarchy.\(p.id.uuidString.lowercased())")
+            XCTAssertEqual(p.kind.snippetOS, kind.rawValue); XCTAssertEqual(Profile.recommendedMemoryGB(kind, macGB: 36), 8)
+            XCTAssertTrue(DesktopImageManager.shared(kind) === [DesktopImageManager.fedora, .rocky, .centos][[Profile.Kind.fedora, .rocky, .centos].firstIndex(of: kind)!])
+            XCTAssertTrue(SavedDownloads.kinds.contains { $0.folder == kind.rawValue && $0.revisionFile == "\(kind.rawValue.uppercased())-REVISION" })
+            XCTAssertTrue(WelcomeSheet.offers.contains { $0.kind == kind })
+        }
+    }
     func testWindowsIsADesktopWithItsOwnScript() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-win-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -1038,8 +1055,10 @@ final class OmarchyProfileTests: XCTestCase {
         XCTAssertEqual(["1", "1g", "1GB", "20gb", "2048m", "4096MB", "8 GiB".replacingOccurrences(of: " ", with: "")].map(CLI.gigabytes), [1, 1, 1, 20, 2, 4, 8])
         for bad in ["0", "0.5", "512m", "1.5g", "-2", "lots", ""] { XCTAssertNil(CLI.gigabytes(bad), bad) }
         // a kind, as people say it
-        XCTAssertEqual(["tiny", "Tiny-Alpine", "tinyalpine", "alpine", "DEBIAN", "omarchy", "arch", "kali", "windows", "win11", "mylinux"].map(CLI.kind),
-                       [.tiny, .tiny, .tiny, .alpine, .debian, .omarchy, .arch, .kali, .windows, .windows, .mylinux])
+        XCTAssertEqual(["tiny", "Tiny-Alpine", "tinyalpine", "alpine", "DEBIAN", "omarchy", "arch", "kali", "windows", "win11", "mylinux",
+                        "fedora", "Rocky Linux", "rocky", "CentOS Stream", "centos"].map(CLI.kind),
+                       [.tiny, .tiny, .tiny, .alpine, .debian, .omarchy, .arch, .kali, .windows, .windows, .mylinux,
+                        .fedora, .rocky, .rocky, .centos, .centos])
         XCTAssertNil(CLI.kind("ubuntu"))
         // what stands alone, what follows a --name, the --flags, and what is after --
         let w = CLI.words(["tiny", "--name", "tester 1", "--memory=1", "--disk", "20gb", "--wait", "--", "uname", "-a", "--name"])
@@ -1088,7 +1107,7 @@ final class OmarchyProfileTests: XCTestCase {
         // a machine is found by its name whatever the capitals, and listed
         XCTAssertEqual(CLIService.find(one.uppercased(), store: store)?.id, p.id)
         XCTAssertEqual((ask("list").json["machines"] as? [[String: Any]])?.compactMap { $0["name"] as? String }.sorted(), [one, two])
-        XCTAssertEqual((ask("kinds").json["kinds"] as? [[String: Any]])?.count, 8)
+        XCTAssertEqual((ask("kinds").json["kinds"] as? [[String: Any]])?.compactMap { $0["kind"] as? String }, ["tiny", "alpine", "debian", "omarchy", "arch", "kali", "fedora", "rocky", "centos", "mylinux", "windows"])
         // erasing is said in full and done only on --yes
         for what in ["machines", "everything"] {
             let r = ask("erase", what)

@@ -22,6 +22,9 @@ struct WelcomeSheet: View {
     @ObservedObject var omarchy: DesktopImageManager
     @ObservedObject var arch: DesktopImageManager
     @ObservedObject var kali: DesktopImageManager
+    @ObservedObject var fedora: DesktopImageManager = .fedora
+    @ObservedObject var rocky: DesktopImageManager = .rocky
+    @ObservedObject var centos: DesktopImageManager = .centos
     @ObservedObject var debian: ServerImageManager
     @ObservedObject var alpine: ServerImageManager
     @ObservedObject var tiny: ServerImageManager
@@ -51,6 +54,12 @@ struct WelcomeSheet: View {
               text: "Arch Linux with the KDE Plasma desktop: a taskbar, a start menu, Dolphin, Konsole and Firefox. The window resizes the desktop, the clipboard is shared, and pacman keeps it current."),
         Offer(kind: .kali, name: "Kali Linux", size: "2 GB", bytes: 2.0e9,
               text: "The security distribution with its Xfce desktop and Kali's top tools: nmap, Metasploit, Wireshark, John, Hydra, sqlmap. The rest is an apt install away, and the clipboard is shared with the Mac."),
+        Offer(kind: .fedora, name: "Fedora", size: "1.6 GB", bytes: 1.56e9,
+              text: "Fedora's newest release with GNOME as Fedora ships it: Firefox, Files and the terminal, and dnf for the rest. The window resizes the desktop, and the clipboard is shared with the Mac."),
+        Offer(kind: .rocky, name: "Rocky Linux", size: "630 MB", bytes: 625e6,
+              text: "The free rebuild of Red Hat Enterprise Linux, with GNOME and Firefox: the system that runs servers in production, to learn and test on. dnf installs the rest; the clipboard is shared."),
+        Offer(kind: .centos, name: "CentOS Stream", size: "610 MB", bytes: 607e6,
+              text: "Where the next Red Hat Enterprise Linux is made, with GNOME and Firefox: see what comes to RHEL first. dnf installs the rest, and the clipboard is shared with the Mac."),
         Offer(kind: .debian, name: "Debian Server", size: "300 MB", bytes: 300e6,
               text: "The latest stable Debian as a terminal, no desktop. Install Claude Code and Codex from its menu and look at what they build in a browser that lives inside the machine."),
         Offer(kind: .alpine, name: "Alpine Server", size: "100 MB", bytes: 100e6,
@@ -62,10 +71,15 @@ struct WelcomeSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            VStack(spacing: 8) {
-                ForEach(Self.offers, id: \.kind) { row($0) }
+            // ten offers are taller than a 13-inch screen: they scroll in a fixed height, half of the eighth showing
+            // there are more
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(Self.offers, id: \.kind) { row($0) }
+                }
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 24)
+            .frame(height: 612)
             keyboard
             footer
         }
@@ -164,6 +178,12 @@ struct WelcomeSheet: View {
                 tile(Color(red: 0.09, green: 0.58, blue: 0.82), "triangle.fill")
             case .kali:
                 tile(Color(red: 0.14, green: 0.20, blue: 0.36), "shield.lefthalf.filled")
+            case .fedora:
+                tile(Color(red: 0.24, green: 0.43, blue: 0.71), "infinity")
+            case .rocky:
+                tile(Color(red: 0.06, green: 0.73, blue: 0.51), "circle.bottomhalf.filled")
+            case .centos:
+                tile(Color(red: 0.56, green: 0.25, blue: 0.47), "rhombus.fill")
             case .tiny:
                 tile(Color(red: 0.10, green: 0.50, blue: 0.45), "mountain.2.fill")
             case .windows:                      // not an offer here (it is not a download: + › Windows Machine)
@@ -232,14 +252,14 @@ struct WelcomeSheet: View {
 
     // ---- state ----------------------------------------------------------------------------------------------------
     private func manager(_ kind: Profile.Kind) -> ScriptDownloader {
-        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch; case .tiny: return tiny; case .kali: return kali; case .windows: return DesktopImageManager.windows }
+        switch kind { case .mylinux: return images; case .omarchy: return omarchy; case .debian: return debian; case .alpine: return alpine; case .arch: return arch; case .tiny: return tiny; case .kali: return kali; case .windows: return DesktopImageManager.windows; case .fedora: return fedora; case .rocky: return rocky; case .centos: return centos }
     }
     private func present(_ kind: Profile.Kind) -> Bool {
-        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present; case .tiny: return tiny.present; case .kali: return kali.present; case .windows: return DesktopImageManager.windows.present }
+        switch kind { case .mylinux: return images.present; case .omarchy: return omarchy.present; case .debian: return debian.present; case .alpine: return alpine.present; case .arch: return arch.present; case .tiny: return tiny.present; case .kali: return kali.present; case .windows: return DesktopImageManager.windows.present; case .fedora: return fedora.present; case .rocky: return rocky.present; case .centos: return centos.present }
     }
     /// Ticked and not downloaded yet.
     private var pending: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && !present($0) } }
-    private var anyBusy: Bool { images.busy || omarchy.busy || arch.busy || kali.busy || debian.busy || alpine.busy || tiny.busy || runtime.busy }
+    private var anyBusy: Bool { images.busy || omarchy.busy || arch.busy || kali.busy || fedora.busy || rocky.busy || centos.busy || debian.busy || alpine.busy || tiny.busy || runtime.busy }
     private var readyKinds: [Profile.Kind] { Self.offers.map(\.kind).filter { chosen.contains($0) && present($0) } }
     private var summary: String {
         if started && anyBusy { return "Downloading…" }
@@ -255,10 +275,10 @@ struct WelcomeSheet: View {
             switch kind {
             case .mylinux: images.download(settings)
             case .windows: break                // not offered here
-            case .omarchy, .arch, .kali:
+            case .omarchy, .arch, .kali, .fedora, .rocky, .centos:
                 // the desktops run only on the accelerated runtime; a release carries it, a local build fetches it
                 if !runtime.present && !runtime.busy && RuntimeManager.bundledTarball == nil { runtime.download(settings) }
-                (kind == .arch ? arch : kind == .kali ? kali : omarchy).download(settings)
+                (manager(kind) as? DesktopImageManager)?.download(settings)
             case .debian: debian.download(settings)
             case .alpine: alpine.download(settings)
             case .tiny:

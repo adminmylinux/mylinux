@@ -233,6 +233,21 @@ render("machine-kali", to: out) { ctx in
     }
 }
 
+// Fedora, Rocky Linux and CentOS Stream: each one's colour with a plain mark (not their own logos, trademarks)
+for (name, gradient, glow, symbol, size) in [
+    ("machine-fedora", [0x5B8FD6, 0x3C6EB4, 0x294172], 0xB5D3FF, "infinity", 560.0),
+    ("machine-rocky", [0x2FD39A, 0x10B981, 0x0B7A55], 0xA8F5D8, "circle.bottomhalf.filled", 470.0),
+    ("machine-centos", [0xB5679D, 0x8E3F78, 0x5C2650], 0xF2BCE4, "rhombus.fill", 470.0),
+] as [(String, [UInt32], UInt32, String, CGFloat)] {
+    render(name, to: out) { ctx in
+        body(ctx, gradient: gradient, glow: glow)
+        let cfg = NSImage.SymbolConfiguration(pointSize: 400, weight: .bold)
+        if let i = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
+            mark(ctx, i, size: size, tint: .white)
+        }
+    }
+}
+
 render("machine-windows", to: out) { ctx in
     // the blue Windows 11 uses, with a framed window of four panes (drawn here, not Microsoft's own logo, a trademark)
     body(ctx, gradient: [0x3AA0F0, 0x0A78D4, 0x064E8E], glow: 0xB5DDFF)
@@ -276,4 +291,4 @@ func badged(_ name: String) {
         ctx.restoreGState()
     }
 }
-for kind in ["omarchy", "debian", "alpine", "arch", "tiny", "kali", "windows"] { badged("machine-" + kind) }
+for kind in ["omarchy", "debian", "alpine", "arch", "tiny", "kali", "windows", "fedora", "rocky", "centos"] { badged("machine-" + kind) }

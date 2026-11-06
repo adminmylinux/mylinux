@@ -1,0 +1,10 @@
+[Unit]
+Description=myLinux: GNOME's scale for this display
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mylinux-scale
+
+[Install]
+WantedBy=graphical.target

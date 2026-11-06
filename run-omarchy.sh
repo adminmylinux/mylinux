@@ -8,6 +8,8 @@
 # the same way: out/arch, its own disk, no Omarchy session agent; the Mac share is mounted by its fstab (tag mac).
 # DESKTOP=kali boots the Kali Linux (Xfce) image (tools/build-kali-image.sh, tools/get-kali.sh), in every way as Arch's:
 # out/kali, the same window and devices; kali/ holds what the image has to follow the window, scale and share the clipboard.
+# DESKTOP=fedora, rocky or centos boots that distribution's GNOME image (tools/build-rpm-image.sh, tools/get-<it>.sh),
+# as Kali's; gnome/ holds what those images need besides Kali's clipboard agent.
 # Environment: RES=WxH window size in points (default: fills the display the window opens on, the frontmost app's; a
 #              Retina display gives the guest twice that in pixels, SCALE=1|2 overrides), DISK=path of the root disk (default $MYLINUX_OUT/omarchy-machine/omarchy.ext4), DISK_SIZE_GB=32,
 #              NAME=window title, MEM=8G, CPUS=6, SHARE_DIR=folder shown inside Omarchy as ~/<its name> (optional),
@@ -44,7 +46,10 @@ case "$DESKTOP" in
   omarchy) TITLE_NAME=Omarchy; REVFILE=OMARCHY-REVISION; GET=tools/get-omarchy.sh ;;
   arch)    TITLE_NAME="Arch Linux"; REVFILE=ARCH-REVISION; GET=tools/get-arch.sh ;;
   kali)    TITLE_NAME="Kali Linux"; REVFILE=KALI-REVISION; GET=tools/get-kali.sh ;;
-  *) die "DESKTOP must be omarchy, arch or kali" ;;
+  fedora)  TITLE_NAME=Fedora; REVFILE=FEDORA-REVISION; GET=tools/get-fedora.sh ;;
+  rocky)   TITLE_NAME="Rocky Linux"; REVFILE=ROCKY-REVISION; GET=tools/get-rocky.sh ;;
+  centos)  TITLE_NAME="CentOS Stream"; REVFILE=CENTOS-REVISION; GET=tools/get-centos.sh ;;
+  *) die "DESKTOP must be omarchy, arch, kali, fedora, rocky or centos" ;;
 esac
 G="$OUT/$DESKTOP"
 
@@ -83,8 +88,10 @@ if [ "$DESKTOP" = omarchy ]; then
   [ "${SSH:-0}" = 1 ] && APPEND="$APPEND tryomarchy.ssh_access=1"
 else
   # the desktop's scale: the guest has SCALE pixels per point of the window (arch/mylinux-scale and kali/mylinux-desktop
-  # set it at sign-in)
+  # set it at sign-in, gnome/mylinux-scale before GNOME starts)
   APPEND="$APPEND quiet mylinux.scale=$SCALE"
+  # GNOME's (tools/build-rpm-image.sh): its files carry no SELinux labels, so SELinux stays off
+  case "$DESKTOP" in fedora|rocky|centos) APPEND="$APPEND selinux=0" ;; esac
 fi
 
 # ---- the shared folder: shown in Omarchy as ~/<its name>; the runtime's 9p reports the Mac user's files as uid 1000

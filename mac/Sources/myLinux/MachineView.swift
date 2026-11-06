@@ -12,6 +12,9 @@ struct MachineView: View {
     @StateObject private var omarchyImage = DesktopImageManager.omarchy
     @StateObject private var archImage = DesktopImageManager.arch
     @StateObject private var kaliImage = DesktopImageManager.kali
+    @StateObject private var fedoraImage = DesktopImageManager.fedora
+    @StateObject private var rockyImage = DesktopImageManager.rocky
+    @StateObject private var centosImage = DesktopImageManager.centos
     @StateObject private var windowsImage = DesktopImageManager.windows
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
@@ -21,7 +24,10 @@ struct MachineView: View {
     /// Omarchy or Arch: a desktop on the QEMU runtime (run-omarchy.sh)
     private var isDesktop: Bool { draft.kind.runsDesktop }
     /// A desktop's download: Omarchy's guest or Arch's.
-    private var desktopImage: DesktopImageManager { draft.kind == .arch ? archImage : draft.kind == .kali ? kaliImage : draft.kind == .windows ? windowsImage : omarchyImage }
+    private var desktopImage: DesktopImageManager {
+        switch draft.kind { case .arch: return archImage; case .kali: return kaliImage; case .windows: return windowsImage
+                            case .fedora: return fedoraImage; case .rocky: return rockyImage; case .centos: return centosImage; default: return omarchyImage }
+    }
     private var isWindows: Bool { draft.kind == .windows }
     /// A desktop that needs nothing downloaded any more: started before (a Windows machine: Windows installed in it).
     private var desktopReady: Bool { isWindows ? draft.windowsInstalled : draft.desktopCreated }
@@ -48,7 +54,7 @@ struct MachineView: View {
         switch draft.kind {
         case .mylinux:
             return images.present ? nil : (settings.developerMode ? "Build the image first (./build.sh)" : "Download myLinux first")
-        case .omarchy, .arch, .kali, .windows:
+        case .omarchy, .arch, .kali, .windows, .fedora, .rocky, .centos:
             if !runtime.present { return "Download the accelerated QEMU first" }
             return desktopReady || desktopImage.present ? nil : isWindows ? "Get Windows first" : "Download \(guestName) first"
         case .debian, .alpine, .tiny:
@@ -66,7 +72,7 @@ struct MachineView: View {
         case .mylinux:
             guard !images.present, !settings.developerMode else { return nil }
             return ("myLinux", images, { images.download(settings) })
-        case .omarchy, .arch, .kali, .windows:
+        case .omarchy, .arch, .kali, .windows, .fedora, .rocky, .centos:
             if !runtime.present { return ("QEMU", runtime, { runtime.download(settings) }) }
             let image = desktopImage
             return desktopReady || image.present ? nil : (guestName, image, { image.download(settings) })
@@ -709,6 +715,13 @@ struct MachineView: View {
             case "full": return "Kali receives every key, ⌘ as Super, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives Kali every key again."
             case "none": return "macOS keeps all its shortcuts; Kali only sees combinations macOS does not claim."
             default: return "The Option key acts as Super (the Windows key) inside Kali: Option alone opens the application menu. macOS keeps its ⌘ shortcuts; Kali's own are Ctrl ones (Ctrl+C and Ctrl+V, Ctrl+Shift+C and Ctrl+Shift+V in the terminal)."
+            }
+        }
+        if draft.kind.isGnome {
+            switch draft.grab {
+            case "full": return "\(guestName) receives every key, ⌘ as Super, even ⌘Space and ⌘Tab. macOS asks for Accessibility permission the first time. Ctrl+Option+G hands the keyboard back to the Mac; a click in the window, or Ctrl+Option+G again, gives \(guestName) every key again."
+            case "none": return "macOS keeps all its shortcuts; \(guestName) only sees combinations macOS does not claim."
+            default: return "The Option key acts as Super (the Windows key) inside GNOME: Option alone opens the Activities overview, where typing finds an app. macOS keeps its ⌘ shortcuts; GNOME's own are Ctrl ones (Ctrl+C and Ctrl+V, Ctrl+Shift+C and Ctrl+Shift+V in the terminal)."
             }
         }
         if draft.kind == .arch {

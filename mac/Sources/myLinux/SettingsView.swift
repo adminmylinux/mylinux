@@ -181,6 +181,9 @@ private struct ImagesSettingsPage: View {
     @StateObject private var omarchy = DesktopImageManager.omarchy
     @StateObject private var arch = DesktopImageManager.arch
     @StateObject private var kali = DesktopImageManager.kali
+    @StateObject private var fedora = DesktopImageManager.fedora
+    @StateObject private var rocky = DesktopImageManager.rocky
+    @StateObject private var centos = DesktopImageManager.centos
     @StateObject private var windows = DesktopImageManager.windows
     @StateObject private var debian = ServerImageManager.debian
     @StateObject private var alpine = ServerImageManager.alpine
@@ -206,6 +209,12 @@ private struct ImagesSettingsPage: View {
             row(icon: MachineIcon.image(.kali), name: "Kali Linux", size: "2 GB", loader: kali,
                 status: kali.present ? "Installed · \(kali.revision ?? "")" : nil,
                 action: kali.present ? "Update" : "Download", start: { kali.download(settings) })
+            ForEach([fedora, rocky, centos], id: \.kind) { m in
+                Divider()
+                row(icon: MachineIcon.image(m.kind), name: m.kind.title, size: m.size.replacingOccurrences(of: "about ", with: ""), loader: m,
+                    status: m.present ? "Installed · \(m.revision ?? "")" : nil,
+                    action: m.present ? "Update" : "Download", start: { m.download(settings) })
+            }
             Divider()
             row(icon: MachineIcon.image(.debian), name: "Debian", size: "300 MB", loader: debian,
                 status: debian.present ? "Installed · \(debian.revision ?? "")" : nil,
@@ -609,7 +618,7 @@ struct StorageUsage {
             }
             var downloads = 0.0
             if !dev {
-                for (name, paths) in [("myLinux image", ["Image", "rootfs.cpio.gz"]), ("Omarchy", ["omarchy"]), ("Arch Linux", ["arch"]), ("Kali Linux", ["kali"]), ("Windows", ["windows"]), ("Debian", ["debian"]),
+                for (name, paths) in [("myLinux image", ["Image", "rootfs.cpio.gz"]), ("Omarchy", ["omarchy"]), ("Arch Linux", ["arch"]), ("Kali Linux", ["kali"]), ("Fedora", ["fedora"]), ("Rocky Linux", ["rocky"]), ("CentOS Stream", ["centos"]), ("Windows", ["windows"]), ("Debian", ["debian"]),
                                       ("Alpine", ["alpine"]), ("Tiny Alpine", ["tiny"]), ("QEMU runtime", ["qemu-runtime", "qemu-runtime.prev"])] {
                     let b = paths.reduce(0.0) { $0 + allocated(out.appendingPathComponent($1)) }
                     if b > 0 { downloads += b; items.append(Item(name: name, bytes: b, color: .purple)) }

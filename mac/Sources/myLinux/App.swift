@@ -48,6 +48,9 @@ struct MyLinuxApp: App {
                 Button("New Omarchy Machine…") { FirstStartSheet.ask(.omarchy) }.keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("New Arch Linux Machine") { _ = store.add(kind: .arch) }
                 Button("New Kali Linux Machine") { _ = store.add(kind: .kali) }
+                Button("New Fedora Machine") { _ = store.add(kind: .fedora) }
+                Button("New Rocky Linux Machine") { _ = store.add(kind: .rocky) }
+                Button("New CentOS Stream Machine") { _ = store.add(kind: .centos) }
                 Button("New Windows Machine…") { FirstStartSheet.ask(.windows) }
                 Button("New Debian Server") { _ = store.add(kind: .debian) }.keyboardShortcut("n", modifiers: [.command, .option])
                 Button("New Alpine Server") { _ = store.add(kind: .alpine) }
