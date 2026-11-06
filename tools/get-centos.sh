@@ -5,6 +5,6 @@
 # Usage: tools/get-centos.sh [--remove | --check]
 KIND=centos
 TITLE="CentOS Stream"
-TAG=centos-2026.11.06
-SUMS_SHA256=a1a4c945867797e24a5d0b3a79c42ad40db0271aa118cee55961ae241ab25077
+TAG=centos-2026.11.06-2
+SUMS_SHA256=58f28023ff31baf722bbe87b31dbdf2dcbb8ae7edd3534fdcd19c23ea2bea13e
 . "$(dirname "$0")/get-rpm-desktop.sh"

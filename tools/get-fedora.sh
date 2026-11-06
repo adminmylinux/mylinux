@@ -5,6 +5,6 @@
 # Usage: tools/get-fedora.sh [--remove | --check]
 KIND=fedora
 TITLE="Fedora"
-TAG=fedora-2026.11.06
-SUMS_SHA256=f0fe669fb16b02532e03695f3fdf1a75e7383b772e1150325b936a1d64232d29
+TAG=fedora-2026.11.06-2
+SUMS_SHA256=27dc3eff4eadb6cc103c8bc7b73703f4edfb75725c33afe9359d79db3eebbffa
 . "$(dirname "$0")/get-rpm-desktop.sh"

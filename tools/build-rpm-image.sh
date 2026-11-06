@@ -51,7 +51,8 @@ PACKAGES=(
   kernel dracut systemd sudo passwd shadow-utils glibc-langpack-en
   NetworkManager gdm gnome-shell gnome-session-wayland-session gnome-control-center nautilus gnome-text-editor
   firefox xorg-x11-server-Xwayland xclip python3 e2fsprogs
-  pipewire-pulseaudio wireplumber dejavu-sans-fonts google-noto-sans-fonts google-noto-color-emoji-fonts dconf ptyxis
+  pipewire-pulseaudio wireplumber dejavu-sans-fonts dejavu-sans-mono-fonts google-noto-sans-fonts google-noto-color-emoji-fonts
+  dconf ptyxis
   # what GNOME only recommends, and needs here: GDM runs each session's message bus with dbus-daemon (without it the
   # sign-in never starts: "Unable to run session message bus"), pam_systemd (systemd-pam) gives each sign-in its own
   # systemd, on which GNOME runs its session (without it: "org.freedesktop.systemd1 does not exist"), Mesa's drivers draw it, the portal and the keyring
@@ -59,10 +60,12 @@ PACKAGES=(
   dbus-daemon systemd-pam mesa-dri-drivers xdg-desktop-portal-gnome gnome-keyring gvfs xdg-user-dirs
   dnf curl less nano git which
 )
-# the desktop's pictures: Fedora's are GNOME's, Rocky's and CentOS's their own
+# the desktop's pictures (Fedora's are GNOME's, Rocky's and CentOS's their own) and the fonts its settings ask for:
+# Fedora's GNOME Adwaita Sans and Mono, EL 10's Red Hat Text and Mono. Without the terminal's font Ptyxis spaced its
+# letters far apart (checked below)
 case "$DISTRO" in
-  fedora) PACKAGES+=(gnome-backgrounds) ;;
-  *)      PACKAGES+=("$DISTRO-backgrounds") ;;
+  fedora) PACKAGES+=(gnome-backgrounds adwaita-mono-fonts adwaita-sans-fonts) ;;
+  *)      PACKAGES+=("$DISTRO-backgrounds" redhat-mono-fonts redhat-text-fonts redhat-display-fonts) ;;
 esac
 mkdir -p /work
 dnf -y -q install e2fsprogs zstd >/dev/null
@@ -163,6 +166,10 @@ for f in etc/sudoers.d/10-mylinux etc/gdm/custom.conf usr/local/bin/mylinux-clip
   [ -e "$R/$f" ] || [ -L "$R/$f" ] || die "the image lacks /$f"
 done
 grep -q '^mac /mnt/mac 9p' "$R/etc/fstab" || die "the image's fstab lacks the Mac share"
+for key in monospace-font-name font-name; do     # 'Red Hat Mono Regular 10' -> Red Hat Mono, as Pango reads it
+  fam=$(chroot "$R" env GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.interface $key | sed "s/'//g; s/ [0-9.]*\$//; s/ Regular\$//")
+  chroot "$R" fc-match "$fam" | grep -qiF "$fam" || die "the image lacks $fam, GNOME's $key"
+done
 [ -n "$(ls "$R"/lib/modules/*/extra/9p/9p.ko "$R"/lib/modules/*/kernel/fs/9p/9p.ko* 2>/dev/null)" ] || die "the image has no 9p for the Mac share"
 
 say "Kernel and initramfs out"

@@ -1,7 +1,7 @@
 # myLinux
 
 **Linux on your Mac, ready in seconds.** myLinux Launcher is a free Mac app that runs Omarchy, Arch Linux, Kali,
-Debian, Alpine and Windows 11 as real machines on Apple silicon. Pick one, press Start, and it runs as an app of its
+Fedora, Rocky Linux, CentOS Stream, Debian, Alpine and Windows 11 as real machines on Apple silicon. Pick one, press Start, and it runs as an app of its
 own, with its own disk, your clipboard and your folders. Your coding agents can make them for you.
 
 **[mylinux.app](https://mylinux.app)** · **[Download for Mac](https://mylinux.app/download)** ·
@@ -19,6 +19,9 @@ start on a MacBook Pro with an M4 Pro: until the desktop is on screen, or a serv
 | Omarchy | Arch Linux with Hyprland, run from the keyboard: the [Try Omarchy](https://github.com/omacom/try-omarchy) project's signed image | 1.7 GB | 9 s |
 | Arch Linux | KDE Plasma with a taskbar, a start menu and Firefox, built here from Arch Linux ARM's packages | 2 GB | 7 s |
 | Kali Linux | Xfce with nmap, Metasploit, Wireshark and Kali's other top tools, built here from Kali's packages | 2 GB | 7 s |
+| Fedora | Fedora 45 with GNOME and Firefox, built here from Fedora's packages | 1.6 GB | 9 s |
+| Rocky Linux | Rocky Linux 10 (Red Hat Enterprise Linux, rebuilt) with GNOME and Firefox, built here from its packages | 630 MB | 7 s |
+| CentOS Stream | CentOS Stream 10, where the next Red Hat Enterprise Linux is made, with GNOME and Firefox | 610 MB | 7 s |
 | myLinux | Our own small desktop that runs from memory (this repository's Buildroot image) | 110 MB | 3 s |
 | Debian | The latest stable Debian as a terminal, with a browser that sees inside the machine | 300 MB | 11 s |
 | Alpine | A small server that idles in about 60 MB | 100 MB | 16 s |
@@ -77,16 +80,17 @@ Everything is explained at **[mylinux.app/docs](https://mylinux.app/docs)**.
 
 ## This repository
 
-The launcher, the scripts it runs, the myLinux image, and the builds of the Arch Linux and Kali images.
+The launcher, the scripts it runs, the myLinux image, and the builds of the Arch Linux, Kali, Fedora, Rocky Linux and
+CentOS Stream images.
 
 ```
 mac/                        the launcher (SwiftUI); mac/build-app.sh builds it, mac/release.sh makes a notarised DMG
-run.sh                      a myLinux machine; run-omarchy.sh runs Omarchy (and Arch Linux and Kali with
-                            DESKTOP=arch or DESKTOP=kali), run-server.sh the servers (run-debian.sh, run-alpine.sh,
+run.sh                      a myLinux machine; run-omarchy.sh runs Omarchy (and the other desktops with
+                            DESKTOP=arch, kali, fedora, rocky or centos), run-server.sh the servers (run-debian.sh, run-alpine.sh,
                             run-tiny.sh), run-windows.sh Windows
 tools/                      downloads (get-*.sh), image builds, the QEMU runtime build, checks and helpers
-omarchy/ arch/ kali/        what goes into those guests: Omarchy's first-start answers and session agent, the
-                            clipboard and display-scaling agents of Arch Linux and Kali
+omarchy/ arch/ kali/ gnome/ what goes into those guests: Omarchy's first-start answers and session agent, the
+                            clipboard and display-scaling agents of Arch Linux, Kali and the GNOME ones
 tiny/ windows/              Tiny Alpine's init, and Windows's tools disc (answer files, the agents' setup)
 server-apps/                myLinux Apps, snippets and the agents' setup, loaded by the machines from main
 skills/mylinux/             the agents' skill (SKILL.md)
@@ -108,7 +112,7 @@ tools/get-image.sh          # the latest myLinux kernel and root filesystem into
 ```
 
 The other machines start the same way after their `tools/get-*.sh` (`get-omarchy.sh`, `get-arch.sh`, `get-kali.sh`,
-`get-debian.sh`, `get-alpine.sh`, `get-tiny.sh`, `get-windows.sh`). `DRYRUN=1 ./run.sh` prints the QEMU command
+`get-fedora.sh`, `get-rocky.sh`, `get-centos.sh`, `get-debian.sh`, `get-alpine.sh`, `get-tiny.sh`, `get-windows.sh`). `DRYRUN=1 ./run.sh` prints the QEMU command
 instead of starting it. Settings › Developer points the launcher at a checkout, and it then starts machines from its
 scripts and `out/`.
 
@@ -146,7 +150,8 @@ tools/app-build.sh shell        # the desktop shell into share/, picked up at th
 ```
 
 The Arch Linux and Kali images are built in the same OrbStack machine, as root: `tools/build-arch-image.sh` and
-`tools/build-kali-image.sh`.
+`tools/build-kali-image.sh`. Fedora, Rocky Linux and CentOS Stream are built on the Mac, each in its distribution's
+own arm64 container: `tools/build-rpm-image.sh fedora` (`rocky`, `centos`).
 
 ### Checks and tests
 
@@ -167,4 +172,5 @@ QEMU runtime lists its sources and licences in its `NOTICES.md`.
 The launcher's Welcome sheet shows two marks in `tools/icons/`: `debian.png` is the Debian Open Use Logo, Copyright
 (c) 1999 Software in the Public Interest, Inc., under LGPL-3 or CC-BY-SA 3.0; `omarchy.png` is the Omarchy mark from
 Omarchy's brand kit (as used by Try Omarchy), a pending trademark of the Omarchy project. Omarchy is by its own
-authors; Arch Linux, Kali Linux, Debian and Alpine Linux are trademarks of their projects, and Windows is Microsoft's.
+authors; Arch Linux, Kali Linux, Fedora, Rocky Linux, CentOS, Debian and Alpine Linux are trademarks of their
+projects, and Windows is Microsoft's.

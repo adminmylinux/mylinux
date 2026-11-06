@@ -5,6 +5,6 @@
 # Usage: tools/get-rocky.sh [--remove | --check]
 KIND=rocky
 TITLE="Rocky Linux"
-TAG=rocky-2026.11.06
-SUMS_SHA256=3287f7d6b9fd26906c001f5b76c764ebcb4341313d25a03eab77df86b6eef8c5
+TAG=rocky-2026.11.06-2
+SUMS_SHA256=4b7fb935ee6196d3a513c937d24929e25ef456343b1691e9e1f31f4feb1434cf
 . "$(dirname "$0")/get-rpm-desktop.sh"
