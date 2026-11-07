@@ -118,6 +118,8 @@ if [ -n "$SHARE_DIR" ] && [ "$DESKTOP" = omarchy ]; then
 fi
 # Arch and Kali: the ⌘ menu in the middle of the title bar (⌘P opens it) with the launcher's commands it has, without Omarchy's session
 [ "$DESKTOP" = omarchy ] || export MYLINUX_COMMANDS_MENU="snippets cloud share"
+# Fedora, Rocky Linux, CentOS Stream: Claude Install… too (their desktop agent, gnome/mylinux-desktop, takes its requests)
+case "$DESKTOP" in fedora|rocky|centos) MYLINUX_COMMANDS_MENU="claude $MYLINUX_COMMANDS_MENU" ;; esac
 export MYLINUX_SIZE_BUTTONS=1     # the window's −10% / +10% / full screen buttons (Omarchy's desktop follows the window)
 # Hyprland's mode: the window starts fixed (the first-boot screen needs that) and becomes resizable once it is reached
 export MYLINUX_DESKTOP_MODE="${GX}x${GY}"
@@ -158,6 +160,9 @@ elif [ "${DRYRUN:-0}" != 1 ] && [ "$DESKTOP" = omarchy ]; then
   # a machine made earlier: its session tool brought up to date (Apps… needs the agent's "apps"), if it was shut down cleanly
   tools/omarchy-update-session.sh "$DISK" omarchy/session || true
 fi
+# Fedora, Rocky Linux, CentOS Stream: their desktop agent as this launcher's, in a new disk and in one made earlier
+# (Claude Install…'s requests came in 0.7.96), if it was shut down cleanly
+case "$DESKTOP" in fedora|rocky|centos) [ "${DRYRUN:-0}" = 1 ] || tools/gnome-update-desktop.sh "$DISK" gnome/mylinux-desktop || true ;; esac
 [ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.answers"      # they name a password: in the new disk by now, or of no use
 [ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.tools-request" "$MACHINE/first-start.tools-script"     # (a token can be in it)
 SERIAL="${SERIAL:-file:$MACHINE/console.log}"

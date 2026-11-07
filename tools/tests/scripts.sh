@@ -23,7 +23,7 @@ want() { [ -z "${CHECK_CHANGED+x}" ] || printf '%s\n' "$CHECK_CHANGED" | grep -q
 # a scratch repo: the scripts plus an out/ with a known working pair, path with a space and an apostrophe
 W="$T/my repo's copy"
 mkdir -p "$W/out" "$W/tools" "$W/board/overlay/etc" "$W/bin"
-cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$REPO/run-windows.sh" "$W/"; cp -R "$REPO/windows" "$W/"; cp "$REPO/tools/desktop-window.sh" "$REPO/tools/get-windows.sh" "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/omarchy-bake-answers.sh" "$REPO/tools/omarchy-update-session.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$REPO/omarchy/answers" "$W/omarchy/"
+cp "$REPO/build.sh" "$REPO/run.sh" "$REPO/run-omarchy.sh" "$REPO/run-windows.sh" "$W/"; cp -R "$REPO/windows" "$W/"; cp "$REPO/tools/desktop-window.sh" "$REPO/tools/get-windows.sh" "$REPO/tools/get-image.sh" "$REPO/tools/make-app-bundle.sh" "$REPO/tools/qemu-flavour.sh" "$REPO/tools/get-qemu-runtime.sh" "$REPO/tools/get-omarchy.sh" "$REPO/tools/omarchy-bake-session.sh" "$REPO/tools/omarchy-bake-answers.sh" "$REPO/tools/omarchy-update-session.sh" "$REPO/tools/gnome-update-desktop.sh" "$REPO/tools/get-debian.sh" "$REPO/tools/get-alpine.sh" "$REPO/tools/get-edk2.sh" "$REPO/tools/download-cache.sh" "$REPO/tools/save-downloads.sh" "$REPO/tools/extra-shares.sh" "$REPO/tools/qemu-runtime.version" "$W/tools/"; cp "$REPO/run-server.sh" "$REPO/run-debian.sh" "$REPO/run-alpine.sh" "$W/"; mkdir -p "$W/omarchy" && cp -R "$REPO/omarchy/session" "$REPO/omarchy/answers" "$W/omarchy/"; cp -R "$REPO/gnome" "$W/"
 printf 'old kernel' > "$W/out/Image"; printf 'old rootfs' > "$W/out/rootfs.cpio.gz"
 (cd "$W" && git init -q && git add . >/dev/null 2>&1 && git -c user.name=t -c user.email=t@t commit -qm init) 2>/dev/null
 
@@ -352,6 +352,30 @@ if [ -n "$DEBUGFS" ]; then
   (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/omarchy-bake-session.sh "$T/mini.img" >/dev/null 2>&1); rc=$?
   is_rc "baking again replaces the files" $rc 0
 else echo "  skip debugfs bake (no debugfs here: runtime not installed)"; fi
+echo "tools/gnome-update-desktop.sh, gnome/mylinux-desktop"
+grep -qF 'fedora|rocky|centos) MYLINUX_COMMANDS_MENU="claude $MYLINUX_COMMANDS_MENU"' "$W/run-omarchy.sh" && rc=0 || rc=1
+is_rc "Fedora, Rocky and CentOS have Claude Install… in the ⌘ menu" $rc 0
+grep -qF 'tools/gnome-update-desktop.sh "$DISK" gnome/mylinux-desktop' "$W/run-omarchy.sh" && rc=0 || rc=1
+is_rc "run-omarchy.sh brings their desktop agent up to date at each start" $rc 0
+out=$(sh "$REPO/gnome/mylinux-desktop" selftest 2>&1); has "the agent runs Claude Install…'s two requests and nothing else" "$out" "selftest ok"
+GF="$T/a gnome machine"; mkdir -p "$GF"; gunzip -c "$REPO/tools/tests/fixtures/ext4-mini.img.gz" > "$GF/disk.img"
+(cd "$W" && MYLINUX_DEBUGFS=/nonexistent/debugfs sh tools/gnome-update-desktop.sh "$GF/disk.img" >/dev/null 2>&1); rc=$?
+is_rc "without a debugfs it says so and exits 3 (the machine starts with the agent it has)" $rc 3
+if [ -n "$DEBUGFS" ]; then
+  printf 'mkdir /usr\nmkdir /usr/local\nmkdir /usr/local/bin\n' > "$T/gnome-dirs"; "$DEBUGFS" -w -f "$T/gnome-dirs" "$GF/disk.img" >/dev/null 2>&1
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/gnome-update-desktop.sh "$GF/disk.img" >/dev/null 2>&1); rc=$?
+  is_rc "writes the agent into a disk (from a folder with a space in its name)" $rc 0
+  "$DEBUGFS" -R "cat /usr/local/bin/mylinux-desktop" "$GF/disk.img" 2>/dev/null | cmp -s - "$REPO/gnome/mylinux-desktop" && rc=0 || rc=1
+  is_rc "as the launcher has it" $rc 0
+  out=$("$DEBUGFS" -R "stat /usr/local/bin/mylinux-desktop" "$GF/disk.img" 2>/dev/null); has "a 0755 file" "$out" "Mode:  0755"; has "root's" "$out" "User:     0"
+  out=$(cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/gnome-update-desktop.sh "$GF/disk.img" 2>&1); rc=$?
+  is_rc "an agent that is up to date is left as it is" $rc 0; [ -z "$out" ] && ok "and nothing is said" || ko "it said: $out"
+  printf 'old agent\n' > "$T/old-agent"; printf 'rm /usr/local/bin/mylinux-desktop\nwrite %s /usr/local/bin/mylinux-desktop\nssv state 0\n' "$T/old-agent" > "$T/unclean"
+  "$DEBUGFS" -w -f "$T/unclean" "$GF/disk.img" >/dev/null 2>&1
+  (cd "$W" && MYLINUX_DEBUGFS="$DEBUGFS" sh tools/gnome-update-desktop.sh "$GF/disk.img" >/dev/null 2>&1); rc=$?
+  is_rc "a disk that was not shut down cleanly is left alone (exit 4)" $rc 4
+  out=$("$DEBUGFS" -R "cat /usr/local/bin/mylinux-desktop" "$GF/disk.img" 2>/dev/null); has "its old agent stays" "$out" "old agent"
+else echo "  skip debugfs update (no debugfs here: runtime not installed)"; fi
 echo "tools/omarchy-bake-answers.sh, omarchy/answers"
 grep -q 'tools/omarchy-bake-answers.sh "$DISK.new" "$MACHINE/first-start.answers"' "$W/run-omarchy.sh" && rc=0 || rc=1
 is_rc "run-omarchy.sh bakes first-start answers into a new disk when the machine has them" $rc 0

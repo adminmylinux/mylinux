@@ -56,8 +56,8 @@ import Foundation
         guard let p = CLIService.find(name, store: store) else {
             return .failed("no machine named \"\(name)\" (there are: \(store.profiles.map(\.name).joined(separator: ", ")))")
         }
-        guard p.kind == .omarchy || p.kind == .windows else {
-            return .failed("mylinux \(tool) is for an Omarchy or a Windows machine. In a server (tiny, alpine, debian) it is installed over ssh: the skill's \"Claude Code in a server\"", code: 2)
+        guard p.kind == .omarchy || p.kind.isGnome || p.kind == .windows else {
+            return .failed("mylinux \(tool) is for an Omarchy, Fedora, Rocky Linux, CentOS Stream or Windows machine. In a server (tiny, alpine, debian) it is installed over ssh: the skill's \"Claude Code in a server\"", code: 2)
         }
         let key = "\(p.id.uuidString)-\(tool)"
         if !w.flags.contains("poll") {

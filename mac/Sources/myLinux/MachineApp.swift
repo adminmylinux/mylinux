@@ -297,12 +297,12 @@ enum MachineLink {
                     let alert = NSAlert(); alert.messageText = "Apps in \(p.name)"; alert.informativeText = problem
                     alert.runModal()
                 }
-            case "claude":                                        // Claude Install… in an Omarchy or a Windows window's ⌘ menu
+            case "claude":                                        // Claude Install… in an Omarchy, a GNOME or a Windows window's ⌘ menu
                 Task { @MainActor in
-                    if p.kind == .omarchy || p.kind == .windows { ClaudeInstallWindow.show(p); return }
+                    if p.kind == .omarchy || p.kind.isGnome || p.kind == .windows { ClaudeInstallWindow.show(p); return }
                     NSApp.activate()
                     let alert = NSAlert(); alert.messageText = "Claude Install in \(p.name)"
-                    alert.informativeText = "The wizard is there for Omarchy and Windows. In Debian and Alpine, Apps… has Claude Code at the top (a subscription as an alias, with its token); elsewhere, in a terminal: curl -fsSL https://mylinux.app/claude | sh"
+                    alert.informativeText = "The wizard is there for Omarchy, Fedora, Rocky Linux, CentOS Stream and Windows. In Debian and Alpine, Apps… has Claude Code at the top (a subscription as an alias, with its token); elsewhere, in a terminal: curl -fsSL https://mylinux.app/claude | sh"
                     alert.runModal()
                 }
             case "codex":                                         // Codex Install… in a Windows window's ⌘ menu

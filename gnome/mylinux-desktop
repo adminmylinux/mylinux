@@ -1,8 +1,43 @@
 #!/bin/sh
-# myLinux: the clipboard agent of the GNOME desktops (Fedora, Rocky Linux, CentOS Stream), started at sign-in
-# (/etc/xdg/autostart/mylinux-desktop.desktop) and kept running: kali/mylinux-clipboard, X11's clipboard through
-# Xwayland, which GNOME keeps in step with its own. GNOME follows the window's size by itself (it takes the display's
-# preferred mode when it changes); the scale is set before it starts (mylinux-scale).
+# myLinux: the desktop agent of the GNOME desktops (Fedora, Rocky Linux, CentOS Stream), started at sign-in
+# (/etc/xdg/autostart/mylinux-desktop.desktop) and kept running. run-omarchy.sh brings this file up to date in the
+# machine's disk at each start (tools/gnome-update-desktop.sh), so an older image learns what the launcher asks now.
+# - the clipboard: kali/mylinux-clipboard, X11's clipboard through Xwayland, which GNOME keeps in step with its own.
+# - Claude Install… (the launcher's wizard, from the ⌘ menu): "claude status <id>" or "claude apply <id>" dropped in
+#   the share's control folder starts its script from the share, as Omarchy's session agent does; nothing else is run.
+# GNOME follows the window's size by itself (it takes the display's preferred mode when it changes); the scale is set
+# before it starts (mylinux-scale).
+CONTROL=/mnt/mac/mylinux-tools/control
+CLAUDE=/mnt/mac/.mylinux/claude/claude_setup.py
+
+claude_request() {   # the words of one command file: "claude status|apply <id>", or nothing to run
+  [ "$1" = claude ] && [ $# -eq 3 ] || return 1
+  case "$2" in status|apply) ;; *) return 1 ;; esac
+  case "$3" in *[!0-9a-f]*) return 1 ;; esac
+  [ ${#3} -ge 8 ] && [ ${#3} -le 32 ]
+}
+
+if [ "${1:-}" = selftest ]; then
+  claude_request claude status 0123abcd && claude_request claude apply 0123abcd4567ef89 &&
+    ! claude_request claude apply ../../x && ! claude_request claude status && ! claude_request claude run 0123abcd &&
+    ! claude_request claude status 0123abcd more && ! claude_request claude status 0123ABCD && ! claude_request claude status 0123abc &&
+    echo "mylinux-desktop selftest ok" && exit 0
+  echo "mylinux-desktop selftest FAILED"; exit 1
+fi
+
+while :; do
+  for f in "$CONTROL"/claude-*.cmd; do
+    [ -f "$f" ] || continue
+    words=$(cat "$f" 2>/dev/null); rm -f "$f"
+    # shellcheck disable=SC2086   # split into words on purpose; claude_request lets only an id through
+    set -f; set -- $words; set +f
+    if claude_request "$@" && [ -f "$CLAUDE" ]; then
+      PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 "$CLAUDE" "$2" "$3" </dev/null >/dev/null 2>&1 &
+    fi
+  done
+  sleep 1
+done &
+
 while :; do
   /usr/local/bin/mylinux-clipboard 2>>"${XDG_RUNTIME_DIR:-/tmp}/mylinux-clipboard.log"
   sleep 3

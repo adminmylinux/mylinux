@@ -49,7 +49,7 @@ enum CLI {
           mylinux status <name>                   its state; "ready" is true when it can be used
           mylinux wait <name> [--timeout SECONDS] until it is ready (default 900 seconds)
           mylinux ssh <name> [-- command…]        a server's shell, or one command in it (tiny, alpine, debian)
-          mylinux claude <name>                   Claude Code inside an Omarchy or a Windows machine: what is there
+          mylinux claude <name>                   Claude Code inside an Omarchy, Fedora, Rocky, CentOS or Windows machine
           mylinux claude <name> --install [--token-file FILE --token-name NAME --account WORD [--alias cc1] [--default|--not-default]]
                                                   installs what is missing (in Windows the desktop app too); with a token,
                                                   named by the file of NAME=value lines it is in and its entry there, a

@@ -100,9 +100,9 @@ output and exit status. The account is `alpine` in tiny and alpine (root with `d
 `sudo`). Quote a command that has pipes or `&&` as one word: `ssh tester1 -- 'apk add git && git --version'`.
 Files go in and out through the machine's Mac folder: `status` gives `folder`; its `Mac` subfolder is `~/Mac` inside.
 
-## Claude Code and Codex in a desktop (Omarchy, Windows)
+## Claude Code and Codex in a desktop (Omarchy, Fedora, Rocky Linux, CentOS Stream, Windows)
 
-`claude NAME` and `codex NAME` say what a running Omarchy or Windows machine has of each: installed, its version,
+`claude NAME` and `codex NAME` say what a running Omarchy, Fedora, Rocky, CentOS or Windows machine has of each: installed, its version,
 signed in or not, what is still to do. With `--install` the launcher puts in place what is missing, and the command
 waits until that is done and says each step:
 
@@ -121,8 +121,8 @@ waits until that is done and says each step:
   Microsoft Store; the Store's terms are the user's to accept, so pass `--accept-store-terms` only when they said so.
 - Without a token or a login, signing in is the user's, inside the machine: say so.
 
-The machine must be running and signed in to its desktop (an Omarchy or a Windows that was just made: `wait` for it
-first). A machine that cannot be reached answers with an error that says what to do.
+The machine must be running and signed in to its desktop (one that was just made: `wait` for it first; a Fedora,
+Rocky or CentOS made before launcher 0.7.96 learns these at its next start). A machine that cannot be reached answers with an error that says what to do.
 
 ## Claude Code in a server
 

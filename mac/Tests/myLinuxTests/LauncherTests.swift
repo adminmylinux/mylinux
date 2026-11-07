@@ -1474,7 +1474,7 @@ final class OmarchyProfileTests: XCTestCase {
         let name = "clitest-\(UUID().uuidString.prefix(8).lowercased())"
         XCTAssertEqual(CLIService.handle(["create", "omarchy", "--name", name, "--no-start"], store: store).code, 0)
         XCTAssertEqual(CLIService.handle(["create", "tiny", "--name", name + "-s", "--no-start"], store: store).code, 0)
-        for (words, part) in [(["claude"], "which machine"), (["claude", "nobody"], "no machine named"), (["codex", name + "-s"], "Omarchy or a Windows machine"),
+        for (words, part) in [(["claude"], "which machine"), (["claude", "nobody"], "no machine named"), (["codex", name + "-s"], "Omarchy, Fedora, Rocky Linux, CentOS Stream or Windows machine"),
                               (["claude", name], "is not running"), (["codex", name, "--install", "--login-from-mac"], "is not running")] {
             let r = CLIService.handle(words, store: store)
             XCTAssertNotEqual(r.code, 0, "\(words)"); XCTAssertTrue((r.json["error"] as? String ?? "").contains(part), "\(words): \(r.json)")

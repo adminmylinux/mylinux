@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Claude Install… (under Apps… in an Omarchy window's ⌘ menu): a wizard on the Mac that looks at Claude Code inside
+/// Claude Install… (in an Omarchy, Fedora, Rocky Linux or CentOS Stream window's ⌘ menu): a wizard on the Mac that looks at Claude Code inside
 /// the machine and sets it up with a long-lived token, with no terminal and no browser. Its first page says what is
 /// there: Claude Code and its version, the subscriptions saved as aliases (cc1, cc2, …) and whether the status line
 /// shows the account of the one in use; what is missing it offers to install or update. Without a token it asks for
@@ -9,7 +9,7 @@ import SwiftUI
 /// Code, the alias and the status line.
 ///
 /// The work inside is server-apps/claude_setup.py, which the launcher writes into the machine's Mac share
-/// (.mylinux/claude) with the request beside it; Omarchy's session agent (omarchy/session) starts it on "claude status
+/// (.mylinux/claude) with the request beside it; Omarchy's session agent (omarchy/session), or the GNOME desktops' (gnome/mylinux-desktop), starts it on "claude status
 /// <id>" or "claude apply <id>" in the share's control folder, and the wizard reads the status, the steps as they go
 /// and the outcome back from the share. The token is in the share only until the script has read it (it removes the
 /// request first), in a file its owner alone reads; a request nobody took is removed after a minute.
@@ -332,15 +332,18 @@ struct ClaudeOutcome: Equatable {
     }
 
     var windows: Bool { machine.kind == .windows }
-    var system: String { windows ? "Windows" : "Omarchy" }
-    var notRunning: String { windows ? Self.windowsNotRunning : Self.notRunning }
-    var noAnswer: String { windows ? Self.windowsNoAnswer : Self.noAnswer }
+    var system: String { machine.kind.title }
+    var notRunning: String { windows ? Self.windowsNotRunning : machine.kind.isGnome ? Self.gnomeNotRunning(system) : Self.notRunning }
+    var noAnswer: String { windows ? Self.windowsNoAnswer : machine.kind.isGnome ? Self.gnomeNoAnswer(system) : Self.noAnswer }
     static let windowsNotRunning = "Windows's helper did not take the question. It starts when you are signed in to Windows: sign in there, then try again. A machine that was started by a launcher from before 0.7.72 learns the wizards when it starts again: choose Machine › Restart in its window."
     static let windowsNoAnswer = "Windows's helper took the question and did not answer. Try again; if it stays so, choose Machine › Restart in the machine's window."
     /// Nobody took the question: the agent is not running.
     static let notRunning = "Omarchy's helper is not running. It starts once you are signed in to Omarchy's desktop: sign in there, then try again."
     /// Taken, and no answer: an agent from before this launcher, which takes every command and knows only its own.
     static let noAnswer = "Omarchy's helper took the question and did not answer. A helper from before launcher 0.7.61 learns Claude Install… when the machine starts again: choose Machine › Restart in its window, then open Claude Install… once more."
+    /// Fedora's, Rocky's and CentOS's helper (gnome/mylinux-desktop) is brought up to date at each start (0.7.96).
+    static func gnomeNotRunning(_ system: String) -> String { "\(system)'s helper did not take the question. It starts once the desktop is there; a machine that was running before launcher 0.7.96 learns Claude Install… when it starts again: choose Machine › Restart in its window, then open Claude Install… once more." }
+    static func gnomeNoAnswer(_ system: String) -> String { "\(system)'s helper took the question and did not answer. Try again; if it stays so, choose Machine › Restart in the machine's window." }
 
     /// Whether the agent took the command for `id` (it removes what it takes).
     private func taken(_ id: String) async -> Bool {
