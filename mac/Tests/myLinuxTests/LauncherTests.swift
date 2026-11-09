@@ -2087,3 +2087,58 @@ final class SnippetTests: XCTestCase {
         XCTAssertEqual(SnippetSet.vnc.file, "snippets-vnc.json"); XCTAssertEqual(SnippetSet.machine(.omarchy).file, "snippets.json")
     }
 }
+
+final class DiskCleanupTests: XCTestCase {
+    /// A Linux goes with its saved download (they share blocks); what kept machines read at every start stays.
+    func testRemovingALinuxKeepsWhatKeptMachinesStillRead() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("mylinux-cleanup-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let out = root.appendingPathComponent("image"), cache = root.appendingPathComponent("saved")
+        func put(_ path: String, in dir: URL) throws {
+            let u = dir.appendingPathComponent(path)
+            try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("x".utf8).write(to: u)
+        }
+        for f in ["debian/debian.raw", "debian/DEBIAN-REVISION", "debian/edk2-aarch64-code.fd", "fedora/rootfs.ext4.zst",
+                  "windows/windows.iso", "windows/WINDOWS-ISO", "windows/edk2-aarch64-code.fd", "windows/drivers/NetKVM/netkvm.inf",
+                  "Image", "rootfs.cpio.gz", "IMAGE-REVISION", "qemu-runtime/bin/qemu", "arch/rootfs.ext4.zst", "arch/ARCH-REVISION"] { try put(f, in: out) }
+        for f in ["debian/debian.raw", "fedora/rootfs.ext4.zst", "mylinux/Image", "arch/rootfs.ext4.zst", "arch/ARCH-REVISION"] { try put(f, in: cache) }
+
+        // a saved copy of the installed revision is a clone of it: counted once
+        let arch = try XCTUnwrap(DiskCleanup.image(.arch, out: out, cache: cache))
+        XCTAssertEqual(arch.bytes, StorageUsage.allocated(out.appendingPathComponent("arch")))
+
+        XCTAssertNil(DiskCleanup.removeImage(.debian, out: out, cache: cache, keepForMachines: true))
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.appendingPathComponent("debian").path), ["edk2-aarch64-code.fd"], "a kept Debian machine starts with the firmware")
+        XCTAssertFalse(fm.fileExists(atPath: cache.appendingPathComponent("debian").path), "the saved copy goes too")
+        XCTAssertNil(DiskCleanup.removeImage(.windows, out: out, cache: cache, keepForMachines: true))
+        XCTAssertEqual(Set(try fm.contentsOfDirectory(atPath: out.appendingPathComponent("windows").path)), ["edk2-aarch64-code.fd", "drivers"])
+        XCTAssertNil(DiskCleanup.removeImage(.fedora, out: out, cache: cache, keepForMachines: true))
+        XCTAssertFalse(fm.fileExists(atPath: out.appendingPathComponent("fedora").path), "a desktop machine has its own disk and kernel")
+        XCTAssertFalse(fm.fileExists(atPath: cache.appendingPathComponent("fedora").path))
+        XCTAssertNil(DiskCleanup.removeImage(.mylinux, out: out, cache: cache, keepForMachines: false))
+        XCTAssertFalse(fm.fileExists(atPath: out.appendingPathComponent("Image").path))
+        XCTAssertFalse(fm.fileExists(atPath: cache.appendingPathComponent("mylinux").path))
+        XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("qemu-runtime/bin/qemu").path), "the runtime is not an image")
+        XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("arch/rootfs.ext4.zst").path), "only what was chosen goes")
+    }
+
+    /// What keeps a Linux: a myLinux machine (it starts from the image every time), a Windows still installing, a
+    /// first start unpacking from it, a download under way; a desktop machine with its own disk does not.
+    func testWhatKeptMachinesNeed() {
+        func img(_ k: Profile.Kind) -> DiskCleanup.Image { .init(kind: k, revision: nil, savedOnly: false, bytes: 2e9, keepBytes: 0) }
+        let my = ProfileStore.newProfile(named: "M", kind: .mylinux, folder: URL(fileURLWithPath: "/nonexistent/m"))
+        let fed = ProfileStore.newProfile(named: "F", kind: .fedora, folder: URL(fileURLWithPath: "/nonexistent/f"))
+        let win = ProfileStore.newProfile(named: "W", kind: .windows, folder: URL(fileURLWithPath: "/nonexistent/w"))
+        let idle: (Profile) -> Bool = { _ in false }
+        XCTAssertNotNil(DiskCleanup.blocker(img(.mylinux), kept: [my], running: idle, downloading: false))
+        XCTAssertNil(DiskCleanup.blocker(img(.mylinux), kept: [fed], running: idle, downloading: false))
+        XCTAssertNotNil(DiskCleanup.blocker(img(.windows), kept: [win], running: idle, downloading: false), "Windows Setup reads the ISO")
+        XCTAssertNil(DiskCleanup.blocker(img(.fedora), kept: [fed], running: idle, downloading: false))
+        XCTAssertNotNil(DiskCleanup.blocker(img(.fedora), kept: [fed], running: { _ in true }, downloading: false), "a first start unpacks from it")
+        XCTAssertNotNil(DiskCleanup.blocker(img(.fedora), kept: [], running: idle, downloading: true))
+        XCTAssertTrue(DiskCleanup.note(img(.fedora), kept: [fed]).contains("not started yet"))
+        XCTAssertEqual(DiskCleanup.note(img(.fedora), kept: [my]), "No machine uses it")
+    }
+}

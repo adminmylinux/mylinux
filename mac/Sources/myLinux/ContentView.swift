@@ -12,6 +12,8 @@ struct ContentView: View {
     @State private var selection: UUID?
     /// The dialog a new Omarchy or Windows machine is made with (FirstStartSheet), while it shows.
     @State private var firstStart: FirstStartSheet.Subject?
+    /// Clean Up Disk (the sidebar's button), while it shows.
+    @State private var showCleanup = false
 
     private var selected: Profile? { store.profiles.first { $0.id == selection } }
     /// The Overview's place in the selection (no machine has this id).
@@ -108,7 +110,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: WelcomeSheet.showNotification)) { _ in showWelcome = true }
         .onChange(of: showWelcome) { _, on in if on { WelcomeSheet.markOpen(true) } }
         // a quit closes the sheets first (QuitClosesSheets); the Welcome sheet's marker stays for the next start
-        .onReceive(NotificationCenter.default.publisher(for: QuitClosesSheets.closeSheets)) { _ in showWelcome = false; firstStart = nil }
+        .onReceive(NotificationCenter.default.publisher(for: QuitClosesSheets.closeSheets)) { _ in showWelcome = false; firstStart = nil; showCleanup = false }
         // tests (MYLINUX_TEST_TOUR): a page by id
         .onReceive(NotificationCenter.default.publisher(for: ContentView.selectNotification)) { n in if let id = n.object as? UUID { selection = id } }
         .sheet(isPresented: $showWelcome) {
@@ -137,6 +139,14 @@ struct ContentView: View {
                     if let id { selection = id }
                 }
                 .environmentObject(store)
+            }
+        }
+        .background {
+            Color.clear.sheet(isPresented: $showCleanup, onDismiss: {
+                // the page of a machine it removed: the Overview instead
+                if selection != ContentView.overviewID, selected == nil, selectedRemote == nil { selection = ContentView.overviewID }
+            }) {
+                CleanUpSheet().environmentObject(store).environmentObject(settings)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: FirstStartSheet.showNotification)) { n in
@@ -216,6 +226,9 @@ struct ContentView: View {
                     .help(settings.repoPath + " — run.sh, tools/ and out/ come from this checkout")
             }
             ImageStatusView(images: images)
+            Button { showCleanup = true } label: { Label("Clean Up Disk…", systemImage: "externaldrive.badge.minus") }
+                .buttonStyle(.borderless).font(.callout)
+                .help("What the machines and the downloaded Linuxes take on this Mac; tick what to remove")
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
     }
