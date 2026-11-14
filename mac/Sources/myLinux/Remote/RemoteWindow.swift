@@ -422,7 +422,9 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             item.toolTip = "Full screen, in a space of its own (⌃⌘F)"
         case .fit: item.label = "Fit"; item.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: "Fit"); item.action = #selector(fit)
         case .zoomOut: item.label = "Zoom out"; item.image = NSImage(systemSymbolName: "minus.magnifyingglass", accessibilityDescription: nil); item.action = #selector(zoomOut)
+            item.toolTip = "Zoom out (or ⌘ and two fingers on the trackpad, or pinch)"
         case .zoomIn: item.label = "Zoom in"; item.image = NSImage(systemSymbolName: "plus.magnifyingglass", accessibilityDescription: nil); item.action = #selector(zoomIn)
+            item.toolTip = "Zoom in. Zoomed in, ⌘⇧-drag moves the picture, and so does the pointer held at the window's edges"
         case .pixels: item.label = "1:1"; item.image = NSImage(systemSymbolName: "1.magnifyingglass", accessibilityDescription: nil); item.action = #selector(pixels)
         case .grab: item.label = "Grab keys"; item.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: nil); item.action = #selector(toggleGrab)
         case .keyboard:

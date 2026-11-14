@@ -2,7 +2,7 @@ import AppKit
 import QuartzCore
 
 /// The picture of a VNC connection and its input: an IOSurface-backed layer, zoom that pans when the pointer is pushed
-/// against an edge, mouse, wheel with momentum, and keys according to the profile's keyboard mode.
+/// against an edge or with a ⌘⇧-drag, mouse, wheel with momentum, and keys according to the profile's keyboard mode.
 final class VncView: NSView {
     let conn: VncConnection
     var keyboard: RemoteProfile.Keyboard { didSet { if keyboard != .all { KeyboardGrab.shared.stop(); grabbing = false }; onGrabChanged?() } }
@@ -21,6 +21,8 @@ final class VncView: NSView {
     private var inside: NSPoint?
     private var lastRemote: CGPoint?
     private var edgeTimer: Timer?
+    /// a ⌘⇧-drag that moves the zoomed picture: where the pointer was (nil: no such drag)
+    private var dragPan: NSPoint?
     // latency: keystroke to changed picture
     private(set) var latencyMs = 0.0, latencySamples = 0, latencySum = 0.0
     private var lastKeyAt: UInt64 = 0
@@ -132,6 +134,14 @@ final class VncView: NSView {
         RunLoop.main.add(t, forMode: .common)
         edgeTimer = t
     }
+    /// The pan after the picture is dragged by `d` (view points, y up), for a picture of `size` in a view of `view`:
+    /// the picture follows the pointer, and stops at its edges.
+    static func panned(_ pan: CGPoint, by d: CGVector, picture size: CGSize, view: CGSize) -> CGPoint {
+        var p = pan
+        if size.width > view.width { p.x = max(0, min(1, pan.x - d.dx / (size.width - view.width))) }
+        if size.height > view.height { p.y = max(0, min(1, pan.y + d.dy / (size.height - view.height))) }   // flipped: up shows more of the bottom
+        return p
+    }
     private func send(at p: NSPoint) {
         let (x, y) = remote(p); lastRemote = CGPoint(x: x, y: y); conn.send(pointer: x, y, mask: mask)
     }
@@ -154,17 +164,27 @@ final class VncView: NSView {
         edgePan(p); send(at: p)
     }
     override func mouseMoved(with e: NSEvent) { pointer(e) }
-    override func mouseDragged(with e: NSEvent) { pointer(e) }
+    override func mouseDragged(with e: NSEvent) {
+        guard let from = dragPan else { pointer(e); return }
+        let p = convert(e.locationInWindow, from: nil)
+        pan = Self.panned(pan, by: CGVector(dx: p.x - from.x, dy: p.y - from.y), picture: target.size, view: bounds.size)
+        dragPan = p; relayout()
+    }
     override func rightMouseDragged(with e: NSEvent) { pointer(e) }
     override func otherMouseDragged(with e: NSEvent) { pointer(e) }
     override func mouseDown(with e: NSEvent) {
         // no connection (failed, ended, not yet up): the click is the window's ("click to retry"), and grabs no keys
         guard conn.state == .connected else { super.mouseDown(with: e); return }
         window?.makeFirstResponder(self)
+        // zoomed in, ⌘⇧-drag moves the picture; the remote gets no click
+        if zoom > 1 && e.modifierFlags.contains([.command, .shift]) { stopEdgePan(); dragPan = convert(e.locationInWindow, from: nil); NSCursor.closedHand.push(); return }
         if keyboard == .all && !grabbing && KeyboardGrab.permitted { setGrab(true, keep: keep) }      // a click: every key to the remote again, as in Omarchy's window
         mask |= 1; pointer(e)
     }
-    override func mouseUp(with e: NSEvent) { mask &= ~1; pointer(e) }
+    override func mouseUp(with e: NSEvent) {
+        if dragPan != nil { dragPan = nil; NSCursor.pop(); return }
+        mask &= ~1; pointer(e)
+    }
     override func rightMouseDown(with e: NSEvent) { mask |= 4; pointer(e) }
     override func rightMouseUp(with e: NSEvent) { mask &= ~4; pointer(e) }
     override func otherMouseDown(with e: NSEvent) { mask |= 2; pointer(e) }

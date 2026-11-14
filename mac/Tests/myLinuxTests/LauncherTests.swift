@@ -1742,6 +1742,12 @@ final class RemoteSessionTests: XCTestCase {
         let br = VncView.pan(keeping: CGPoint(x: 1, y: 1), at: CGPoint(x: 1000, y: 0), picture: CGSize(width: 2000, height: 1200), view: view)
         XCTAssertEqual(br.x, 1); XCTAssertEqual(br.y, 1)
         XCTAssertNil(VncView.pan(keeping: CGPoint(x: 0.3, y: 0.3), at: CGPoint(x: 10, y: 10), picture: CGSize(width: 900, height: 500), view: view).x, "a picture that fits is centred")
+        // ⌘⇧-drag: the picture follows the pointer (right and up: more of the left and of the bottom), and stops at its edges
+        let big = CGSize(width: 2000, height: 1200), mid = CGPoint(x: 0.5, y: 0.5)
+        XCTAssertEqual(VncView.panned(mid, by: CGVector(dx: 100, dy: 0), picture: big, view: view).x, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(VncView.panned(mid, by: CGVector(dx: 0, dy: 60), picture: big, view: view).y, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(VncView.panned(mid, by: CGVector(dx: -5000, dy: -5000), picture: big, view: view), CGPoint(x: 1, y: 0))
+        XCTAssertEqual(VncView.panned(mid, by: CGVector(dx: 300, dy: 300), picture: CGSize(width: 900, height: 500), view: view), mid, "a picture that fits stays put")
     }
     func testAClickOnAVncDesktopThatFailedIsTheWindowsAndGrabsNoKeys() throws {
         // "Failed: cannot connect … (click to retry)": a click on the black picture did nothing (it went to the dead
