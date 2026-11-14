@@ -471,6 +471,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     private var savedScreenKey: String { "vncScreen \(profile.host):\(profile.port)" }
     private func screensFound(_ d: [CGRect]) {
         guard let v = vncView else { return }
+        v.screens = d
         if let s = UserDefaults.standard.string(forKey: savedScreenKey), d.contains(NSRectFromString(s)) { v.crop = NSRectFromString(s) }
         else if let c = v.crop, !d.contains(c) { v.crop = nil }
         screenItem?.menu = screenMenu(); screenItem?.isHidden = d.count < 2

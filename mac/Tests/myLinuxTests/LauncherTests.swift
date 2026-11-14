@@ -1771,6 +1771,14 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(RemoteWindowController.screenPlace(left, among: [left, panel]), "left")
         XCTAssertEqual(RemoteWindowController.screenPlace(panel, among: [left, panel]), "right")
         XCTAssertEqual(RemoteWindowController.screenPlace(below, among: [top, below]), "bottom")
+        // All Screens: the monitor at its own points beside the panel's (5760×3240 at 2×), not half size and dropped
+        let laid = VncView.arranged([left, panel])!
+        XCTAssertEqual(laid.map { $0.dst }, [CGRect(x: 0, y: 242, width: 1920, height: 1080), CGRect(x: 1920, y: 0, width: 2880, height: 1620)])
+        XCTAssertEqual(VncView.pixel(at: CGPoint(x: 100, y: 300), of: laid), CGPoint(x: 100, y: 300))
+        XCTAssertEqual(VncView.pixel(at: CGPoint(x: 1920 + 1440, y: 810), of: laid), CGPoint(x: 4800, y: 1620))
+        XCTAssertEqual(VncView.pixel(at: CGPoint(x: 100, y: 1500), of: laid), CGPoint(x: 100, y: 1321), "below the monitor: its bottom row")
+        XCTAssertNil(VncView.arranged([a, b]), "two of one scale: the picture as it is")
+        XCTAssertNil(VncView.arranged([panel]))
     }
     func testAClickOnAVncDesktopThatFailedIsTheWindowsAndGrabsNoKeys() throws {
         // "Failed: cannot connect … (click to retry)": a click on the black picture did nothing (it went to the dead

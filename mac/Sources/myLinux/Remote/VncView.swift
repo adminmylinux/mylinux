@@ -8,9 +8,8 @@ final class VncView: NSView {
     var keyboard: RemoteProfile.Keyboard { didSet { if keyboard != .all { KeyboardGrab.shared.stop(); grabbing = false }; onGrabChanged?() } }
     private(set) var grabbing = false
     var onGrabChanged: (() -> Void)?
-    private let picture = CALayer()
-    /// shows only the chosen screen: the picture sits in it, moved so that screen fills it
-    private let clip = CALayer()
+    /// one clipping layer per piece shown, each holding the whole picture, moved and scaled so its piece fills it
+    private var layers: [(clip: CALayer, picture: CALayer)] = []
     private var mask: Int32 = 0
     private var lastFlags: NSEvent.ModifierFlags = []
     // zoom: 1 = fit; larger magnifies, around the pointer (or the remote cursor), and pans at the view's edges
@@ -34,20 +33,18 @@ final class VncView: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 1280, height: 800))
         wantsLayer = true
         layer!.backgroundColor = NSColor.black.cgColor
-        picture.contentsGravity = .resize
-        picture.minificationFilter = .trilinear; picture.magnificationFilter = .nearest
-        clip.masksToBounds = true
-        clip.addSublayer(picture); layer!.addSublayer(clip)
         conn.onResize = { [weak self] w, h in
             guard let self else { return }
-            self.picture.contents = self.conn.surface
-            if let c = self.crop, !CGRect(x: 0, y: 0, width: w, height: h).contains(c) { self.crop = nil }
+            for l in self.layers { l.picture.contents = self.conn.surface }
+            let all = CGRect(x: 0, y: 0, width: w, height: h)
+            if !self.screens.allSatisfy(all.contains) { self.screens = [] }
+            if let c = self.crop, !all.contains(c) { self.crop = nil }
             self.relayout()
         }
         conn.onFrame = { [weak self] _ in
             guard let self, let surf = self.conn.surface else { return }
             CATransaction.begin(); CATransaction.setDisableActions(true)
-            self.picture.contents = nil; self.picture.contents = surf
+            for l in self.layers { l.picture.contents = nil; l.picture.contents = surf }
             CATransaction.commit()
             if self.lastKeyAt != 0 {
                 let dt = Double(DispatchTime.now().uptimeNanoseconds - self.lastKeyAt) / 1e6
@@ -62,16 +59,55 @@ final class VncView: NSView {
 
     // ---- geometry ----
     /// One screen of the remote's (pixels from the picture's top left), shown alone; nil: the whole picture.
-    var crop: CGRect? {
-        didSet { guard crop != oldValue else { return }; pan = CGPoint(x: 0.5, y: 0.5); lastRemote = nil; if zoom != 1 { zoom = 1 } else { relayout(); onZoomChanged?() } }
-    }
+    var crop: CGRect? { didSet { if crop != oldValue { showAnew() } } }
+    /// the remote's screens, when it has several (a Mac's, found by VncConnection): the whole picture shows them at one scale
+    var screens: [CGRect] = [] { didSet { if screens != oldValue { showAnew() } } }
+    private func showAnew() { pan = CGPoint(x: 0.5, y: 0.5); lastRemote = nil; if zoom != 1 { zoom = 1 } else { relayout(); onZoomChanged?() } }
     /// what is shown of the picture: the chosen screen, or all of it
     var area: CGRect { crop ?? CGRect(x: 0, y: 0, width: conn.width, height: conn.height) }
-    /// the fitted size of the area, times zoom; centred while it fits, else the pan fraction chooses the visible part
+    /// a part of the picture (remote pixels) and where it goes on the canvas that is fitted to the view
+    typealias Piece = (src: CGRect, dst: CGRect)
+    var pieces: [Piece] {
+        if let c = crop { return [(c, CGRect(origin: .zero, size: c.size))] }
+        let all = CGRect(x: 0, y: 0, width: conn.width, height: conn.height)
+        return Self.arranged(screens) ?? [(all, all)]
+    }
+    /// A Mac's screens at one scale, as they stand in its Displays settings. Its server puts each screen in the picture
+    /// at its own pixels, a Retina panel's twice a plain monitor's, so the iMac's 1920×1080 monitor looked half size
+    /// beside its 5K panel. nil: nothing to change (one screen, one scale, or not in one row or one column).
+    // shortcut: the server does not say which screens are Retina; one 1600 pixels high or more is taken as 2×, and the
+    // picture's offset across the row as points (so the iMac's monitor, 242 down). A plain 2560×1600 monitor would look
+    // half size; read the scale from the server if it ever tells
+    static func arranged(_ s: [CGRect]) -> [Piece]? {
+        let k = s.map { $0.height >= 1600 ? CGFloat(2) : 1 }
+        guard s.count > 1, Set(k).count > 1 else { return nil }
+        let row = s.allSatisfy { a in s.allSatisfy { b in a == b || b.minX >= a.maxX || b.maxX <= a.minX } }
+        let column = s.allSatisfy { a in s.allSatisfy { b in a == b || b.minY >= a.maxY || b.maxY <= a.minY } }
+        guard row || column else { return nil }
+        let minX = s.map(\.minX).min()!, minY = s.map(\.minY).min()!
+        var out = s.map { ($0, CGRect.zero) }, at: CGFloat = 0
+        for i in s.indices.sorted(by: { row ? s[$0].minX < s[$1].minX : s[$0].minY < s[$1].minY }) {
+            let w = s[i].width / k[i], h = s[i].height / k[i]
+            out[i].1 = row ? CGRect(x: at, y: s[i].minY - minY, width: w, height: h) : CGRect(x: s[i].minX - minX, y: at, width: w, height: h)
+            at += row ? w : h
+        }
+        return out
+    }
+    /// the remote pixel at `u` on the canvas: in the piece there, or the nearest (beside a lower screen, the black)
+    static func pixel(at u: CGPoint, of pieces: [Piece]) -> CGPoint {
+        func away(_ r: CGRect) -> CGFloat { hypot(max(r.minX - u.x, 0, u.x - r.maxX), max(r.minY - u.y, 0, u.y - r.maxY)) }
+        guard let (s, d) = pieces.min(by: { away($0.dst) < away($1.dst) }) else { return .zero }
+        let x = s.minX + (u.x - d.minX) * s.width / d.width, y = s.minY + (u.y - d.minY) * s.height / d.height
+        return CGPoint(x: max(s.minX, min(s.maxX - 1, x.rounded(.down))), y: max(s.minY, min(s.maxY - 1, y.rounded(.down))))
+    }
+    private var canvas: CGSize { pieces.reduce(CGRect.null) { $0.union($1.dst) }.size }
+    /// remote pixels per canvas unit in the densest piece (the Retina screen's), which 1:1 and the status line go by
+    private var density: CGFloat { pieces.map { $0.src.width / $0.dst.width }.max() ?? 1 }
+    /// the fitted size of the canvas, times zoom; centred while it fits, else the pan fraction chooses the visible part
     var target: CGRect { frame(zoom: zoom) }
     private func frame(zoom: CGFloat) -> CGRect {
         guard conn.width > 0 else { return bounds }
-        let a = area
+        let a = canvas
         let fit = min(bounds.width / a.width, bounds.height / a.height)
         let w = a.width * fit * zoom, h = a.height * fit * zoom
         let x = w <= bounds.width ? (bounds.width - w) / 2 : -(w - bounds.width) * pan.x
@@ -79,13 +115,13 @@ final class VncView: NSView {
         return CGRect(x: x, y: y, width: w, height: h)
     }
     /// Mac points per remote pixel
-    var displayScale: CGFloat { conn.width > 0 ? target.width / area.width : 1 }
+    var displayScale: CGFloat { conn.width > 0 ? target.width / canvas.width / density : 1 }
     /// one remote pixel per Mac pixel
     func zoomToPixels() {
         guard conn.width > 0, bounds.width > 0 else { return }
-        let fit = min(bounds.width / area.width, bounds.height / area.height)
+        let c = canvas, fit = min(bounds.width / c.width, bounds.height / c.height)
         let backing = window?.backingScaleFactor ?? 1
-        zoom = 1 / (fit * backing)
+        zoom = density / (fit * backing)
     }
     func zoomStep(_ dir: Int) {
         let steps: [CGFloat] = [1, 1.25, 1.5, 2, 3, 4]
@@ -95,13 +131,24 @@ final class VncView: NSView {
     }
     private func relayout() {
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        let t = target
-        clip.frame = t
-        if conn.width > 0 {
-            let a = area, s = t.width / a.width                   // view points per remote pixel
-            picture.frame = CGRect(x: -a.minX * s, y: -(CGFloat(conn.height) - a.maxY) * s, width: CGFloat(conn.width) * s, height: CGFloat(conn.height) * s)
-        } else { picture.frame = clip.bounds }
-        picture.contentsScale = window?.backingScaleFactor ?? 1
+        let t = target, ps: [Piece] = conn.width > 0 ? pieces : []
+        while layers.count < max(1, ps.count) {
+            let c = CALayer(), p = CALayer()
+            p.contentsGravity = .resize
+            p.minificationFilter = .trilinear; p.magnificationFilter = .nearest
+            p.contents = conn.surface
+            c.masksToBounds = true
+            c.addSublayer(p); layer!.addSublayer(c); layers.append((c, p))
+        }
+        while layers.count > max(1, ps.count) { layers.removeLast().clip.removeFromSuperlayer() }
+        if ps.isEmpty { layers[0].clip.frame = t; layers[0].picture.frame = layers[0].clip.bounds }
+        let u = t.width / canvas.width                            // view points per canvas unit
+        for (l, p) in zip(layers, ps) {
+            l.clip.frame = CGRect(x: t.minX + p.dst.minX * u, y: t.maxY - p.dst.maxY * u, width: p.dst.width * u, height: p.dst.height * u)
+            let s = u * p.dst.width / p.src.width                  // view points per remote pixel
+            l.picture.frame = CGRect(x: -p.src.minX * s, y: -(CGFloat(conn.height) - p.src.maxY) * s, width: CGFloat(conn.width) * s, height: CGFloat(conn.height) * s)
+        }
+        for l in layers { l.picture.contentsScale = window?.backingScaleFactor ?? 1 }
         CATransaction.commit()
     }
     /// The pan that puts the spot `r` of the remote screen (0…1 across, from its top left) at view point `a`, for a
@@ -117,9 +164,12 @@ final class VncView: NSView {
     private func keepAnchor(oldZoom: CGFloat) {
         guard conn.width > 0, bounds.width > 0 else { return }
         let old = frame(zoom: oldZoom), new = frame(zoom: zoom)
-        let ar = area
-        let a = inside ?? lastRemote.map { NSPoint(x: old.minX + ($0.x - ar.minX + 0.5) * old.width / ar.width, y: old.maxY - ($0.y - ar.minY + 0.5) * old.height / ar.height) }
-            ?? NSPoint(x: bounds.midX, y: bounds.midY)
+        let c = canvas, ps = pieces
+        let a = inside ?? lastRemote.map { r -> NSPoint in
+            let (s, d) = ps.first { $0.src.contains(r) } ?? ps[0]
+            let u = CGPoint(x: d.minX + (r.x - s.minX + 0.5) * d.width / s.width, y: d.minY + (r.y - s.minY + 0.5) * d.height / s.height)
+            return NSPoint(x: old.minX + u.x * old.width / c.width, y: old.maxY - u.y * old.height / c.height)
+        } ?? NSPoint(x: bounds.midX, y: bounds.midY)
         let r = CGPoint(x: (a.x - old.minX) / old.width, y: (old.maxY - a.y) / old.height)
         let p = Self.pan(keeping: r, at: a, picture: new.size, view: bounds.size)
         if let x = p.x { pan.x = x }; if let y = p.y { pan.y = y }
@@ -167,10 +217,10 @@ final class VncView: NSView {
         let (x, y) = remote(p); lastRemote = CGPoint(x: x, y: y); conn.send(pointer: x, y, mask: mask)
     }
     func remote(_ p: NSPoint) -> (Int, Int) {
-        let t = target, a = area
+        let t = target, c = canvas
         guard conn.width > 0, t.width > 0 else { return (0, 0) }
-        let x = Int(a.minX + (p.x - t.minX) * a.width / t.width), y = Int(a.minY + (t.maxY - p.y) * a.height / t.height)
-        return (max(Int(a.minX), min(Int(a.maxX) - 1, x)), max(Int(a.minY), min(Int(a.maxY) - 1, y)))
+        let r = Self.pixel(at: CGPoint(x: (p.x - t.minX) * c.width / t.width, y: (t.maxY - p.y) * c.height / t.height), of: pieces)
+        return (Int(r.x), Int(r.y))
     }
 
     // ---- mouse ----

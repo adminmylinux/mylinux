@@ -604,8 +604,10 @@ between the user and the remote machine, not two. It is layered like this:
 3. **Picture and input** (`VncView.swift`, `KeyMap.swift`): a CALayer showing the surface, zoom that holds still
    under the pointer and pans at the edges or with a ⌘⇧-drag, trackpad scrolling and pinch, and layout-aware keysym
    translation. A Mac shares all its displays as one picture and paints nothing between them; `VncConnection.displays`
-   finds the screens from what its first seconds of updates painted, and the toolbar's Screen menu shows one of them
-   (the picture in a clipping layer), remembered per host and port in UserDefaults.
+   finds the screens from what its first seconds of updates painted, and the toolbar's Screen menu shows one of them,
+   remembered per host and port in UserDefaults. What is shown is a list of pieces (part of the picture, place on a
+   canvas), each a clipping layer holding the picture: one screen, the whole picture, or, for All Screens, a Mac's
+   screens laid out at one scale (`VncView.arranged`; its server puts a Retina panel at twice a plain monitor's pixels).
 4. **Keyboard grab** (`KeyboardGrab.swift`): for "Everything to the remote", an HID event tap takes every key,
    ⌘Tab and ⌘Space included. It forwards only while the owning window is key and the app is active. A watchdog
    checks that every second, Ctrl+Option+G releases it, and the menu bar item releases it with the mouse.
