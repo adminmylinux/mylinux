@@ -431,7 +431,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         case .screen:
             let mi = NSMenuToolbarItem(itemIdentifier: id); mi.label = "Screen"; mi.image = NSImage(systemSymbolName: "display.2", accessibilityDescription: nil)
             mi.toolTip = "Which of the remote's screens to show (it shares them all as one picture); remembered for next time"
-            mi.menu = screenMenu(); mi.isHidden = (vnc?.displays.count ?? 0) < 2
+            mi.menu = screenMenu(); mi.isHidden = (vncView?.screens.count ?? 0) < 2
             screenItem = mi
             return mi
         case .keyboard:
@@ -469,15 +469,21 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     private weak var screenItem: NSMenuToolbarItem?
     /// the screen chosen for this remote last time (UserDefaults, by host and port)
     private var savedScreenKey: String { "vncScreen \(profile.host):\(profile.port)" }
-    private func screensFound(_ d: [CGRect]) {
-        guard let v = vncView else { return }
+    private func screensFound(_ found: [CGRect]) {
+        guard let v = vncView, let c = vnc else { return }
+        // A picture sent whole shows no gaps between screens (the iMac's locked screen came so, and its first picture
+        // at times): the screens found before for this remote and picture size stand
+        let known = "vncScreens \(profile.host):\(profile.port) \(c.width)×\(c.height)"
+        var d = found
+        if d.count > 1 { UserDefaults.standard.set(d.map(NSStringFromRect), forKey: known) }
+        else if let s = UserDefaults.standard.stringArray(forKey: known) { d = s.map(NSRectFromString) }
         v.screens = d
         if let s = UserDefaults.standard.string(forKey: savedScreenKey), d.contains(NSRectFromString(s)) { v.crop = NSRectFromString(s) }
         else if let c = v.crop, !d.contains(c) { v.crop = nil }
         screenItem?.menu = screenMenu(); screenItem?.isHidden = d.count < 2
     }
     private func screenMenu() -> NSMenu {
-        let menu = NSMenu(), d = vnc?.displays ?? [], crop = vncView?.crop
+        let menu = NSMenu(), d = vncView?.screens ?? [], crop = vncView?.crop
         let all = NSMenuItem(title: "All Screens", action: #selector(pickScreen(_:)), keyEquivalent: ""); all.target = self; all.state = crop == nil ? .on : .off
         menu.addItem(all); menu.addItem(.separator())
         for (i, r) in d.enumerated() {
