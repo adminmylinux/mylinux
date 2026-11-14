@@ -1722,6 +1722,27 @@ final class RemoteSessionTests: XCTestCase {
         wait(for: [failed], timeout: 20)
         XCTAssertTrue(message.contains("did not answer within 10 seconds"), message)
     }
+    func testAZoomedVncPictureHoldsStillAndPansAtTheEdges() {
+        // the pointer away from the edges: no panning (the picture held still, aiming is finer by the zoom)
+        let view = CGSize(width: 1000, height: 600)
+        XCTAssertEqual(VncView.edgeVelocity(CGPoint(x: 500, y: 300), in: view), CGVector())
+        XCTAssertEqual(VncView.edgeVelocity(CGPoint(x: -5, y: 300), in: view), CGVector(), "outside the view: nothing")
+        // pushed against an edge: towards it, fastest at the very edge
+        let left = VncView.edgeVelocity(CGPoint(x: 0, y: 300), in: view), nearLeft = VncView.edgeVelocity(CGPoint(x: 24, y: 300), in: view)
+        XCTAssertEqual(left.dx, -VncView.edgeSpeed); XCTAssertEqual(nearLeft.dx, -VncView.edgeSpeed / 2); XCTAssertEqual(left.dy, 0)
+        XCTAssertGreaterThan(VncView.edgeVelocity(CGPoint(x: 1000, y: 300), in: view).dx, 0)
+        XCTAssertGreaterThan(VncView.edgeVelocity(CGPoint(x: 500, y: 0), in: view).dy, 0, "the bottom edge shows more of the bottom")
+        XCTAssertLessThan(VncView.edgeVelocity(CGPoint(x: 500, y: 600), in: view).dy, 0, "the top edge shows more of the top")
+        // a zoom keeps the spot under the pointer under it: a picture twice the view, its centre at the view's centre
+        let p = VncView.pan(keeping: CGPoint(x: 0.5, y: 0.5), at: CGPoint(x: 500, y: 300), picture: CGSize(width: 2000, height: 1200), view: view)
+        XCTAssertEqual(p.x, 0.5); XCTAssertEqual(p.y, 0.5)
+        // the remote's top left spot at the view's top left: pan 0, 0 (the top of the remote screen is pan.y 0)
+        let tl = VncView.pan(keeping: CGPoint(x: 0, y: 0), at: CGPoint(x: 0, y: 600), picture: CGSize(width: 2000, height: 1200), view: view)
+        XCTAssertEqual(tl.x, 0); XCTAssertEqual(tl.y, 0)
+        let br = VncView.pan(keeping: CGPoint(x: 1, y: 1), at: CGPoint(x: 1000, y: 0), picture: CGSize(width: 2000, height: 1200), view: view)
+        XCTAssertEqual(br.x, 1); XCTAssertEqual(br.y, 1)
+        XCTAssertNil(VncView.pan(keeping: CGPoint(x: 0.3, y: 0.3), at: CGPoint(x: 10, y: 10), picture: CGSize(width: 900, height: 500), view: view).x, "a picture that fits is centred")
+    }
     func testAClickOnAVncDesktopThatFailedIsTheWindowsAndGrabsNoKeys() throws {
         // "Failed: cannot connect … (click to retry)": a click on the black picture did nothing (it went to the dead
         // view, which grabbed every key for it); it now goes on to the window, which connects again

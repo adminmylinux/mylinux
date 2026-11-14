@@ -1,8 +1,8 @@
 import AppKit
 import QuartzCore
 
-/// The picture of a VNC connection and its input: an IOSurface-backed layer, zoom that follows the pointer (as in
-/// the myLinux viewer), mouse, wheel with momentum, and keys according to the profile's keyboard mode.
+/// The picture of a VNC connection and its input: an IOSurface-backed layer, zoom that pans when the pointer is pushed
+/// against an edge, mouse, wheel with momentum, and keys according to the profile's keyboard mode.
 final class VncView: NSView {
     let conn: VncConnection
     var keyboard: RemoteProfile.Keyboard { didSet { if keyboard != .all { KeyboardGrab.shared.stop(); grabbing = false }; onGrabChanged?() } }
@@ -11,10 +11,16 @@ final class VncView: NSView {
     private let picture = CALayer()
     private var mask: Int32 = 0
     private var lastFlags: NSEvent.ModifierFlags = []
-    // zoom: 1 = fit; larger magnifies and the view follows the pointer
-    var zoom: CGFloat = 1 { didSet { zoom = max(0.25, min(8, zoom)); relayout(); onZoomChanged?() } }
+    // zoom: 1 = fit; larger magnifies, around the pointer (or the remote cursor), and pans at the view's edges
+    var zoom: CGFloat = 1 {
+        didSet { zoom = max(0.25, min(8, zoom)); keepAnchor(oldZoom: oldValue); relayout(); if zoom <= 1 { stopEdgePan() }; onZoomChanged?() }
+    }
     var onZoomChanged: (() -> Void)?
     private var pan = CGPoint(x: 0.5, y: 0.5)
+    /// the pointer in this view (nil: outside it), and the remote pixel it was last sent to
+    private var inside: NSPoint?
+    private var lastRemote: CGPoint?
+    private var edgeTimer: Timer?
     // latency: keystroke to changed picture
     private(set) var latencyMs = 0.0, latencySamples = 0, latencySum = 0.0
     private var lastKeyAt: UInt64 = 0
@@ -46,7 +52,8 @@ final class VncView: NSView {
 
     // ---- geometry ----
     /// the fitted size, times zoom; centred while it fits, else the pan fraction chooses the visible part
-    var target: CGRect {
+    var target: CGRect { frame(zoom: zoom) }
+    private func frame(zoom: CGFloat) -> CGRect {
         guard conn.width > 0 else { return bounds }
         let fit = min(bounds.width / CGFloat(conn.width), bounds.height / CGFloat(conn.height))
         let w = CGFloat(conn.width) * fit * zoom, h = CGFloat(conn.height) * fit * zoom
@@ -75,12 +82,58 @@ final class VncView: NSView {
         picture.contentsScale = window?.backingScaleFactor ?? 1
         CATransaction.commit()
     }
-    private func follow(_ p: NSPoint) {
-        guard zoom > 1, bounds.width > 0 else { return }
-        let m: CGFloat = 40
-        let np = CGPoint(x: max(0, min(1, (p.x - m) / max(1, bounds.width - 2 * m))), y: max(0, min(1, (p.y - m) / max(1, bounds.height - 2 * m))))
-        if abs(np.x - pan.x) + abs(np.y - pan.y) < 0.002 { return }
-        pan = np; relayout()
+    /// The pan that puts the spot `r` of the remote screen (0…1 across, from its top left) at view point `a`, for a
+    /// picture of `size` in a view of `view` (nil for an axis the picture fits in).
+    static func pan(keeping r: CGPoint, at a: CGPoint, picture size: CGSize, view: CGSize) -> (x: CGFloat?, y: CGFloat?) {
+        let x = size.width > view.width ? max(0, min(1, (r.x * size.width - a.x) / (size.width - view.width))) : nil
+        // (flipped: pan.y 0 shows the top of the remote screen; the picture's top edge is then at the view's)
+        let y = size.height > view.height ? max(0, min(1, 1 + (a.y + r.y * size.height - size.height) / (size.height - view.height))) : nil
+        return (x, y)
+    }
+    /// A zoom keeps what was under the pointer under it; from the toolbar (the pointer is not here), the remote cursor
+    /// stays where it was in the view.
+    private func keepAnchor(oldZoom: CGFloat) {
+        guard conn.width > 0, bounds.width > 0 else { return }
+        let old = frame(zoom: oldZoom), new = frame(zoom: zoom)
+        let a = inside ?? lastRemote.map { NSPoint(x: old.minX + ($0.x + 0.5) * old.width / CGFloat(conn.width), y: old.maxY - ($0.y + 0.5) * old.height / CGFloat(conn.height)) }
+            ?? NSPoint(x: bounds.midX, y: bounds.midY)
+        let r = CGPoint(x: (a.x - old.minX) / old.width, y: (old.maxY - a.y) / old.height)
+        let p = Self.pan(keeping: r, at: a, picture: new.size, view: bounds.size)
+        if let x = p.x { pan.x = x }; if let y = p.y { pan.y = y }
+    }
+
+    // Zoomed in, the picture holds still under the pointer, so aiming is finer by the zoom, and pans while the pointer
+    // is pushed against an edge, faster the nearer it is. (It used to follow every move of the pointer: the picture
+    // slid under it, and the pointer reached no finer a spot than unzoomed.)
+    static let edge: CGFloat = 48, edgeSpeed: CGFloat = 1400            // points; points a second at the very edge
+    /// How fast to pan, in points a second of the picture, for the pointer at `p`; zero away from the edges.
+    static func edgeVelocity(_ p: CGPoint, in view: CGSize) -> CGVector {
+        guard p.x >= 0, p.y >= 0, p.x <= view.width, p.y <= view.height else { return CGVector() }
+        func push(_ near: CGFloat, _ far: CGFloat) -> CGFloat { near < edge ? -(1 - near / edge) : far < edge ? 1 - far / edge : 0 }
+        // x: the left edge shows more of the left; y (flipped): the bottom edge shows more of the bottom (pan.y up)
+        return CGVector(dx: push(p.x, view.width - p.x) * edgeSpeed, dy: -push(p.y, view.height - p.y) * edgeSpeed)
+    }
+    private func stopEdgePan() { edgeTimer?.invalidate(); edgeTimer = nil }
+    private func edgePan(_ p: NSPoint) {
+        guard zoom > 1, Self.edgeVelocity(p, in: bounds.size) != CGVector() else { stopEdgePan(); return }
+        guard edgeTimer == nil else { return }
+        var last = CACurrentMediaTime()
+        let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            guard let self, let w = self.window else { self?.stopEdgePan(); return }
+            let p = self.convert(w.mouseLocationOutsideOfEventStream, from: nil)
+            let v = Self.edgeVelocity(p, in: self.bounds.size), now = CACurrentMediaTime(), dt = now - last; last = now
+            guard self.zoom > 1, v != CGVector() else { self.stopEdgePan(); return }
+            let f = self.target
+            if f.width > self.bounds.width { self.pan.x = max(0, min(1, self.pan.x + v.dx * dt / (f.width - self.bounds.width))) }
+            if f.height > self.bounds.height { self.pan.y = max(0, min(1, self.pan.y + v.dy * dt / (f.height - self.bounds.height))) }
+            self.relayout()
+            self.send(at: p)                                    // the remote pixel under the pointer moved with the picture
+        }
+        RunLoop.main.add(t, forMode: .common)
+        edgeTimer = t
+    }
+    private func send(at p: NSPoint) {
+        let (x, y) = remote(p); lastRemote = CGPoint(x: x, y: y); conn.send(pointer: x, y, mask: mask)
     }
     func remote(_ p: NSPoint) -> (Int, Int) {
         let t = target
@@ -92,11 +145,13 @@ final class VncView: NSView {
     // ---- mouse ----
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
+    override func mouseExited(with e: NSEvent) { inside = nil; stopEdgePan() }
     private func pointer(_ e: NSEvent) {
-        let p = convert(e.locationInWindow, from: nil); follow(p)
-        let (x, y) = remote(p); conn.send(pointer: x, y, mask: mask)
+        let p = convert(e.locationInWindow, from: nil)
+        inside = bounds.contains(p) ? p : nil
+        edgePan(p); send(at: p)
     }
     override func mouseMoved(with e: NSEvent) { pointer(e) }
     override func mouseDragged(with e: NSEvent) { pointer(e) }
@@ -116,7 +171,7 @@ final class VncView: NSView {
     override func otherMouseUp(with e: NSEvent) { mask &= ~2; pointer(e) }
     private var wheelRest = CGPoint.zero
     override func scrollWheel(with e: NSEvent) {
-        if e.modifierFlags.contains(.command) && e.hasPreciseScrollingDeltas { zoom *= 1 + e.scrollingDeltaY / 200; return }   // ⌘+trackpad zooms
+        if e.modifierFlags.contains(.command) && e.hasPreciseScrollingDeltas { inside = convert(e.locationInWindow, from: nil); zoom *= 1 + e.scrollingDeltaY / 200; return }   // ⌘+trackpad zooms
         let (x, y) = remote(convert(e.locationInWindow, from: nil))
         // one RFB wheel click per notch; precise (trackpad) deltas accumulate to clicks of ~30 points
         var dy = e.scrollingDeltaY, dx = e.scrollingDeltaX
@@ -124,7 +179,7 @@ final class VncView: NSView {
         for _ in 0..<Int(min(8, abs(dy))) { let b: Int32 = dy > 0 ? 8 : 16; conn.send(pointer: x, y, mask: mask | b); conn.send(pointer: x, y, mask: mask) }
         for _ in 0..<Int(min(8, abs(dx))) { let b: Int32 = dx > 0 ? 32 : 64; conn.send(pointer: x, y, mask: mask | b); conn.send(pointer: x, y, mask: mask) }
     }
-    override func magnify(with e: NSEvent) { zoom *= 1 + e.magnification }
+    override func magnify(with e: NSEvent) { inside = convert(e.locationInWindow, from: nil); zoom *= 1 + e.magnification }
 
     // ---- keys ----
     /// Delivers a key event to the remote under the current mode; returns false when the Mac should have it.
