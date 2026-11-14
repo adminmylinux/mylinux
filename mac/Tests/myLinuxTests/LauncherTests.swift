@@ -1749,6 +1749,29 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(VncView.panned(mid, by: CGVector(dx: -5000, dy: -5000), picture: big, view: view), CGPoint(x: 1, y: 0))
         XCTAssertEqual(VncView.panned(mid, by: CGVector(dx: 300, dy: 300), picture: CGSize(width: 900, height: 500), view: view), mid, "a picture that fits stays put")
     }
+    func testTheScreensOfAMacAreFoundInItsVncPicture() {
+        // the user's iMac: a 1920×1080 monitor 242 down on the left of its 5760×3240 panel, shared as one 7680×3240 picture
+        let left = CGRect(x: 0, y: 242, width: 1920, height: 1080), panel = CGRect(x: 1920, y: 0, width: 5760, height: 3240)
+        XCTAssertEqual(VncConnection.displays(painted: [panel, left], width: 7680, height: 3240), [left, panel])
+        // painted in tiles, and some twice: the same two
+        func tiles(_ r: CGRect, _ n: CGFloat) -> [CGRect] {
+            stride(from: r.minY, to: r.maxY, by: n).flatMap { y in stride(from: r.minX, to: r.maxX, by: n).map { x in CGRect(x: x, y: y, width: min(n, r.maxX - x), height: min(n, r.maxY - y)) } }
+        }
+        XCTAssertEqual(VncConnection.displays(painted: tiles(panel, 256) + tiles(left, 100) + [CGRect(x: 2000, y: 100, width: 50, height: 50)], width: 7680, height: 3240), [left, panel])
+        // one above the other: a wide screen over a smaller one in the middle
+        let top = CGRect(x: 0, y: 0, width: 3840, height: 2160), below = CGRect(x: 960, y: 2160, width: 1920, height: 1080)
+        XCTAssertEqual(VncConnection.displays(painted: [top, below], width: 3840, height: 3240), [top, below])
+        // two of one size, the right one set a little lower: two screens, not a band across both
+        let a = CGRect(x: 0, y: 0, width: 1920, height: 1080), b = CGRect(x: 1920, y: 100, width: 1920, height: 1080)
+        XCTAssertEqual(VncConnection.displays(painted: [a, b], width: 3840, height: 1180), [a, b])
+        // all of it painted (one screen, or screens of one size in a row): nothing to choose
+        XCTAssertEqual(VncConnection.displays(painted: [CGRect(x: 0, y: 0, width: 3840, height: 1080)], width: 3840, height: 1080), [])
+        XCTAssertEqual(VncConnection.displays(painted: [], width: 3840, height: 1080), [])
+        // the menu's words for them
+        XCTAssertEqual(RemoteWindowController.screenPlace(left, among: [left, panel]), "left")
+        XCTAssertEqual(RemoteWindowController.screenPlace(panel, among: [left, panel]), "right")
+        XCTAssertEqual(RemoteWindowController.screenPlace(below, among: [top, below]), "bottom")
+    }
     func testAClickOnAVncDesktopThatFailedIsTheWindowsAndGrabsNoKeys() throws {
         // "Failed: cannot connect … (click to retry)": a click on the black picture did nothing (it went to the dead
         // view, which grabbed every key for it); it now goes on to the window, which connects again

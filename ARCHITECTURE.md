@@ -601,8 +601,11 @@ between the user and the remote machine, not two. It is layered like this:
    (or through a staging buffer when rows are padded), with state reported on the main queue.
    `CertPin.swift` and `TLSPeek.swift` fetch the server certificate over their own VeNCrypt handshake, show it for
    trust on first use, pin it as PEM under `vnc-certs/`, and let libvncclient verify against it.
-3. **Picture and input** (`VncView.swift`, `KeyMap.swift`): a CALayer showing the surface, zoom that follows the
-   pointer, trackpad scrolling and pinch, and layout-aware keysym translation.
+3. **Picture and input** (`VncView.swift`, `KeyMap.swift`): a CALayer showing the surface, zoom that holds still
+   under the pointer and pans at the edges or with a ⌘⇧-drag, trackpad scrolling and pinch, and layout-aware keysym
+   translation. A Mac shares all its displays as one picture and paints nothing between them; `VncConnection.displays`
+   finds the screens from what its first seconds of updates painted, and the toolbar's Screen menu shows one of them
+   (the picture in a clipping layer), remembered per host and port in UserDefaults.
 4. **Keyboard grab** (`KeyboardGrab.swift`): for "Everything to the remote", an HID event tap takes every key,
    ⌘Tab and ⌘Space included. It forwards only while the owning window is key and the app is active. A watchdog
    checks that every second, Ctrl+Option+G releases it, and the menu bar item releases it with the mouse.

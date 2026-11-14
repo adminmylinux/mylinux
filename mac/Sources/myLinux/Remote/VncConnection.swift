@@ -17,6 +17,12 @@ final class VncConnection {
     var onResize: ((Int, Int) -> Void)?
     var onFrame: ((CGRect) -> Void)?
     var onServerText: ((String) -> Void)?
+    /// The screens in the picture (pixels, from its top left): macOS shares all its displays as one picture and paints
+    /// nothing between them. Found from what the first seconds of updates painted; empty for one screen, or when
+    /// nothing is left unpainted (screens of one height side by side).
+    private(set) var displays: [CGRect] = []
+    var onDisplays: (([CGRect]) -> Void)?
+    private var painted: [CGRect]?, paintedUntil = DispatchTime.now(), found: [CGRect] = []     // (the connection's thread)
     // stats for the HUD
     var updates = 0, rects = 0, decodeNs: UInt64 = 0
 
@@ -73,6 +79,7 @@ final class VncConnection {
             s.surface = surf; s.width = w; s.height = h
             s.direct = surf.bytesPerRow == w * 4
             s.staging?.deallocate(); s.staging = nil
+            s.painted = []; s.paintedUntil = .now() + 3                      // a new picture: find its screens again
             if s.direct { c!.pointee.frameBuffer = surf.baseAddress.assumingMemoryBound(to: UInt8.self) }
             else { s.staging = UnsafeMutablePointer<UInt8>.allocate(capacity: w * h * 4); c!.pointee.frameBuffer = s.staging }
             c!.pointee.format.bitsPerPixel = 32; c!.pointee.format.depth = 24; c!.pointee.format.trueColour = 1; c!.pointee.format.bigEndian = 0
@@ -84,10 +91,20 @@ final class VncConnection {
         }
         c.pointee.GotFrameBufferUpdate = { c, x, y, w, h in
             let s = VncConnection.selfOf(c); s.rects += 1
-            s.damage = s.damage.union(CGRect(x: Int(x), y: Int(y), width: Int(w), height: Int(h)))
+            let r = CGRect(x: Int(x), y: Int(y), width: Int(w), height: Int(h))
+            s.damage = s.damage.union(r); s.painted?.append(r)
         }
         c.pointee.FinishedFrameBufferUpdate = { c in
             let s = VncConnection.selfOf(c); s.updates += 1
+            if let p = s.painted, !p.isEmpty {
+                let d = VncConnection.displays(painted: p, width: s.width, height: s.height)
+                if DispatchTime.now() > s.paintedUntil { s.painted = nil }
+                if d != s.found || s.painted == nil {
+                    s.found = d
+                    VncLog.line("\(p.count) rectangles painted; screens: " + (d.isEmpty ? "one picture" : d.map { "\(Int($0.width))×\(Int($0.height)) at \(Int($0.minX)),\(Int($0.minY))" }.joined(separator: "; ")), error: false)
+                    DispatchQueue.main.async { s.displays = d; s.onDisplays?(d) }
+                }
+            }
             let d = s.damage; s.damage = .null
             guard !d.isNull else { return }
             if !s.direct, let surf = s.surface, let src = s.staging {
@@ -203,6 +220,62 @@ final class VncConnection {
 
 /// libvncclient's messages (CVncClient/shim.h), into logs/vnc.log; an error line is also kept by the connection whose
 /// thread reported it, for its failure message.
+extension VncConnection {
+    /// The screens of a picture `width`×`height` of which `painted` was drawn: the parts left unpainted (between
+    /// screens of different sizes or places) cut it into a grid, and the fewest rectangles that cover the painted cells
+    /// are the screens. Empty when everything was painted or the result is one screen.
+    static func displays(painted: [CGRect], width: Int, height: Int) -> [CGRect] {
+        let full = CGRect(x: 0, y: 0, width: width, height: height)
+        let rects = painted.map { $0.intersection(full) }.filter { !$0.isEmpty }
+        guard !rects.isEmpty else { return [] }
+        // every edge of a painted rectangle, and how often each cell between them was painted (a 2-D difference array)
+        let xs = Array(Set(rects.flatMap { [$0.minX, $0.maxX] } + [0, CGFloat(width)])).sorted()
+        let ys = Array(Set(rects.flatMap { [$0.minY, $0.maxY] } + [0, CGFloat(height)])).sorted()
+        let nx = xs.count - 1, ny = ys.count - 1
+        guard nx * ny <= 4_000_000 else { return [] }                 // shortcut: a picture painted in that many pieces is not looked at
+        let xi = Dictionary(uniqueKeysWithValues: xs.enumerated().map { ($1, $0) }), yi = Dictionary(uniqueKeysWithValues: ys.enumerated().map { ($1, $0) })
+        var diff = [Int32](repeating: 0, count: (nx + 1) * (ny + 1))
+        for r in rects {
+            let x0 = xi[r.minX]!, x1 = xi[r.maxX]!, y0 = yi[r.minY]!, y1 = yi[r.maxY]!
+            diff[y0 * (nx + 1) + x0] += 1; diff[y0 * (nx + 1) + x1] -= 1; diff[y1 * (nx + 1) + x0] -= 1; diff[y1 * (nx + 1) + x1] += 1
+        }
+        var on = [Bool](repeating: false, count: nx * ny)
+        var row = [Int32](repeating: 0, count: nx + 1)
+        for y in 0..<ny {
+            var run: Int32 = 0
+            for x in 0..<nx { run += diff[y * (nx + 1) + x]; row[x] += run; on[y * nx + x] = row[x] > 0 }
+        }
+        guard on.contains(false) else { return [] }
+        // the lines where painted meets unpainted: those cut the picture into the cells screens are made of
+        var cx: Set<Int> = [0, nx], cy: Set<Int> = [0, ny]
+        for y in 0..<ny { for x in 1..<nx where on[y * nx + x] != on[y * nx + x - 1] { cx.insert(x) } }
+        for x in 0..<nx { for y in 1..<ny where on[y * nx + x] != on[(y - 1) * nx + x] { cy.insert(y) } }
+        let gx = cx.sorted(), gy = cy.sorted(), w = gx.count - 1, h = gy.count - 1
+        guard w * h <= 64 else { return [] }                          // shortcut: a layout of more than 64 pieces is not split
+        let cell = (0..<h).map { r in (0..<w).map { c in on[gy[r] * nx + gx[c]] } }
+        // the fewest rectangles of painted cells that cover them all (a tiny grid: try them all)
+        var used = cell.map { $0.map { !$0 } }, best: [(Int, Int, Int, Int)]? = nil, now: [(Int, Int, Int, Int)] = []
+        func search() {
+            if let b = best, now.count >= b.count { return }
+            guard let (r0, c0) = (0..<h).lazy.flatMap({ r in (0..<w).lazy.map { (r, $0) } }).first(where: { !used[$0.0][$0.1] }) else { best = now; return }
+            var maxC = w
+            for r1 in r0..<h {
+                guard !used[r1][c0] else { break }
+                var c1 = c0; while c1 < maxC && !used[r1][c1] { c1 += 1 }; maxC = c1
+                for cEnd in stride(from: maxC, to: c0, by: -1) {
+                    for r in r0...r1 { for c in c0..<cEnd { used[r][c] = true } }
+                    now.append((r0, c0, r1 + 1, cEnd)); search(); now.removeLast()
+                    for r in r0...r1 { for c in c0..<cEnd { used[r][c] = false } }
+                }
+            }
+        }
+        search()
+        guard let b = best, b.count > 1 else { return [] }
+        return b.map { CGRect(x: xs[gx[$0.1]], y: ys[gy[$0.0]], width: xs[gx[$0.3]] - xs[gx[$0.1]], height: ys[gy[$0.2]] - ys[gy[$0.0]]) }
+            .sorted { ($0.minX, $0.minY) < ($1.minX, $1.minY) }
+    }
+}
+
 enum VncLog {
     static let key = "dev.mylinux.vnc"
     /// logs/ of the support folder (a test points it at a folder of its own)

@@ -161,6 +161,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             c.onState = { [weak self] st in self?.stateChanged(st) }
             c.onServerText = { text in NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
             v.onZoomChanged = { [weak self] in self?.window?.toolbar?.validateVisibleItems() }
+            c.onDisplays = { [weak self] d in self?.screensFound(d) }
             v.onGrabChanged = { [weak self] in self?.window?.toolbar?.validateVisibleItems(); self?.updateStatus(); self?.updateTitle() }
             window?.makeFirstResponder(v)
             // a saved password connects at once; otherwise ask (leave it empty for servers without a password)
@@ -327,7 +328,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
         lastUpdates = c.updates; lastDecode = c.decodeNs
         let mode = v.grabbing ? "all keys → remote (⌥⌘G: to the Mac)" : keyboardMode == .all ? (KeyboardGrab.permitted ? "keys with the Mac (⌥⌘G or a click: to the remote)" : "every key needs Accessibility permission") : keyboardMode.title
         let lat = v.latencySamples > 0 ? String(format: "  key→picture %.0f ms", v.latencySum / Double(v.latencySamples)) : ""
-        status.stringValue = c.width > 0 ? String(format: "%d×%d  %d%%  %d upd/s  decode %.0f ms/s%@  ·  %@", c.width, c.height, Int(v.displayScale * (window?.backingScaleFactor ?? 1) * 100), u, d, lat, mode) : mode
+        status.stringValue = c.width > 0 ? String(format: "%d×%d  %d%%  %d upd/s  decode %.0f ms/s%@  ·  %@", Int(v.area.width), Int(v.area.height), Int(v.displayScale * (window?.backingScaleFactor ?? 1) * 100), u, d, lat, mode) : mode
     }
 
     // ---- clipboard: what the Mac copies goes to the remote when the window becomes key ----
@@ -359,10 +360,10 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     // ---- toolbar ----
-    private enum Item: String, CaseIterable { case launcher, fill, fullScreen, fit, zoomOut, zoomIn, pixels, keyboard, grab, mylinux, flexibleSpace0 }
+    private enum Item: String, CaseIterable { case launcher, fill, fullScreen, fit, zoomOut, zoomIn, pixels, screen, keyboard, grab, mylinux, flexibleSpace0 }
     func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(t) }
     func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] {
-        var items: [Item] = profile.kind == .vnc ? [.launcher, .fill, .fullScreen, .fit, .zoomOut, .zoomIn, .pixels, .keyboard, .grab] : [.fill, .fullScreen, .keyboard]
+        var items: [Item] = profile.kind == .vnc ? [.launcher, .fill, .fullScreen, .fit, .zoomOut, .zoomIn, .pixels, .screen, .keyboard, .grab] : [.fill, .fullScreen, .keyboard]
         // the launcher's own machines get the myLinux menu in the middle of the title bar
         // the launcher's own machines and VNC desktops get the CMD menu in the middle of the title bar
         if profile.launcherMachine || profile.kind == .vnc { items = [.flexibleSpace0] + [.mylinux] + [.flexibleSpace0] + items }
@@ -427,6 +428,12 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
             item.toolTip = "Zoom in. Zoomed in, ⌘⇧-drag moves the picture, and so does the pointer held at the window's edges"
         case .pixels: item.label = "1:1"; item.image = NSImage(systemSymbolName: "1.magnifyingglass", accessibilityDescription: nil); item.action = #selector(pixels)
         case .grab: item.label = "Grab keys"; item.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: nil); item.action = #selector(toggleGrab)
+        case .screen:
+            let mi = NSMenuToolbarItem(itemIdentifier: id); mi.label = "Screen"; mi.image = NSImage(systemSymbolName: "display.2", accessibilityDescription: nil)
+            mi.toolTip = "Which of the remote's screens to show (it shares them all as one picture); remembered for next time"
+            mi.menu = screenMenu(); mi.isHidden = (vnc?.displays.count ?? 0) < 2
+            screenItem = mi
+            return mi
         case .keyboard:
             let menu = NSMenu()
             for m in RemoteProfile.Keyboard.allCases { let mi = NSMenuItem(title: m.title, action: #selector(pickKeyboard(_:)), keyEquivalent: ""); mi.target = self; mi.representedObject = m.rawValue; menu.addItem(mi) }
@@ -458,6 +465,46 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     /// the shortcuts the Mac keeps with every key going to the remote: the profile's, and ⌘P (the CMD menu)
     private var grabKeep: [String] { profile.kind == .vnc && !profile.launcherMachine ? profile.keepForMac + ["cmd+p"] : profile.keepForMac }
     @objc private func toggleGrab() { guard let v = vncView else { return }; v.setGrab(!v.grabbing, keep: grabKeep); if !v.grabbing && !KeyboardGrab.permitted { showOverlay("Grabbing every key needs Accessibility permission for myLinux Launcher (System Settings › Privacy & Security). Click to dismiss.") } }
+    // ---- one screen of several (a Mac shares all its displays as one picture) ----
+    private weak var screenItem: NSMenuToolbarItem?
+    /// the screen chosen for this remote last time (UserDefaults, by host and port)
+    private var savedScreenKey: String { "vncScreen \(profile.host):\(profile.port)" }
+    private func screensFound(_ d: [CGRect]) {
+        guard let v = vncView else { return }
+        if let s = UserDefaults.standard.string(forKey: savedScreenKey), d.contains(NSRectFromString(s)) { v.crop = NSRectFromString(s) }
+        else if let c = v.crop, !d.contains(c) { v.crop = nil }
+        screenItem?.menu = screenMenu(); screenItem?.isHidden = d.count < 2
+    }
+    private func screenMenu() -> NSMenu {
+        let menu = NSMenu(), d = vnc?.displays ?? [], crop = vncView?.crop
+        let all = NSMenuItem(title: "All Screens", action: #selector(pickScreen(_:)), keyEquivalent: ""); all.target = self; all.state = crop == nil ? .on : .off
+        menu.addItem(all); menu.addItem(.separator())
+        for (i, r) in d.enumerated() {
+            let where_ = Self.screenPlace(r, among: d).map { " (\($0))" } ?? ""
+            let mi = NSMenuItem(title: "Screen \(i + 1)\(where_)  \(Int(r.width))×\(Int(r.height))", action: #selector(pickScreen(_:)), keyEquivalent: "")
+            mi.target = self; mi.representedObject = NSStringFromRect(r); mi.state = crop == r ? .on : .off
+            menu.addItem(mi)
+        }
+        return menu
+    }
+    /// left, right, top, bottom or middle, when the screens stand in one row or one column
+    static func screenPlace(_ r: CGRect, among d: [CGRect]) -> String? {
+        let others = d.filter { $0 != r }
+        guard !others.isEmpty else { return nil }
+        if others.allSatisfy({ $0.minX >= r.maxX || $0.maxX <= r.minX }) && d.allSatisfy({ a in d.allSatisfy { b in a == b || b.minX >= a.maxX || b.maxX <= a.minX } }) {
+            return others.allSatisfy { $0.minX >= r.maxX } ? "left" : others.allSatisfy { $0.maxX <= r.minX } ? "right" : "middle"
+        }
+        if d.allSatisfy({ a in d.allSatisfy { b in a == b || b.minY >= a.maxY || b.maxY <= a.minY } }) {
+            return others.allSatisfy { $0.minY >= r.maxY } ? "top" : others.allSatisfy { $0.maxY <= r.minY } ? "bottom" : "middle"
+        }
+        return nil
+    }
+    @objc private func pickScreen(_ sender: NSMenuItem) {
+        let r = (sender.representedObject as? String).map(NSRectFromString)
+        vncView?.crop = r
+        if let s = sender.representedObject as? String { UserDefaults.standard.set(s, forKey: savedScreenKey) } else { UserDefaults.standard.removeObject(forKey: savedScreenKey) }
+        screenItem?.menu = screenMenu()
+    }
     @objc private func pickKeyboard(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let m = RemoteProfile.Keyboard(rawValue: raw) else { return }
         keyboardMode = m; vncView?.keyboard = m
