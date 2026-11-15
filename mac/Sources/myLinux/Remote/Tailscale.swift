@@ -22,6 +22,7 @@ enum Tailscale {
         let os: String
         let online: Bool
         let lastSeen: Date?
+        var localIPs: [String] = [] // its addresses on this Mac's own network, if it is on it
         var host: String { ip.isEmpty ? dnsName : ip }
     }
 
@@ -144,6 +145,44 @@ enum Tailscale {
                       userspace: (o["TUN"] as? Bool) == false, authURL: o["AuthURL"] as? String ?? "",
                       selfName: me?["HostName"] as? String ?? "",
                       peers: peers.sorted { ($0.online ? 0 : 1, $0.name.lowercased()) < ($1.online ? 0 : 1, $1.name.lowercased()) })
+    }
+
+    /// Each peer's addresses on this Mac's own network, by DNS name: the endpoints in the client's network map
+    /// (`tailscale status` leaves them out) inside the subnet of one of this Mac's Ethernet or Wi-Fi interfaces. A way
+    /// there straight across the room, not through the tailnet (and its relays, when a direct path is not found).
+    static func localAddresses(_ c: Client) -> [String: [String]] {
+        guard let (rc, data) = run(c.tool, c.arguments + ["debug", "netmap"], timeout: 6), rc == 0 else { return [:] }
+        return localAddresses(netmap: data, on: lanSubnets())
+    }
+    static func localAddresses(netmap: Data, on nets: [(net: UInt32, mask: UInt32)]) -> [String: [String]] {
+        guard let o = try? JSONSerialization.jsonObject(with: netmap) as? [String: Any], let peers = o["Peers"] as? [[String: Any]] else { return [:] }
+        var out: [String: [String]] = [:]
+        for p in peers {
+            let name = (p["Name"] as? String ?? "").trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased()
+            var ips: [String] = []
+            for e in p["Endpoints"] as? [String] ?? [] where !e.hasPrefix("[") {          // IPv4 a.b.c.d:port only
+                let ip = String(e.split(separator: ":")[0])
+                if let a = ipv4(ip), nets.contains(where: { $0.mask != 0 && a & $0.mask == $0.net }), !ips.contains(ip) { ips.append(ip) }
+            }
+            if !name.isEmpty, !ips.isEmpty { out[name] = ips }
+        }
+        return out
+    }
+    static func ipv4(_ s: String) -> UInt32? { var a = in_addr(); return inet_pton(AF_INET, s, &a) == 1 ? UInt32(bigEndian: a.s_addr) : nil }
+    /// This Mac's Ethernet and Wi-Fi networks (en interfaces; not the bridges of VMs and containers)
+    static func lanSubnets() -> [(net: UInt32, mask: UInt32)] {
+        var list: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&list) == 0, let first = list else { return [] }
+        defer { freeifaddrs(list) }
+        var out: [(net: UInt32, mask: UInt32)] = []
+        for i in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            guard String(cString: i.pointee.ifa_name).hasPrefix("en"), let a = i.pointee.ifa_addr, a.pointee.sa_family == AF_INET,
+                  let m = i.pointee.ifa_netmask else { continue }
+            let v4 = { (p: UnsafeMutablePointer<sockaddr>) in p.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { UInt32(bigEndian: $0.pointee.sin_addr.s_addr) } }
+            let mask = v4(m)
+            out.append((v4(a) & mask, mask))
+        }
+        return out
     }
 
     /// A tool's exit status and output (stdout and stderr), or nil when it could not start or did not end in time.
@@ -309,6 +348,19 @@ enum Tailscale {
         p.hasPassword = RemoteSecrets.password(for: p) != nil
         return p
     }
+    /// The same machine at an address on this Mac's own network: a profile of its own (so a saved one keeps its
+    /// address), with the tailnet one's user name and, copied once, its password.
+    static func localProfile(for peer: Peer, kind: RemoteProfile.Kind, at address: String) -> RemoteProfile {
+        let t = profile(for: peer, kind: kind)
+        var p = t
+        p.id = stableID("tailscale:\(kind.rawValue):\(peer.id):local")
+        p.name = "\(peer.name) (local)"
+        p.host = address
+        userKeys[p.id] = userKey(peer, kind)
+        if RemoteSecrets.password(for: p) == nil, let pw = RemoteSecrets.password(for: t) { RemoteSecrets.setPassword(pw, for: p) }
+        p.hasPassword = RemoteSecrets.password(for: p) != nil
+        return p
+    }
 
     static func userKey(_ peer: Peer, _ kind: RemoteProfile.Kind) -> String { "tailscale.user.\(kind.rawValue).\(peer.id)" }
     /// The user-name key of each profile made here, so a window can remember a user name given later (a refused login)
@@ -340,13 +392,18 @@ final class TailscaleModel: ObservableObject {
         let peers = status?.peers ?? []
         let words = search.lowercased().split(separator: " ").map(String.init)
         guard !words.isEmpty else { return peers }
-        return peers.filter { p in words.allSatisfy { w in [p.name, p.ip, p.os, p.dnsName].contains { $0.lowercased().contains(w) } } }
+        return peers.filter { p in words.allSatisfy { w in [p.name, p.ip, p.os, p.dnsName, p.localIPs.joined(separator: " ")].contains { $0.lowercased().contains(w) } } }
     }
 
     func refresh() {
         Task.detached(priority: .userInitiated) {
-            let found = Tailscale.detect()
-            await MainActor.run { self.apply(found) }
+            var found = Tailscale.detect()
+            if case .status(let c, var s) = found, s.state == "Running" {
+                let local = Tailscale.localAddresses(c)
+                for i in s.peers.indices { s.peers[i].localIPs = local[s.peers[i].dnsName.lowercased()] ?? [] }
+                found = .status(c, s)
+            }
+            await MainActor.run { [found] in self.apply(found) }
         }
     }
 
@@ -423,8 +480,9 @@ final class TailscaleModel: ObservableObject {
         loginProcess = nil
     }
 
-    func connect(_ peer: Tailscale.Peer, _ kind: RemoteProfile.Kind, askUser: Bool = false) {
-        var p = Tailscale.profile(for: peer, kind: kind)
+    /// `address`: one of the peer's local addresses instead of its tailnet one
+    func connect(_ peer: Tailscale.Peer, _ kind: RemoteProfile.Kind, askUser: Bool = false, address: String? = nil) {
+        var p = address.map { Tailscale.localProfile(for: peer, kind: kind, at: $0) } ?? Tailscale.profile(for: peer, kind: kind)
         let saved = RemoteStore.shared.profiles.contains { $0.id == p.id }
         let known = UserDefaults.standard.object(forKey: Tailscale.userKey(peer, kind)) != nil
         // the first time (or Connect As…): the user name, which the tailnet does not know
@@ -533,21 +591,36 @@ struct TailscaleView: View {
             }.width(14)
             TableColumn("Name") { p in
                 Text(p.name).fontWeight(.medium).help(p.dnsName)
-            }.width(min: 120, ideal: 180)
+            }.width(min: 110, ideal: 135)
             TableColumn("IP") { p in
                 Text(p.ip).font(.body.monospaced()).textSelection(.enabled)
-            }.width(min: 100, ideal: 120)
+            }.width(min: 120, ideal: 128)
+            TableColumn("Local IP") { p in
+                Text(p.localIPs.first ?? "–").font(.body.monospaced()).foregroundStyle(p.localIPs.isEmpty ? .secondary : .primary)
+                    .textSelection(.enabled).help(p.localIPs.isEmpty ? "Not on this Mac's network" : p.localIPs.joined(separator: ", "))
+            }.width(min: 120, ideal: 128)
             TableColumn("Type") { p in
                 Label(osTitle(p.os), systemImage: osSymbol(p.os))
-            }.width(min: 80, ideal: 100)
+            }.width(min: 70, ideal: 80)
             TableColumn("Seen") { p in
                 Text(p.online ? "now" : p.lastSeen.map { $0.formatted(.relative(presentation: .named)) } ?? "–").foregroundStyle(.secondary)
-            }.width(min: 70, ideal: 100)
+            }.width(min: 60, ideal: 80)
             TableColumn("Connect") { p in
                 HStack(spacing: 6) {
-                    Button { model.connect(p, .vnc) } label: { Image(systemName: "display") }
-                        .help("VNC desktop of \(p.name) (port 5900)")
-                        .contextMenu { menu(p, .vnc) }
+                    if p.localIPs.isEmpty {
+                        Button { model.connect(p, .vnc) } label: { Image(systemName: "display") }
+                            .help("VNC desktop of \(p.name) (port 5900)")
+                            .contextMenu { menu(p, .vnc) }
+                    } else {
+                        // on this Mac's network too: the tailnet address or a local one, which is faster
+                        Menu {
+                            Button("Tailscale  \(p.ip)") { model.connect(p, .vnc) }
+                            ForEach(p.localIPs, id: \.self) { ip in Button("Local  \(ip)") { model.connect(p, .vnc, address: ip) } }
+                        } label: { Image(systemName: "display") }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                            .help("VNC desktop of \(p.name) (port 5900), over Tailscale or this Mac's network")
+                            .contextMenu { menu(p, .vnc) }
+                    }
                     Button { model.connect(p, .ssh) } label: { Image(systemName: "terminal") }
                         .help("SSH terminal on \(p.name)")
                         .contextMenu { menu(p, .ssh) }

@@ -1806,6 +1806,22 @@ final class RemoteSessionTests: XCTestCase {
         XCTAssertEqual(p.username, "")
         p.username = "viktor"; Tailscale.rememberUser(p)
         XCTAssertEqual(Tailscale.profile(for: peer, kind: .vnc).username, "viktor")
+        // the same machine at a local address: a profile of its own, with the tailnet one's user name
+        let local = Tailscale.localProfile(for: peer, kind: .vnc, at: "192.168.0.103")
+        XCTAssertEqual(local.host, "192.168.0.103"); XCTAssertEqual(local.username, "viktor"); XCTAssertNotEqual(local.id, p.id)
+    }
+    func testATailnetMachinesLocalAddressesAreThoseOnThisMacsNetwork() {
+        // endpoints from the user's netmap: the iMac on Ethernet and Wi-Fi (and OrbStack bridges), a VPS with Docker's
+        let netmap = Data("""
+        {"Peers": [
+          {"Name": "viktors-imac-pro-2.tail0.ts.net.", "Endpoints": ["185.78.68.231:41645", "192.168.0.103:41641", "192.168.0.236:41641", "192.168.0.103:41642", "192.168.97.0:41641", "[fd7a::1]:41641"]},
+          {"Name": "contabogit.tail0.ts.net.", "Endpoints": ["84.46.241.200:41641", "10.99.0.4:41641", "172.17.0.1:41641", "192.168.16.1:41641"]},
+          {"Name": "mylinux.tail0.ts.net.", "Endpoints": null}
+        ]}
+        """.utf8)
+        let lan = [(net: Tailscale.ipv4("192.168.0.0")!, mask: Tailscale.ipv4("255.255.255.0")!)]
+        XCTAssertEqual(Tailscale.localAddresses(netmap: netmap, on: lan), ["viktors-imac-pro-2.tail0.ts.net": ["192.168.0.103", "192.168.0.236"]])
+        XCTAssertEqual(Tailscale.localAddresses(netmap: netmap, on: []), [:], "no network of its own: none")
     }
     func testVncDesktopsSendEveryKeyByDefaultOnceMoved() throws {
         XCTAssertEqual(RemoteProfile(kind: .vnc).keyboard, .all)

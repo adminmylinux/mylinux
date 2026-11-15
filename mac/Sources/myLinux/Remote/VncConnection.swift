@@ -23,7 +23,6 @@ final class VncConnection {
     private(set) var displays: [CGRect] = []
     var onDisplays: (([CGRect]) -> Void)?
     private var painted: [CGRect]?, paintedUntil: DispatchTime?, found: [CGRect]?     // (the connection's thread)
-    private var askedAgain = false, awaitingAnswer = false
     // stats for the HUD
     var updates = 0, rects = 0, decodeNs: UInt64 = 0
 
@@ -80,7 +79,7 @@ final class VncConnection {
             s.surface = surf; s.width = w; s.height = h
             s.direct = surf.bytesPerRow == w * 4
             s.staging?.deallocate(); s.staging = nil
-            s.painted = []; s.paintedUntil = nil; s.found = nil; s.askedAgain = false; s.awaitingAnswer = false  // a new picture: find its screens again
+            s.painted = []; s.paintedUntil = nil; s.found = nil                    // a new picture: find its screens again
             if s.direct { c!.pointee.frameBuffer = surf.baseAddress.assumingMemoryBound(to: UInt8.self) }
             else { s.staging = UnsafeMutablePointer<UInt8>.allocate(capacity: w * h * 4); c!.pointee.frameBuffer = s.staging }
             c!.pointee.format.bitsPerPixel = 32; c!.pointee.format.depth = 24; c!.pointee.format.trueColour = 1; c!.pointee.format.bigEndian = 0
@@ -97,25 +96,11 @@ final class VncConnection {
         }
         c.pointee.FinishedFrameBufferUpdate = { c in
             let s = VncConnection.selfOf(c); s.updates += 1
-            let full = CGRect(x: 0, y: 0, width: s.width, height: s.height)
             // three seconds from the first update, not from the connection: the iMac's 7680×3240 took five over
-            // Tailscale to come, and a second update may bring the rest of it
+            // Tailscale to come, its 5K panel in one update and its monitor in the next
             if s.paintedUntil == nil, s.painted?.isEmpty == false { s.paintedUntil = .now() + 3 }
             let until = s.paintedUntil ?? .now()
-            if let p = s.painted, !p.isEmpty, s.awaitingAnswer {
-                // small updates before the picture asked for again: only one that reaches across it all is that answer
-                if p.reduce(CGRect.null, { $0.union($1) }) == full { s.awaitingAnswer = false }
-                else if DispatchTime.now() > until + 15 { s.awaitingAnswer = false; s.painted = [full] }   // none came: as it was
-                else { s.painted = [] }
-            }
-            if let p = s.painted, p == [full], !s.askedAgain {
-                // A picture sent whole shows no gaps between its screens (the iMac's first one, at times): a Mac asked
-                // again has sent each screen as its own rectangle
-                s.askedAgain = true; s.awaitingAnswer = true; s.painted = []
-                VncLog.line("the picture came whole: asking for it again to find its screens", error: false)
-                SendFramebufferUpdateRequest(c, 0, 0, Int32(s.width), Int32(s.height), 0)
-            }
-            if let p = s.painted, !p.isEmpty, !s.awaitingAnswer {
+            if let p = s.painted, !p.isEmpty {
                 let d = VncConnection.displays(painted: p, width: s.width, height: s.height)
                 if DispatchTime.now() > until { s.painted = nil }
                 if d != s.found || s.painted == nil {           // the first, each change, and the last (a frozen locked Mac sends no more)

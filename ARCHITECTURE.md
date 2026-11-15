@@ -604,9 +604,8 @@ between the user and the remote machine, not two. It is layered like this:
 3. **Picture and input** (`VncView.swift`, `KeyMap.swift`): a CALayer showing the surface, zoom that holds still
    under the pointer and pans at the edges or with a ⌘⇧-drag, trackpad scrolling and pinch, and layout-aware keysym
    translation. A Mac shares all its displays as one picture and paints nothing between them; `VncConnection.displays`
-   finds the screens from what the updates of three seconds from the first one painted (a picture sent whole as one rectangle is asked
-   for once more, which a Mac answers a screen to a rectangle; remembered per host, port and picture size, for a
-   picture sent whole again, as a locked Mac sends it), and the toolbar's Screen menu shows one of them, remembered per host
+   finds the screens from what the updates of three seconds from the first one painted (remembered per host, port and
+   picture size, for when they cannot be found, as at a locked Mac), and the toolbar's Screen menu shows one of them, remembered per host
    and port in UserDefaults. What is shown is a list of pieces (part of the picture, place on a
    canvas), each a clipping layer holding the picture: one screen, the whole picture, or, for All Screens, a Mac's
    screens laid out at one scale (`VncView.arranged`; its server puts a Retina panel at twice a plain monitor's pixels).
