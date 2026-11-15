@@ -22,7 +22,7 @@ final class VncConnection {
     /// nothing is left unpainted (screens of one height side by side).
     private(set) var displays: [CGRect] = []
     var onDisplays: (([CGRect]) -> Void)?
-    private var painted: [CGRect]?, paintedUntil = DispatchTime.now(), found: [CGRect] = []     // (the connection's thread)
+    private var painted: [CGRect]?, paintedUntil: DispatchTime?, found: [CGRect]?     // (the connection's thread)
     private var askedAgain = false, awaitingAnswer = false
     // stats for the HUD
     var updates = 0, rects = 0, decodeNs: UInt64 = 0
@@ -80,7 +80,7 @@ final class VncConnection {
             s.surface = surf; s.width = w; s.height = h
             s.direct = surf.bytesPerRow == w * 4
             s.staging?.deallocate(); s.staging = nil
-            s.painted = []; s.paintedUntil = .now() + 3; s.askedAgain = false; s.awaitingAnswer = false  // a new picture: find its screens again
+            s.painted = []; s.paintedUntil = nil; s.found = nil; s.askedAgain = false; s.awaitingAnswer = false  // a new picture: find its screens again
             if s.direct { c!.pointee.frameBuffer = surf.baseAddress.assumingMemoryBound(to: UInt8.self) }
             else { s.staging = UnsafeMutablePointer<UInt8>.allocate(capacity: w * h * 4); c!.pointee.frameBuffer = s.staging }
             c!.pointee.format.bitsPerPixel = 32; c!.pointee.format.depth = 24; c!.pointee.format.trueColour = 1; c!.pointee.format.bigEndian = 0
@@ -98,10 +98,14 @@ final class VncConnection {
         c.pointee.FinishedFrameBufferUpdate = { c in
             let s = VncConnection.selfOf(c); s.updates += 1
             let full = CGRect(x: 0, y: 0, width: s.width, height: s.height)
+            // three seconds from the first update, not from the connection: the iMac's 7680×3240 took five over
+            // Tailscale to come, and a second update may bring the rest of it
+            if s.paintedUntil == nil, s.painted?.isEmpty == false { s.paintedUntil = .now() + 3 }
+            let until = s.paintedUntil ?? .now()
             if let p = s.painted, !p.isEmpty, s.awaitingAnswer {
                 // small updates before the picture asked for again: only one that reaches across it all is that answer
                 if p.reduce(CGRect.null, { $0.union($1) }) == full { s.awaitingAnswer = false }
-                else if DispatchTime.now() > s.paintedUntil + 15 { s.awaitingAnswer = false; s.painted = [full] }   // none came: as it was
+                else if DispatchTime.now() > until + 15 { s.awaitingAnswer = false; s.painted = [full] }   // none came: as it was
                 else { s.painted = [] }
             }
             if let p = s.painted, p == [full], !s.askedAgain {
@@ -113,10 +117,12 @@ final class VncConnection {
             }
             if let p = s.painted, !p.isEmpty, !s.awaitingAnswer {
                 let d = VncConnection.displays(painted: p, width: s.width, height: s.height)
-                if DispatchTime.now() > s.paintedUntil { s.painted = nil }
-                if d != s.found || s.painted == nil {
+                if DispatchTime.now() > until { s.painted = nil }
+                if d != s.found || s.painted == nil {           // the first, each change, and the last (a frozen locked Mac sends no more)
                     s.found = d
-                    VncLog.line("\(p.count) rectangles painted; screens: " + (d.isEmpty ? "one picture" : d.map { "\(Int($0.width))×\(Int($0.height)) at \(Int($0.minX)),\(Int($0.minY))" }.joined(separator: "; ")), error: false)
+                    let at = { (r: CGRect) in "\(Int(r.width))×\(Int(r.height)) at \(Int(r.minX)),\(Int(r.minY))" }
+                    VncLog.line("\(p.count) rectangles painted (" + p.prefix(3).map(at).joined(separator: "; ") + (p.count > 3 ? "; …" : "")
+                                + "); screens: " + (d.isEmpty ? "one picture" : d.map(at).joined(separator: "; ")), error: false)
                     DispatchQueue.main.async { s.displays = d; s.onDisplays?(d) }
                 }
             }
