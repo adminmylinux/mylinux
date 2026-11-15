@@ -573,6 +573,20 @@ final class RemoteTests: XCTestCase {
         XCTAssertTrue(p.problems.isEmpty)
         XCTAssertEqual(p.keyboard, .all, "VNC desktops send every key to the remote by default")
     }
+    /// The status line's figures per second come from each connection's own counts: a window that connects again
+    /// asks a new connection, which starts from zero (0.8.5 crashed subtracting the old connection's decode time).
+    func testAVncStatusCountsSinceLastAskedStartFromEachConnection() {
+        let old = VncConnection(profile: RemoteProfile(kind: .vnc))
+        old.updates = 40; old.decodeNs = 9_000_000_000
+        XCTAssertEqual(old.sinceLastAsked().updates, 40)
+        old.updates = 45; old.decodeNs = 9_002_000_000
+        let s = old.sinceLastAsked()
+        XCTAssertEqual(s.updates, 5); XCTAssertEqual(s.decodeMs, 2, accuracy: 0.001)
+        let new = VncConnection(profile: RemoteProfile(kind: .vnc))
+        new.updates = 1; new.decodeNs = 1_000_000
+        let n = new.sinceLastAsked()
+        XCTAssertEqual(n.updates, 1); XCTAssertEqual(n.decodeMs, 1, accuracy: 0.001)
+    }
     /// A self-signed certificate for the tests (CN mylinux-test), made once with the system openssl.
     static func testCertificate() throws -> String {
         let path = NSTemporaryDirectory() + "mylinux-test-cert.pem"

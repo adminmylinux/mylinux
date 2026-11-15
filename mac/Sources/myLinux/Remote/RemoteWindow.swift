@@ -25,7 +25,6 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
     private let status = NSTextField(labelWithString: "")
     private let overlay = NSTextField(wrappingLabelWithString: "")
     private var hudTimer: Timer?
-    private var lastUpdates = 0, lastDecode: UInt64 = 0
     private var pasteboardCount = 0
     private var keyboardMode: RemoteProfile.Keyboard
 
@@ -324,8 +323,7 @@ final class RemoteWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private func updateStatus() {
         guard let c = vnc, let v = vncView else { return }
-        let u = c.updates - lastUpdates, d = Double(c.decodeNs - lastDecode) / 1e6
-        lastUpdates = c.updates; lastDecode = c.decodeNs
+        let (u, d) = c.sinceLastAsked()
         let mode = v.grabbing ? "all keys → remote (⌥⌘G: to the Mac)" : keyboardMode == .all ? (KeyboardGrab.permitted ? "keys with the Mac (⌥⌘G or a click: to the remote)" : "every key needs Accessibility permission") : keyboardMode.title
         let lat = v.latencySamples > 0 ? String(format: "  key→picture %.0f ms", v.latencySum / Double(v.latencySamples)) : ""
         status.stringValue = c.width > 0 ? String(format: "%d×%d  %d%%  %d upd/s  decode %.0f ms/s%@  ·  %@", Int(v.area.width), Int(v.area.height), Int(v.displayScale * (window?.backingScaleFactor ?? 1) * 100), u, d, lat, mode) : mode

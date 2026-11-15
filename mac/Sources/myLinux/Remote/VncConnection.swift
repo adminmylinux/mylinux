@@ -25,6 +25,13 @@ final class VncConnection {
     private var painted: [CGRect]?, paintedUntil: DispatchTime?, found: [CGRect]?     // (the connection's thread)
     // stats for the HUD
     var updates = 0, rects = 0, decodeNs: UInt64 = 0
+    private var shownUpdates = 0, shownDecodeNs: UInt64 = 0
+    /// The updates and decode time since the status line last asked. Kept here, so a window that connects again
+    /// starts from this connection's zero: 0.8.5 kept the old connection's totals and crashed subtracting them.
+    func sinceLastAsked() -> (updates: Int, decodeMs: Double) {
+        defer { shownUpdates = updates; shownDecodeNs = decodeNs }
+        return (updates - shownUpdates, Double(decodeNs - shownDecodeNs) / 1e6)
+    }
 
     private var thread: Thread?
     private let lock = NSLock()
