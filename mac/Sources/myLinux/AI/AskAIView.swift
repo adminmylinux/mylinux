@@ -93,7 +93,11 @@ struct AskAIView: View {
             HStack(alignment: .top) {
                 TextField("Tell the launcher what to do: “Create omarchy machine 8/32 with username viktor and the rest as default”",
                           text: $model.request, axis: .vertical)
-                    .lineLimit(2...4).textFieldStyle(.roundedBorder).focused($focused)
+                    // three lines, the whole example in view: the bordered style keeps a field one line high
+                    .lineLimit(3, reservesSpace: true).textFieldStyle(.plain).focused($focused)
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(focused ? Color.accentColor : Color.primary.opacity(0.2), lineWidth: focused ? 2 : 1))
                     .onSubmit { model.ask() }
                 Button(model.step == .thinking ? "Asking…" : "Ask") { model.ask() }
                     .keyboardShortcut(.return, modifiers: .command)

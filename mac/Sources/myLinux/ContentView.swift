@@ -417,7 +417,13 @@ struct VersionAndSettings: View {
     static func openSettings(page: String) {
         UserDefaults.standard.set(page, forKey: "settings.page")
         NSApp.activate()
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        // the app menu's own Settings… item: the showSettingsWindow: action alone reaches nothing from a window that is
+        // not one of the app's SwiftUI scenes (Ask AI's), and newer macOS ignores it from those too
+        if let menu = NSApp.mainMenu?.items.first?.submenu, let i = menu.items.firstIndex(where: { $0.keyEquivalent == "," && $0.keyEquivalentModifierMask == .command }) {
+            menu.performActionForItem(at: i)
+        } else {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
     }
 }
 

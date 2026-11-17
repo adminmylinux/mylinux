@@ -121,7 +121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // asking it, photographed once the answer is there (or after 60 s), and nothing run
         if let request = ProcessInfo.processInfo.environment["MYLINUX_TEST_ASK_WINDOW"], let png = ProcessInfo.processInfo.environment["MYLINUX_TEST_SHOT"],
            ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
-            AskAIWindow.show(asking: request)
+            AskAIWindow.show(asking: request.isEmpty ? nil : request)
+            // MYLINUX_TEST_OPEN_SETTINGS=1: its Settings… button's action as well, and which windows are open then
+            if ProcessInfo.processInfo.environment["MYLINUX_TEST_OPEN_SETTINGS"] == "1" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { VersionAndSettings.openSettings(page: "ai") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { print("windows: " + NSApp.windows.filter(\.isVisible).map(\.title).joined(separator: " | ")); fflush(stdout) }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + (Double(ProcessInfo.processInfo.environment["MYLINUX_TEST_WAIT"] ?? "25") ?? 25)) {
                 if let w = NSApp.windows.first(where: { $0.title == "Ask AI" }) {
                     let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
