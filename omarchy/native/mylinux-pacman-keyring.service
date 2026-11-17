@@ -1,0 +1,14 @@
+# myLinux: each machine's own pacman keyring. The image is shared by every machine made from it, so it carries no
+# keyring (its local signing key would be the same everywhere); the first start makes one, before anything installs.
+[Unit]
+Description=myLinux: this machine's pacman keyring
+ConditionPathExists=!/etc/pacman.d/gnupg/trustdb.gpg
+Before=omarchy-provision-owner.service display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pacman-key --init
+ExecStart=/usr/bin/pacman-key --populate
+
+[Install]
+WantedBy=multi-user.target

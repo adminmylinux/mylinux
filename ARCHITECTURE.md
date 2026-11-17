@@ -12,7 +12,9 @@ is built with Buildroot and lives entirely in RAM (kernel plus an initramfs). Ev
 lives on a separate disk image, the *apps disk*. The desktop is a Qt 6 Wayland compositor written for this project.
 A Mac app, *myLinux Launcher*, keeps machine profiles and starts machines, and can also open VNC desktops and SSH
 terminals on other computers natively on the Mac. The same launcher runs a second kind of machine, *Omarchy*
-(Arch Linux with Hyprland), from a guest image published by the Try Omarchy project.
+(Arch Linux with Hyprland): since 0.8.7 Omarchy 4.5 installed from its own signed release ISO with the Try Omarchy
+project's guest package for the Mac integration (`tools/build-omarchy-image.sh`), before that the Try Omarchy project's
+guest image, which machines made then keep.
 
 ```mermaid
 flowchart LR
@@ -61,7 +63,8 @@ flowchart LR
 | `run-omarchy.sh` | Starts an Omarchy machine on the Mac. |
 | `run-windows.sh`, `windows/` | Starts a Windows 11 for Arm machine; the answer file, setup script and agent that go onto its tools disc. |
 | `omarchy/session/` | Session save and restore agent that runs inside Omarchy (installed by the user, systemd user units). |
-| `omarchy/answers/` | Omarchy's first-start questions answered from a file: a `gum` that gives the answers, the setup that uses it, and the drop-in that runs it (`tools/omarchy-bake-answers.sh` puts them into a new disk). |
+| `omarchy/answers/` | Omarchy's first-start questions answered from a file: a `gum` that gives the answers, the setup that uses it, and the drop-in that runs it (`tools/omarchy-bake-answers.sh` puts them into a new disk of a Try Omarchy guest; the Omarchy 4.5 image has them built in). |
+| `omarchy/native/` | Built into the Omarchy 4.5 image: the unit that puts the launcher's credentials of a start in place (the session tool, the first-start answers, Claude Code and Codex to set up), and the per-machine pacman keyring. |
 | `mac/` | myLinux Launcher, a Swift package; `mac/build-app.sh` bundles it. `mac/spike/` is a leftover experiment. |
 | `tools/` | Host helpers: app bundling and branding, image and runtime downloads, the QEMU runtime build and its patches, clipboard bridges, window placement, the SDK fast loop, checks and tests. |
 | `tools/vmtest/` | Tests that boot a throwaway VM and drive it through QMP and the serial console. |
@@ -141,11 +144,24 @@ command is built as an argument list, never as a string.
 
 ### 4.2 Omarchy machines: run-omarchy.sh
 
-An Omarchy machine is a folder with a raw ext4 root disk and `boot/`, the kernel and initramfs that disk was made
-with. `tools/get-omarchy.sh` downloads the Try Omarchy guest once (1.4 GB, one pinned release, checked against a
-pinned SHA-256, the publisher's signature and the guest's own checksums; nothing from it runs on the Mac). On the
-first start `run-omarchy.sh` unpacks the factory disk, grows it to `DISK_SIZE_GB` (the guest grows its filesystem)
-and copies the matching kernel into `boot/`, so a newer download never breaks an existing machine.
+An Omarchy machine made since 0.8.7 is a folder with a whole disk (GPT: Limine on its ESP, btrfs; the file keeps the
+name `omarchy.ext4` the launcher knows), QEMU's UEFI firmware and its settings (`vars.fd`). `tools/get-omarchy.sh`
+downloads the image once (about 3.7 GB in four parts from mylinux-releases, each and the whole checked against a
+pinned SHA256SUMS) and the firmware. `tools/build-omarchy-image.sh` makes that image on the Mac: Omarchy's ISO
+(pinned SHA-256, from a download whose signature checked out) installs itself unattended with deferred provisioning
+in a QEMU of the runtime with no window, and `tools/omarchy-image-root.sh finish` (as root in the OrbStack Debian, in a
+chroot) adds Try Omarchy's guest package built from its pinned source, `omarchy/native`, `omarchy/answers` and the
+session tool, and seals it as Omarchy's own VM images are (no machine ID, keyring or host keys; the factory snapshot
+taken again). On the first start `run-omarchy.sh` unpacks the disk, grows it to `DISK_SIZE_GB` (Try Omarchy's
+`grow-root` grows the partition and btrfs) and copies the firmware beside it. The firmware boots the disk's own
+Limine and kernel, so `omarchy update` updates the kernel too. The launcher's settings go in as the systemd credential
+`tryomarchy.host` (SMBIOS type 11: `omarchy.qemu_virgl=1`, the share's name, SSH), which the package reads; the
+session tool at every start, and the first-start answers and the Claude Code / Codex request at the first, as
+credentials in files QEMU reads through descriptors left open for it (the files are gone before QEMU starts).
+
+A machine made before 0.8.7 from the Try Omarchy guest is a raw ext4 root disk and `boot/`, the kernel and initramfs
+that disk was made with, and starts as it always did: `-kernel` from `boot/`, the settings on its kernel line, the
+answers and the session tool written into the disk with `debugfs`.
 
 The differences from `run.sh`:
 
@@ -168,7 +184,7 @@ The differences from `run.sh`:
   another display). From then on it stays where it was put and a mode change keeps its top left corner; before
   runtime 11.1.1-20 it was taken back to the display it opened on, so a window that follows its guest could not be
   dragged to another display.
-- Inside Omarchy, `omarchy/session/omarchy-session` (installed once by the user with `install-session.sh`) saves
+- Inside Omarchy, `omarchy/session/omarchy-session` (in the disk from its first start; Omarchy 4.5's image has it built in) saves
   the window layout, each window's command line and a terminal's working directory every minute and at logout, and
   reopens them at login. It also picks up the command files from the Session menu.
 - The same agent is how the launcher gets work done inside without SSH: `apps` and `share` open a terminal running
@@ -505,7 +521,10 @@ pointer while it is fullscreen or after ⌘⌃G.
   asks with `gum` and takes no answers file, so the answers are given through a `gum` of ours. The launcher checks
   them by the setup form's own rules (the user name's pattern and reserved names, a password that is not blank, the
   host name's pattern, one of the form's 48 keyboards, a time zone) and writes them as `<machine>/first-start.answers`
-  (mode 600) with `first-start.unattended` beside it. At the machine's first start `run-omarchy.sh` has
+  (mode 600) with `first-start.unattended` beside it. An Omarchy 4.5 machine (btrfs) has `provision`, `gum` and the
+  drop-in in its image, and gets the answers as the credential `mylinux.answers` at its first start, which
+  `omarchy/native/mylinux-credentials` puts at `/var/lib/mylinux/answers` before the setup runs. For a Try Omarchy
+  guest, at the machine's first start `run-omarchy.sh` has
   `tools/omarchy-bake-answers.sh` write into the new disk, with `debugfs`: `/var/lib/mylinux/answers` (root's alone,
   in a folder that is root's alone), `/var/lib/mylinux/bin/gum`, `/var/lib/mylinux/provision`, and a drop-in for
   `omarchy-provision-owner.service` whose `ExecStart` is that `provision`; the file on the Mac is removed. `provision`

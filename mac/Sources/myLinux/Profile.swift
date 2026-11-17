@@ -116,10 +116,11 @@ struct Profile: Codable, Identifiable, Hashable {
     /// The script that starts this kind of machine, relative to the scripts folder.
     var script: String { kind == .windows ? "run-windows.sh" : kind.runsDesktop ? "run-omarchy.sh" : kind.isServer ? "run-\(kind.rawValue).sh" : "run.sh" }
     /// A desktop machine that has been started before: its disk and what its first start put beside it (a Linux
-    /// desktop's kernel, a Windows machine's firmware settings). Only a new one needs the download.
+    /// desktop's kernel, a Windows machine's or an Omarchy 4.5's firmware settings). Only a new one needs the download.
     var desktopCreated: Bool {
-        let beside = machineFolder.appendingPathComponent(kind == .windows ? "vars.fd" : "boot/vmlinuz-linux").path
-        return FileManager.default.fileExists(atPath: appsDisk) && FileManager.default.fileExists(atPath: beside)
+        let beside = (kind == .windows || kind == .omarchy ? ["vars.fd"] : []) + (kind == .windows ? [] : ["boot/vmlinuz-linux"])
+        return FileManager.default.fileExists(atPath: appsDisk)
+            && beside.contains { FileManager.default.fileExists(atPath: machineFolder.appendingPathComponent($0).path) }
     }
     /// Windows is installed in this machine: its own setup script said so (setup.log, through a virtio port), and
     /// run-windows.sh keeps the word as a file from the next start on. Until then a start is Windows Setup, at the

@@ -257,7 +257,9 @@ final class RuntimeManager: ScriptDownloader {
 }
 
 /// A desktop guest, kept in <out>/<kind>; every machine of that kind has its disk unpacked from it on its first start.
-/// Omarchy (tools/get-omarchy.sh): downloaded once (1.7 GB) from the Try Omarchy project's signed release. Arch Linux
+/// Omarchy (tools/get-omarchy.sh): about 3.7 GB, our build (tools/build-omarchy-image.sh) of Omarchy's own install from
+/// its signed release ISO, with Try Omarchy's guest package, from mylinux-releases (until 0.8.7 the Try Omarchy project's
+/// signed release; machines made from that keep their own kernel and disk). Arch Linux
 /// with Plasma (tools/get-arch.sh): about 2 GB, our build (tools/build-arch-image.sh) from mylinux-releases. Kali
 /// Linux with Xfce (tools/get-kali.sh): about 2 GB, our build (tools/build-kali-image.sh) from Kali's packages.
 /// Fedora, Rocky Linux and CentOS Stream with GNOME (tools/get-fedora.sh and so on): our builds
@@ -286,13 +288,13 @@ final class DesktopImageManager: ScriptDownloader {
     init(_ kind: Profile.Kind) { self.kind = kind; super.init() }
 
     /// For the download rows: the size and where it comes from.
-    var size: String { kind == .windows ? "about 8 GB" : kind == .arch || kind == .kali ? "about 2 GB" : kind == .fedora ? "1.6 GB" : kind == .rocky ? "630 MB" : kind == .centos ? "610 MB" : "1.7 GB" }
+    var size: String { kind == .windows ? "about 8 GB" : kind == .arch || kind == .kali ? "about 2 GB" : kind == .fedora ? "1.6 GB" : kind == .rocky ? "630 MB" : kind == .centos ? "610 MB" : "about 3.7 GB" }
     var detail: String {
         kind == .windows ? "the Arm64 ISO you download from Microsoft (about 8 GB), and the virtio drivers (877 MB to fetch, 3 MB kept)"
         : kind == .kali ? "about 2 GB, Kali's Xfce desktop and its top tools, built by myLinux from Kali's packages"
         : kind.isGnome ? "\(size), \(kind.title) with GNOME and Firefox, built by myLinux from \(kind.title)'s packages"
         : kind == .arch ? "about 2 GB, Arch Linux ARM with KDE Plasma, built by myLinux"
-                      : "1.7 GB, from the Try Omarchy project's signed release"
+                      : "about 3.7 GB, Omarchy 4.5 from its signed release ISO, with Try Omarchy's Mac integration"
     }
 
     func refresh(_ settings: AppSettings = .shared) {

@@ -16,7 +16,7 @@ start on a MacBook Pro with an M4 Pro: until the desktop is on screen, or a serv
 
 | Machine | What it is | Download | Ready in |
 |---|---|---|---|
-| Omarchy | Arch Linux with Hyprland, run from the keyboard: the [Try Omarchy](https://github.com/omacom/try-omarchy) project's signed image | 1.7 GB | 9 s |
+| Omarchy | Arch Linux with Hyprland, run from the keyboard: Omarchy 4.5 from its own signed ISO, with the [Try Omarchy](https://github.com/omacom/try-omarchy) project's Mac integration | 3.7 GB | under 30 s |
 | Arch Linux | KDE Plasma with a taskbar, a start menu and Firefox, built here from Arch Linux ARM's packages | 2 GB | 7 s |
 | Kali Linux | Xfce with nmap, Metasploit, Wireshark and Kali's other top tools, built here from Kali's packages | 2 GB | 7 s |
 | Fedora | Fedora 45 with GNOME and Firefox, built here from Fedora's packages | 1.6 GB | 9 s |

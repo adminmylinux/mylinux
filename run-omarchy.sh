@@ -66,6 +66,15 @@ case "$CPUS" in ''|*[!0-9]*) die "CPUS must be a number" ;; esac
 [ "$CPUS" -ge 1 ] && [ "$CPUS" -le "$NCPU" ] || die "CPUS out of range: $CPUS (this Mac has $NCPU)"
 DISK=$(abs "${DISK:-$OUT/$DESKTOP-machine/$DESKTOP.ext4}")
 MACHINE=$(dirname "$DISK")
+# Omarchy 4.5 and later (tools/build-omarchy-image.sh: Omarchy's own install with Try Omarchy's guest package) boots
+# through the firmware from a disk of its own: its kernel and command line are the guest's, so `omarchy update` keeps
+# working. Its settings come as the systemd credential tryomarchy.host, not on a kernel line. A machine made before from
+# Try Omarchy's guest (boot/ beside its disk, the name kept for the launcher) starts as it always did.
+NATIVE=0
+if [ "$DESKTOP" = omarchy ]; then
+  if [ -f "$MACHINE/vars.fd" ]; then NATIVE=1
+  elif [ ! -f "$DISK" ] && [ ! -d "$MACHINE/boot" ]; then NATIVE=1; fi
+fi
 DISK_SIZE_GB="${DISK_SIZE_GB:-32}"
 case "$DISK_SIZE_GB" in ''|*[!0-9]*) die "DISK_SIZE_GB must be a whole number of GB" ;; esac
 [ "$DISK_SIZE_GB" -ge 8 ] && [ "$DISK_SIZE_GB" -le 2000 ] || die "DISK_SIZE_GB out of range: $DISK_SIZE_GB (8-2000)"
@@ -125,7 +134,37 @@ export MYLINUX_SIZE_BUTTONS=1     # the window's −10% / +10% / full screen but
 export MYLINUX_DESKTOP_MODE="${GX}x${GY}"
 
 # ---- first start of this machine: unpack the factory disk, grow it, keep the matching kernel beside it ----------
-if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then
+GIVE_ANSWERS=0; GIVE_TOOLS=0      # a native machine's first start hands these over as credentials (below)
+if [ "$NATIVE" = 1 ] && [ "${DRYRUN:-0}" != 1 ] && [ ! -f "$DISK" ]; then
+  [ -s "$G/omarchy.raw.zst" ] && [ -s "$G/edk2-aarch64-code.fd" ] || die "Omarchy is not downloaded: run $GET"
+  mkdir -p "$MACHINE"
+  echo "creating $DISK ($DISK_SIZE_GB GB, sparse) from Omarchy $(cat "$G/$REVFILE" 2>/dev/null) ..."
+  "$OUT/qemu-runtime/bin/zstd" -d -q -f --sparse -o "$DISK.new" "$G/omarchy.raw.zst" || { rm -f "$DISK.new"; die "could not unpack the disk"; }
+  # the guest grows its root partition and filesystem into the rest (Try Omarchy's grow-root)
+  grow_file "$DISK.new" "$DISK_SIZE_GB" || { rm -f "$DISK.new"; die "could not grow the disk"; }
+  # the firmware (QEMU's edk2) and its settings, the machine's own: it starts without the download from now on
+  cp -c "$G/edk2-aarch64-code.fd" "$MACHINE/edk2-aarch64-code.fd" 2>/dev/null || cp "$G/edk2-aarch64-code.fd" "$MACHINE/edk2-aarch64-code.fd"
+  cp "$G/$REVFILE" "$MACHINE/$REVFILE" 2>/dev/null || true
+  dd if=/dev/zero of="$MACHINE/vars.fd" bs=1 count=0 seek=67108864 2>/dev/null
+  # what was given beforehand (the launcher's dialog, mylinux create omarchy --unattended): the answers to Omarchy's
+  # first-start questions, Claude Code and Codex to set up, as credentials of this start (omarchy/native)
+  if [ -f "$MACHINE/first-start.answers" ]; then
+    if grep -q '^username=.' "$MACHINE/first-start.answers" && grep -q '^password=.' "$MACHINE/first-start.answers"; then
+      GIVE_ANSWERS=1
+    else
+      echo "run-omarchy.sh: the first-start answers name no user or no password: Omarchy asks its questions in the window" >&2
+      [ ! -f "$MACHINE/first-start.unattended" ] || echo asked > "$MACHINE/first-start.unattended"
+    fi
+  fi
+  if [ -f "$MACHINE/first-start.tools-request" ] && grep -q 'def apply(' "$MACHINE/first-start.tools-script" 2>/dev/null; then
+    GIVE_TOOLS=1
+    rm -f "$MACHINE/first-start.tools"
+  elif [ -f "$MACHINE/first-start.tools-request" ]; then
+    echo "run-omarchy.sh: Claude Code and Codex are set up once the desktop is there, by the launcher" >&2
+    rm -f "$MACHINE/first-start.tools-boot"
+  fi
+  mv "$DISK.new" "$DISK"
+elif [ "$NATIVE" = 0 ] && [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinuz-linux" ] || [ ! -s "$MACHINE/boot/initramfs-linux.img" ]; }; then
   [ -s "$G/rootfs.ext4.zst" ] && [ -s "$G/vmlinuz-linux" ] && [ -s "$G/initramfs-linux.img" ] || die "the $TITLE_NAME guest is not downloaded: run $GET"
   [ ! -f "$DISK" ] || die "$DISK exists but $MACHINE/boot (its kernel and initramfs) is missing; restore it or move the disk away"
   mkdir -p "$MACHINE/boot"
@@ -156,14 +195,33 @@ if [ "${DRYRUN:-0}" != 1 ] && { [ ! -f "$DISK" ] || [ ! -s "$MACHINE/boot/vmlinu
   fi
   cp "$G/vmlinuz-linux" "$G/initramfs-linux.img" "$MACHINE/boot/"; cp "$G/$REVFILE" "$MACHINE/boot/$REVFILE" 2>/dev/null || true
   mv "$DISK.new" "$DISK"
-elif [ "${DRYRUN:-0}" != 1 ] && [ "$DESKTOP" = omarchy ]; then
+elif [ "${DRYRUN:-0}" != 1 ] && [ "$DESKTOP" = omarchy ] && [ "$NATIVE" = 0 ]; then
   # a machine made earlier: its session tool brought up to date (Apps… needs the agent's "apps"), if it was shut down cleanly
   tools/omarchy-update-session.sh "$DISK" omarchy/session || true
 fi
 # Fedora, Rocky Linux, CentOS Stream: their desktop agent as this launcher's, in a new disk and in one made earlier
 # (Claude Install…'s requests came in 0.7.96), if it was shut down cleanly
 case "$DESKTOP" in fedora|rocky|centos) [ "${DRYRUN:-0}" = 1 ] || tools/gnome-update-desktop.sh "$DISK" gnome/mylinux-desktop || true ;; esac
-[ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.answers"      # they name a password: in the new disk by now, or of no use
+# A native machine's credentials (omarchy/native/mylinux-credentials puts them in place inside): the session tool at
+# every start, the answers and the tools request at its first. Each is one SMBIOS type-11 string in a file that QEMU
+# reads through a descriptor left open for it: the file is removed before QEMU starts, so neither the password nor a
+# token is left on the Mac, and nothing depends on when QEMU reads it.
+FDS=""
+cred() {   # cred <name> <file> <descriptor>
+  [ "${DRYRUN:-0}" = 1 ] || {
+    { printf 'io.systemd.credential.binary:%s=' "$1"; base64 < "$2" | tr -d '\n'; } > "$CT/$1" || die "could not prepare the credential $1"
+    eval "exec $3<\"\$CT/\$1\"" && rm -f "$CT/$1"
+  }
+  FDS="$FDS $3"
+}
+if [ "$NATIVE" = 1 ]; then
+  CT=$(mktemp -d "${TMPDIR:-/tmp}/mylinux-creds.XXXXXX")
+  cred mylinux.session omarchy/session/omarchy-session 3
+  [ "$GIVE_ANSWERS" = 0 ] || cred mylinux.answers "$MACHINE/first-start.answers" 4
+  [ "$GIVE_TOOLS" = 0 ] || { cred mylinux.tools-request "$MACHINE/first-start.tools-request" 5; cred mylinux.tools-script "$MACHINE/first-start.tools-script" 6; }
+  rmdir "$CT"
+fi
+[ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.answers"      # they name a password: in the new disk (or its credentials) by now, or of no use
 [ "${DRYRUN:-0}" = 1 ] || rm -f "$MACHINE/first-start.tools-request" "$MACHINE/first-start.tools-script"     # (a token can be in it)
 SERIAL="${SERIAL:-file:$MACHINE/console.log}"
 case "$SERIAL" in
@@ -175,7 +233,6 @@ esac
 QEMU="$OUT/myLinux-omarchy.app/Contents/MacOS/qemu-myLinux"
 set -- \
   -name "$NAME" -M virt,gic-version=3 -accel hvf -cpu host,pmu=off -smp "$CPUS" -m "$MEM" \
-  -kernel "$MACHINE/boot/vmlinuz-linux" -initrd "$MACHINE/boot/initramfs-linux.img" -append "$APPEND" \
   -drive "if=none,id=root,file=$DISK,format=raw,media=disk,cache=writeback" -device "virtio-blk-pci,drive=root,serial=$DESKTOP-root,romfile=" \
   -device "virtio-gpu-gl-pci,max_outputs=1,xres=$GX,yres=$GY,romfile=" \
   -device virtio-keyboard-pci,romfile= -device virtio-tablet-pci,romfile= \
@@ -185,6 +242,16 @@ set -- \
   -device virtio-serial-pci,id=ser,romfile= -chardev "$CONSOLE" -device virtconsole,bus=ser.0,nr=0,chardev=hvc0 \
   -display "cocoa,gl=es,show-cursor=on,zoom-to-fit=off,$KEYS" \
   "$@"
+if [ "$NATIVE" = 1 ]; then
+  # the firmware boots the disk's own Limine; the launcher's settings are the credential tryomarchy.host (Try Omarchy's
+  # host-config publishes it in the guest), the same tokens an older guest took on its kernel line
+  HOST=$(printf '%s\n' $APPEND | grep -E '^(omarchy|tryomarchy)\.' | tr '\n' ' ' | sed 's/ $//')
+  set -- "$@" -drive "if=pflash,format=raw,readonly=on,file=$MACHINE/edk2-aarch64-code.fd" -drive "if=pflash,format=raw,file=$MACHINE/vars.fd" \
+    -smbios "type=11,value=io.systemd.credential:tryomarchy.host=$HOST"
+  for fd in $FDS; do set -- "$@" -smbios "type=11,path=/dev/fd/$fd"; done
+else
+  set -- "$@" -kernel "$MACHINE/boot/vmlinuz-linux" -initrd "$MACHINE/boot/initramfs-linux.img" -append "$APPEND"
+fi
 if [ "${CLIPBOARD:-1}" = 1 ]; then
   # the port Omarchy's own clipboard agent waits for; the Mac side is tools/omarchy-clipboard.py
   set -- "$@" -chardev "socket,id=clip,path=$CLIPSOCK,server=on,wait=off" \

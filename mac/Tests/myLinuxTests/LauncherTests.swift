@@ -877,6 +877,19 @@ final class OmarchyProfileTests: XCTestCase {
             XCTAssertTrue(WelcomeSheet.offers.contains { $0.kind == kind })
         }
     }
+    /// An Omarchy made before 0.8.7 has the kernel its disk came with beside it; one made from Omarchy 4.5's image boots
+    /// through the firmware and has the firmware's settings there instead. Either is started; a disk alone is not.
+    func testAnOmarchyIsMadeWithItsKernelOrItsFirmwareSettingsBesideTheDisk() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-om-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("boot"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let p = ProfileStore.newProfile(named: "O", kind: .omarchy, folder: dir)
+        XCTAssertFalse(p.desktopCreated)
+        try Data().write(to: URL(fileURLWithPath: p.appsDisk)); XCTAssertFalse(p.desktopCreated, "a disk alone is not a started machine")
+        try Data().write(to: dir.appendingPathComponent("vars.fd")); XCTAssertTrue(p.desktopCreated, "Omarchy 4.5")
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("vars.fd"))
+        try Data().write(to: dir.appendingPathComponent("boot/vmlinuz-linux")); XCTAssertTrue(p.desktopCreated, "Try Omarchy's guest")
+    }
     func testWindowsIsADesktopWithItsOwnScript() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux-win-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

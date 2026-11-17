@@ -205,7 +205,14 @@ echo "run-omarchy.sh (DRYRUN, with the fake runtime)"
 out=$(cd / && DRYRUN=1 SCALE=1 RES=1600x1000 DISK="$T/om/omarchy.ext4" SHARE_DIR="$T/om/Mac Files" NAME="Omarchy test" sh "$W/run-omarchy.sh" -qmp none 2>&1); rc=$?
 is_rc "dry run works from another directory" $rc 0
 has "root disk path is passed intact" "$out" "file=$T/om/omarchy.ext4,format=raw"
-has "the kernel comes from the machine's own boot folder" "$out" "$T/om/boot/vmlinuz-linux"
+has "a new machine boots its own disk through the firmware beside it" "$out" "if=pflash,format=raw,readonly=on,file=$T/om/edk2-aarch64-code.fd"
+has "its settings travel as the credential tryomarchy.host" "$out" "type=11,value=io.systemd.credential:tryomarchy.host=omarchy.qemu_virgl=1"
+has "the session tool is handed over as a credential on a descriptor" "$out" "type=11,path=/dev/fd/3"
+case "$out" in *-kernel*) ko "a new machine is given no kernel" ;; *) ok "a new machine is given no kernel" ;; esac
+mkdir -p "$T/om0/boot"
+o2=$(cd "$W" && DRYRUN=1 SCALE=1 RES=1600x1000 DISK="$T/om0/omarchy.ext4" sh run-omarchy.sh 2>&1)
+has "a machine made before 0.8.7 keeps the kernel from its own boot folder" "$o2" "$T/om0/boot/vmlinuz-linux"
+case "$o2" in *pflash*|*smbios*) ko "a machine made before 0.8.7 starts as it did" ;; *) ok "a machine made before 0.8.7 starts as it did" ;; esac
 has "accelerated GPU at the asked size, no ROM" "$out" "virtio-gpu-gl-pci,max_outputs=1,xres=1600,yres=1000,romfile="
 has "window fixed to the guest size" "$out" "zoom-to-fit=off"
 o2=$(cd "$W" && DRYRUN=1 SCALE=2 RES=1600x1000 sh run-omarchy.sh 2>&1); has "Retina: the guest gets twice the points" "$o2" "xres=3200,yres=2000,romfile="

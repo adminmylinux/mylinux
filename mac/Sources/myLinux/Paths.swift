@@ -108,11 +108,13 @@ final class AppSettings: ObservableObject {
         return (try? String(contentsOf: outDir.appendingPathComponent("qemu-runtime/RUNTIME-REVISION"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    /// A desktop guest (tools/get-omarchy.sh, tools/get-arch.sh): kernel, initramfs and the compressed factory disk.
+    /// A desktop guest (tools/get-arch.sh and the others): kernel, initramfs and the compressed factory disk; Omarchy's
+    /// (tools/get-omarchy.sh) is a whole disk that boots through the firmware beside it.
     func desktopPresent(_ kind: Profile.Kind) -> Bool {
         let dir = outDir.appendingPathComponent(kind.rawValue, isDirectory: true)
         // Windows (tools/get-windows.sh): Microsoft's ISO as the user gave it, the virtio drivers and the firmware
         let files = kind == .windows ? ["windows.iso", "drivers/NetKVM/netkvm.inf", "drivers/viogpudo/viogpudo.inf", "drivers/vioserial/vioser.inf", "edk2-aarch64-code.fd"]
+                     : kind == .omarchy ? ["omarchy.raw.zst", "edk2-aarch64-code.fd"]
                                      : ["vmlinuz-linux", "initramfs-linux.img", "rootfs.ext4.zst"]
         return files.allSatisfy {
             ((try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent($0).path)[.size] as? NSNumber)?.int64Value ?? 0) > 0
