@@ -590,6 +590,9 @@ fi
 is_rc "get-windows.sh --remove" $rc 0
 file_absent "--remove: Windows's files gone" "$WG"
 (cd "$W" && sh tools/get-omarchy.sh --remove >/dev/null 2>&1); rc=$?
+mkdir -p "$T/oldcache/omarchy"; echo v0.6.0 > "$T/oldcache/omarchy/OMARCHY-REVISION"; : > "$T/oldcache/omarchy/rootfs.ext4.zst"
+out=$(cd "$W" && MYLINUX_CACHE="$T/oldcache" sh tools/get-omarchy.sh --check 2>&1)
+has "a saved Try Omarchy guest is not offered as the saved Omarchy" "$out" "cached: none"
 is_rc "get-omarchy.sh --remove" $rc 0
 (cd "$W" && MYLINUX_RUNTIME_FILE="$A" sh tools/get-qemu-runtime.sh >/dev/null 2>&1)
 file_exists "a second install keeps the previous runtime" "$W/out/qemu-runtime.prev"

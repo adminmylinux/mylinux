@@ -21,6 +21,9 @@ OUT="${MYLINUX_OUT:-out}"
 DEST="$OUT/omarchy"
 if [ "${1:-}" = --remove ]; then rm -rf "$DEST"; echo "removed $DEST"; exit 0; fi
 CACHED=$(cache_rev omarchy OMARCHY-REVISION)
+# a saved Try Omarchy guest (a launcher before 0.8.7 saved that) is not this image: as if nothing were saved, so it is
+# neither offered nor installed, and the download replaces it
+[ -z "$CACHED" ] || [ -s "$CACHE/omarchy/omarchy.raw.zst" ] || CACHED=""
 [ "${1:-}" = --check ] && { check_report "$CACHED" "$TAG"; exit 0; }
 [ "${MYLINUX_FROM_CACHE:-0}" = 1 ] && [ -n "$CACHED" ] && TAG=$CACHED
 [ "$(uname -sm)" = "Darwin arm64" ] || { echo "the Omarchy guest is for Apple-silicon Macs" >&2; exit 1; }
