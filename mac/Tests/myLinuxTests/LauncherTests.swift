@@ -2285,6 +2285,40 @@ final class AskAITests: XCTestCase {
         XCTAssertTrue(s.contains("user viktor, password stored"))
         XCTAssertTrue(s.contains("mylinux create <kind>"), "the commands are the command line's own")
     }
+    /// The Terminal tab's script, run by bash in a scratch home with stand-ins for the agent and for mylinux: the skill
+    /// installed when it is not there (and not again when it is), then the agent, then the shell; and without the agent
+    /// how to get it. Paths with spaces and quotes, as the app's own has.
+    func testTheTerminalTabInstallsTheSkillWhenItIsMissingThenStartsTheAgent() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mylinux ask'ai \(UUID().uuidString)")
+        let home = dir.appendingPathComponent("home"), bin = dir.appendingPathComponent("my bin")
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func tool(_ name: String, _ body: String) throws -> String {
+            let u = bin.appendingPathComponent(name)
+            try ("#!/bin/sh\n" + body).write(to: u, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: u.path)
+            return u.path
+        }
+        let mylinux = try tool("mylinux", #"[ "$1 $2 $3 $4" = "skill install --agent claude" ] && mkdir -p "$HOME/.claude/skills/mylinux" && echo skill > "$HOME/.claude/skills/mylinux/SKILL.md" && echo '{"ok":true}'"#)
+        let agent = try tool("claude", "echo \"agent started in $(pwd), PATH begins $(echo $PATH | cut -d: -f1)\"")
+        func run(_ script: String) throws -> String {
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash"); p.arguments = ["-c", script]
+            p.environment = ["HOME": home.path, "PATH": "/usr/bin:/bin"]; p.currentDirectoryURL = home
+            let out = Pipe(); p.standardOutput = out; p.standardError = out; p.standardInput = FileHandle.nullDevice
+            try p.run(); p.waitUntilExit()
+            return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        }
+        let script = AskAI.terminalScript(agent: .claude, executable: agent, mylinux: mylinux)
+        let first = try run(script)
+        XCTAssertTrue(first.contains("installing it (mylinux skill install --agent claude)") && first.contains("  installed"), first)
+        XCTAssertTrue(first.contains("agent started in /") && first.contains("\(dir.lastPathComponent)/home, PATH begins \(bin.path)"), first)   // (pwd says /private/var)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: home.appendingPathComponent(".claude/skills/mylinux/SKILL.md").path))
+        let again = try run(script)
+        XCTAssertFalse(again.contains("installing"), "there now: not again"); XCTAssertTrue(again.contains("agent started"), again)
+        let none = try run(AskAI.terminalScript(agent: .codex, executable: nil, mylinux: mylinux))
+        XCTAssertTrue(none.contains("Codex is not installed on this Mac. To install it: npm install -g @openai/codex"), none)
+    }
     func testTheAnswersJSONIsFoundInsideProseOrFences() throws {
         let p = try AI.decode(AskAI.Plan.self, from: "Here you go:\n```json\n{\"say\":\"Making it\",\"commands\":[[\"create\",\"tiny\"]]}\n```")
         XCTAssertEqual(p, AskAI.Plan(say: "Making it", commands: [["create", "tiny"]]))

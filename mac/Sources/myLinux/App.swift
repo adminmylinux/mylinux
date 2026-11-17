@@ -121,6 +121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // asking it, photographed once the answer is there (or after 60 s), and nothing run
         if let request = ProcessInfo.processInfo.environment["MYLINUX_TEST_ASK_WINDOW"], let png = ProcessInfo.processInfo.environment["MYLINUX_TEST_SHOT"],
            ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            // MYLINUX_TEST_ASK_TAB=terminal: that tab in front
+            if let t = ProcessInfo.processInfo.environment["MYLINUX_TEST_ASK_TAB"] { UserDefaults.standard.set(t, forKey: "ai.tab") }
             AskAIWindow.show(asking: request.isEmpty ? nil : request)
             // MYLINUX_TEST_OPEN_SETTINGS=1: its Settings… button's action as well, and which windows are open then
             if ProcessInfo.processInfo.environment["MYLINUX_TEST_OPEN_SETTINGS"] == "1" {

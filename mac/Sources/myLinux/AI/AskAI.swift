@@ -150,6 +150,29 @@ enum AskAI {
         return out.joined(separator: " ")
     }
 
+    /// The Terminal tab's script, run by a login bash: the launcher's skill put where the agent looks when it is not
+    /// there (the launcher's own `mylinux skill install`, shown as it happens), then the agent, and the shell itself
+    /// once the agent ends. Without the agent on this Mac: how to install it, and the shell.
+    static func terminalScript(agent: AI.Provider, executable: String?, mylinux: String) -> String {
+        func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let name = agent.label, folder = agent == .claude ? ".claude" : ".codex"
+        guard let exe = executable else {
+            let how = agent == .claude ? "curl -fsSL https://claude.ai/install.sh | bash" : "npm install -g @openai/codex"
+            return "printf '%s\\n' \(q("\(name) is not installed on this Mac. To install it: \(how)"))\nexec /bin/bash -l"
+        }
+        let dir = (exe as NSString).deletingLastPathComponent
+        return """
+            export PATH=\(q(dir)):"$PATH"
+            if [ ! -f "$HOME/\(folder)/skills/mylinux/SKILL.md" ]; then
+              printf '%s\\n' \(q("myLinux's skill for \(name) is not there yet: installing it (mylinux skill install --agent \(agent.rawValue))"))
+              if \(q(mylinux)) skill install --agent \(agent.rawValue) >/dev/null 2>&1; then echo '  installed'
+              else printf '%s\\n' \(q("  it could not be installed: File › Install the Agents' Skill… says why")); fi
+            fi
+            \(q(exe))
+            exec /bin/bash -l
+            """
+    }
+
     /// One line for a command's answer.
     static func outcome(_ reply: CLI.Reply) -> (ok: Bool, text: String) {
         let j = reply.json

@@ -1,21 +1,25 @@
 import SwiftUI
 import AppKit
 
-/// The Ask AI… window (File › Ask AI…, ⌘J, the toolbar's sparkles): the request, what the AI made of it, the commands
-/// shown before anything runs, and their outcome. Fixed in size: a hosted SwiftUI window that changes its own height
-/// has crashed the launcher on a Retina display (0.7.61).
+/// The Ask AI… window (File › Ask AI…, ⌘J, the toolbar's sparkles), two tabs: Ask (the request, what the AI made of it,
+/// the commands shown before anything runs, and their outcome) and Terminal (a bash on this Mac that starts the chosen
+/// agent with the launcher's skill in place). Fixed in size: a hosted SwiftUI window that changes its own height has
+/// crashed the launcher on a Retina display (0.7.61).
 enum AskAIWindow {
     private static var window: NSWindow?
     /// `asking`: a request asked at once (the test hook MYLINUX_TEST_ASK_WINDOW).
     static func show(asking: String? = nil) {
         NSApp.activate()
         if let w = window { w.makeKeyAndOrderFront(nil); return }
-        let w = NSWindow(contentViewController: NSHostingController(rootView: AskAIView(asking: asking).frame(width: 640, height: 540)))
+        let w = NSWindow(contentViewController: NSHostingController(rootView: AskAIView(asking: asking).frame(width: 720, height: 580)))
         w.title = "Ask AI"
         w.styleMask = [.titled, .closable, .miniaturizable]
         w.isReleasedWhenClosed = false
-        w.setContentSize(NSSize(width: 640, height: 540))
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in window = nil }
+        w.setContentSize(NSSize(width: 720, height: 580))
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
+            MainActor.assumeIsolated { AgentTerminalModel.current?.close() }       // the agent and its shell end with the window
+            window = nil
+        }
         window = w
         w.center()
         w.makeKeyAndOrderFront(nil)
@@ -82,14 +86,88 @@ enum AskAIWindow {
     func reset() { step = .idle; say = ""; commands = []; refused = []; missing = []; results = []; error = nil }
 }
 
+/// The Terminal tab: one bash on this Mac at a time, kept while the window is open (switching tabs leaves it running).
+@MainActor final class AgentTerminalModel: ObservableObject {
+    static weak var current: AgentTerminalModel?
+    @Published private(set) var terminal: GhosttySshTerminal?
+    @Published var ended = false
+    init() { AgentTerminalModel.current = self }
+
+    func open() {
+        guard terminal == nil else { return }
+        let agent = AI.provider
+        let exe = agent == .claude ? ClaudeCode.executable?.path : Codex.executable?.path
+        // a folder of its own, not the home folder: the agent asks once whether to trust it, and its context is not all of ~
+        let folder = Paths.support.appendingPathComponent("agent", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let t = GhosttySshTerminal(localScript: AskAI.terminalScript(agent: agent, executable: exe, mylinux: CLI.Skill.command),
+                                   directory: folder.path, title: agent.label)
+        t.onExit = { [weak self, weak t] _ in guard let self, self.terminal === t else { return }; self.ended = true }
+        t.start()
+        terminal = t; ended = false
+    }
+    func again() { close(); open() }
+    func close() { let t = terminal; terminal = nil; t?.terminate() }
+}
+
+/// The terminal in the SwiftUI tab, hidden (not torn down) while the Ask tab is in front.
+struct AgentTerminalView: NSViewRepresentable {
+    let terminal: GhosttySshTerminal
+    let visible: Bool
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ box: NSView, context: Context) {
+        if terminal.superview !== box {
+            box.subviews.forEach { $0.removeFromSuperview() }
+            terminal.frame = box.bounds; terminal.autoresizingMask = [.width, .height]
+            box.addSubview(terminal)
+        }
+        box.isHidden = !visible
+        if visible { DispatchQueue.main.async { box.window?.makeFirstResponder(terminal.keyView) } }
+    }
+}
+
 struct AskAIView: View {
     var asking: String?
     @StateObject private var model = AskAIModel()
+    @StateObject private var term = AgentTerminalModel()
+    @AppStorage("ai.tab") private var tab = "ask"
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Picker("", selection: $tab) { Text("Ask").tag("ask"); Text("Terminal").tag("terminal") }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 220)
+                Spacer()
+            }
             provider
+            ZStack(alignment: .topLeading) {
+                askTab.opacity(tab == "ask" ? 1 : 0).allowsHitTesting(tab == "ask")
+                if let t = term.terminal {
+                    AgentTerminalView(terminal: t, visible: tab == "terminal")
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.15)))
+                        .opacity(tab == "terminal" ? 1 : 0)
+                }
+                if tab == "terminal" && term.ended {
+                    VStack(spacing: 10) {
+                        Text("The terminal ended.").foregroundStyle(.secondary)
+                        Button("Open Again") { term.again() }.keyboardShortcut(.defaultAction)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+        .padding(16)
+        .onAppear {
+            model.checkProvider()
+            if tab == "terminal" { term.open() } else { focused = true }
+            if let asking { tab = "ask"; model.request = asking; model.ask() }
+        }
+        .onChange(of: tab) { _, now in if now == "terminal" { term.open() } else { focused = true } }
+    }
+
+    private var askTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 TextField("Tell the launcher what to do: “Create omarchy machine 8/32 with username viktor and the rest as default”",
                           text: $model.request, axis: .vertical)
@@ -106,11 +184,6 @@ struct AskAIView: View {
             Divider()
             ScrollView { answer.frame(maxWidth: .infinity, alignment: .leading) }
             Spacer(minLength: 0)
-        }
-        .padding(16)
-        .onAppear {
-            model.checkProvider(); focused = true
-            if let asking { model.request = asking; model.ask() }
         }
     }
 

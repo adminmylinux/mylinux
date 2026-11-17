@@ -47,6 +47,14 @@ final class GhosttySshTerminal: NSView, MachineTerminal {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A script in a login bash on this Mac instead of ssh (Ask AI's Terminal tab), in that folder.
+    private var local: (script: String, directory: String)?
+    convenience init(localScript: String, directory: String, title: String) {
+        var p = RemoteProfile(kind: .ssh); p.name = title
+        self.init(profile: p)
+        local = (localScript, directory)
+    }
+
     var keyView: NSView { surfaceView }
 
     override func layout() {
@@ -78,6 +86,7 @@ final class GhosttySshTerminal: NSView, MachineTerminal {
             env["DISPLAY"] = "myLinux"
         }
         var command = GhosttySshTerminal.commandLine("/usr/bin/ssh", args)
+        if let local { command = GhosttySshTerminal.commandLine("/bin/bash", ["-l", "-c", local.script]) }
         // MYLINUX_LOCAL_SHELL=1: a local shell instead of ssh, for looking at the window without a machine
         if ProcessInfo.processInfo.environment["MYLINUX_LOCAL_SHELL"] == "1" {
             command = GhosttySshTerminal.commandLine("/bin/sh", ["-c", "printf 'Xabcdefghij first column check\\n0123456789 second line\\n'; exec /bin/sh -i"])
@@ -86,7 +95,7 @@ final class GhosttySshTerminal: NSView, MachineTerminal {
         }
         surfaceView.delegate = self
         surfaceView.configuration = TerminalSurfaceOptions(
-            backend: .exec, workingDirectory: FileManager.default.homeDirectoryForCurrentUser.path,
+            backend: .exec, workingDirectory: local?.directory ?? FileManager.default.homeDirectoryForCurrentUser.path,
             envVars: env, command: command, waitAfterCommand: false)
         surfaceView.controller = GhosttySshTerminal.controller
     }

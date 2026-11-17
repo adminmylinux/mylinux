@@ -545,8 +545,10 @@ pointer while it is fullscreen or after ⌘⌃G.
   (`say`, `commands`), the commands checked (kinds, list, status, create, start, stop, restart, delete, claude, codex;
   no `--wait`), a new Omarchy's account filled in from `MachineDefaults` (the password from the Keychain item
   "myLinux Defaults"), and each one carried out by `CLIService.handle` when the person presses Run, stopping at the
-  first that fails. `AskAIView.swift`: the window (fixed size), and the defaults form it shows first when a command
-  needs what is not stored.
+  first that fails. `AskAIView.swift`: the window (fixed size) with two tabs, and the defaults form it shows first when
+  a command needs what is not stored. Its Terminal tab is a `GhosttySshTerminal` running a local script
+  (`AskAI.terminalScript`, in a login bash, in `<data folder>/agent`): `mylinux skill install --agent claude|codex`
+  when the skill is not in that agent's folder, then the agent, then `exec bash -l`; it lives as long as the window.
 - `FirstStartSheet.swift`: the dialog a new Omarchy or Windows machine is made with in the launcher's window
   (+ and File › New Omarchy Machine… / New Windows Machine…), a grid of two columns (name and user, the password
   twice, keyboard and time zone or edition, memory and disk size, host name and the Mac folder to share): the
