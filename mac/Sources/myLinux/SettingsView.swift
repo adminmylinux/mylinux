@@ -1,17 +1,18 @@
 import SwiftUI
 import AppKit
 
-/// The launcher's Settings: a category list on the left (Terminal, Images & runtime, Windows, Storage, Updates, Developer)
+/// The launcher's Settings: a category list on the left (Terminal, Images & runtime, Windows, AI, Storage, Updates, Developer)
 /// and one page at a time, each short, with the technical details folded under "Details".
 struct SettingsView: View {
     enum Page: String, CaseIterable, Identifiable {
-        case terminal, images, windows, storage, updates, developer
+        case terminal, images, windows, ai, storage, updates, developer
         var id: String { rawValue }
         var title: String {
             switch self {
             case .terminal: return "Terminal"
             case .images: return "Images & runtime"
             case .windows: return "Windows"
+            case .ai: return "AI"
             case .storage: return "Storage"
             case .updates: return "Updates"
             case .developer: return "Developer"
@@ -22,6 +23,7 @@ struct SettingsView: View {
             case .terminal: return "terminal"
             case .images: return "shippingbox"
             case .windows: return "macwindow.on.rectangle"
+            case .ai: return "sparkles"
             case .storage: return "internaldrive"
             case .updates: return "arrow.down.circle"
             case .developer: return "chevron.left.forwardslash.chevron.right"
@@ -64,6 +66,7 @@ struct SettingsView: View {
                     case .terminal: TerminalSettingsPage()
                     case .images: ImagesSettingsPage()
                     case .windows: WindowsSettingsPage()
+                    case .ai: AISettingsPage()
                     case .storage: StorageSettingsPage()
                     case .updates: UpdatesSettingsPage()
                     case .developer: DeveloperSettingsPage()
@@ -79,7 +82,7 @@ struct SettingsView: View {
 }
 
 /// A page's heading: its title and one line under it.
-private struct PageHeader: View {
+struct PageHeader: View {
     let title: String
     let subtitle: String
     var body: some View {

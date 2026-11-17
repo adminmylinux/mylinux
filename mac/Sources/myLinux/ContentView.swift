@@ -71,6 +71,11 @@ struct ContentView: View {
                         .help("Tailscale: the machines of your tailnet, one click to VNC or SSH")
                         .accessibilityLabel("Tailscale")
                 }
+                ToolbarItem(placement: .automatic) {
+                    Button { AskAIWindow.show() } label: { Image(systemName: "sparkles") }
+                        .help("Ask AI (⌘J): say what to do — “create omarchy 8/32 with username viktor” — and your Claude Code or Codex does it with the launcher")
+                        .accessibilityLabel("Ask AI")
+                }
                 ToolbarItem(placement: .automatic) { addMenu }
             }
         } detail: {

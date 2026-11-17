@@ -45,7 +45,14 @@ zone), so the machine sets itself up by itself. Its two boxes, **Install Claude 
 both agents in the first terminal (`cc`, `cx`). The launcher updates itself, and your machines keep running through
 an update.
 
-## Ask your coding agent for a machine
+## Ask for a machine in words
+
+**File › Ask AI…** (⌘J, or the sparkles in the toolbar) takes what you want in plain words, such as "create omarchy
+machine 8/32 with username viktor and the rest as default", and your own Claude Code or Codex on this Mac turns it into
+the launcher's commands (below). You see them before anything runs. A new machine's account comes from your defaults
+(**Settings › AI**: user name, keyboard, time zone; the password in the Keychain, never sent to the AI), and the first
+request that needs them asks you for them. Ask AI makes, starts, stops, restarts and deletes machines and sets up
+Claude Code or Codex in them; erasing everything is left to you.
 
 The launcher has a command, `mylinux`, and a skill that teaches Claude Code and Codex to use it. Install the skill
 from **File › Install the Agents' Skill…** or with `mylinux skill install`, then ask in plain words:

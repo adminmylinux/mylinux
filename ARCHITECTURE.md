@@ -538,6 +538,15 @@ pointer while it is fullscreen or after ⌘⌃G.
   start (the desktop is up), or after ten minutes; until then `status` is not `ready`. A machine deleted before its
   first start has its answers removed, not moved to the Trash (`ProfileStore.forgetAnswers`, Windows's too).
 
+- `AI/`: Ask AI… (⌘J). `AI.swift` runs the person's own Claude Code (`claude -p`) or Codex (`codex exec`) from an
+  empty folder with their tools, settings and saved sessions off, as My Recorder does, and checks that each is
+  installed and signed in (Settings › AI, `AISettingsPage.swift`). `AskAI.swift`: the prompt (the `mylinux` usage, the
+  rules, the machines' names and states, which defaults are stored, never the password), the answer as JSON
+  (`say`, `commands`), the commands checked (kinds, list, status, create, start, stop, restart, delete, claude, codex;
+  no `--wait`), a new Omarchy's account filled in from `MachineDefaults` (the password from the Keychain item
+  "myLinux Defaults"), and each one carried out by `CLIService.handle` when the person presses Run, stopping at the
+  first that fails. `AskAIView.swift`: the window (fixed size), and the defaults form it shows first when a command
+  needs what is not stored.
 - `FirstStartSheet.swift`: the dialog a new Omarchy or Windows machine is made with in the launcher's window
   (+ and File › New Omarchy Machine… / New Windows Machine…), a grid of two columns (name and user, the password
   twice, keyboard and time zone or edition, memory and disk size, host name and the Mac folder to share): the

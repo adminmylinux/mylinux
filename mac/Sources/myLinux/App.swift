@@ -58,6 +58,8 @@ struct MyLinuxApp: App {
                 Divider()
                 Button("Download Linux…") { NotificationCenter.default.post(name: WelcomeSheet.showNotification, object: nil) }
                 Button("Quick Connect…") { QuickConnect.shared.show() }.keyboardShortcut("k")
+                // what to do, said in words: the person's own Claude Code or Codex turns it into the launcher's commands
+                Button("Ask AI…") { AskAIWindow.show() }.keyboardShortcut("j")
                 // the skill that teaches Claude Code and Codex the launcher's command (mylinux skill install, from a menu)
                 Button("Install the Agents' Skill…") { CLI.Skill.installFromMenu() }
     }
@@ -95,6 +97,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if st != last { last = st; print("update test: \(st)"); fflush(stdout) }
                 if case .available(let r) = u.state { u.update(to: r) }
                 if case .failed = u.state { exit(1) }
+            }
+        }
+        // MYLINUX_TEST_ASK_AI="<request>" (a scratch MYLINUX_SUPPORT_DIR, MYLINUX_TEST_PROVIDER claude|codex): what the AI makes of
+        // it, the commands as checked, printed, and nothing run
+        if let request = ProcessInfo.processInfo.environment["MYLINUX_TEST_ASK_AI"], ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            let via = AI.Provider(rawValue: ProcessInfo.processInfo.environment["MYLINUX_TEST_PROVIDER"] ?? "") ?? AI.provider
+            let system = AskAI.system(machines: ProfileStore.shared.profiles.map { CLIService.describe($0) }, defaults: nil, hasPassword: false)
+            Task { @MainActor in
+                let t0 = Date()
+                do {
+                    let plan = try await AI.json(AskAI.Plan.self, system: system, user: request, via: via)
+                    let c = AskAI.checked(plan)
+                    print("ask ai (\(via.label), \(Int(Date().timeIntervalSince(t0))) s): \(plan.say ?? "")")
+                    for a in c.commands { print("  " + AskAI.shown(a)) }
+                    for r in c.refused { print("  refused: " + r) }
+                } catch { print("ask ai failed: \(error.localizedDescription)") }
+                exit(0)
+            }
+            return
+        }
+        // MYLINUX_TEST_ASK_WINDOW="<request>" with MYLINUX_TEST_SHOT=<png> (a scratch MYLINUX_SUPPORT_DIR): the Ask AI window
+        // asking it, photographed once the answer is there (or after 60 s), and nothing run
+        if let request = ProcessInfo.processInfo.environment["MYLINUX_TEST_ASK_WINDOW"], let png = ProcessInfo.processInfo.environment["MYLINUX_TEST_SHOT"],
+           ProcessInfo.processInfo.environment["MYLINUX_SUPPORT_DIR"] != nil {
+            AskAIWindow.show(asking: request)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (Double(ProcessInfo.processInfo.environment["MYLINUX_TEST_WAIT"] ?? "25") ?? 25)) {
+                if let w = NSApp.windows.first(where: { $0.title == "Ask AI" }) {
+                    let cap = Process(); cap.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    cap.arguments = ["-x", "-o", "-l", String(w.windowNumber), png]
+                    try? cap.run(); cap.waitUntilExit()
+                }
+                exit(0)
             }
         }
         MachineStats.shared.start()                      // CPU, memory and disk under each running machine

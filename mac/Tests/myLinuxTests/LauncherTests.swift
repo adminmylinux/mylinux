@@ -2243,3 +2243,51 @@ final class DiskCleanupTests: XCTestCase {
         XCTAssertEqual(DiskCleanup.note(img(.fedora), kept: [my]), "No machine uses it")
     }
 }
+
+/// Ask AI…: what the AI writes is checked and filled in by the launcher before the person sees it and says Run.
+final class AskAITests: XCTestCase {
+    func testOnlyTheMachinesCommandsAreKeptAndWaitingIsLeftToTheLauncher() {
+        let plan = AskAI.Plan(say: "ok", commands: [["mylinux", "create", "tiny", "--name", "t1", "--wait", "--timeout", "60"],
+                                                    ["erase", "everything", "--yes"], ["ssh", "t1", "--", "rm", "-rf", "/"], ["skill", "install"],
+                                                    ["start", "t1", "--timeout=30"], []])
+        let c = AskAI.checked(plan)
+        XCTAssertEqual(c.commands, [["create", "tiny", "--name", "t1"], ["start", "t1"]])
+        XCTAssertEqual(c.refused, ["erase everything --yes", "ssh t1 -- rm -rf /", "skill install", ""])
+    }
+    func testANewOmarchyGetsItsAccountFromTheStoredDefaultsAndThePasswordFromTheKeychain() {
+        let d = MachineDefaults(user: "viktor", keyboard: "Norwegian", timezone: "Atlantic/Reykjavik", fullName: "", email: "v@example.org")
+        let f = AskAI.filled(["create", "omarchy", "--memory", "8", "--disk", "32"], defaults: d, password: "pw1")
+        XCTAssertEqual(f.missing, [])
+        XCTAssertEqual(f.argv, ["create", "omarchy", "--memory", "8", "--disk", "32", "--unattended", "--password", "pw1", "--user", "viktor",
+                                "--keyboard", "Norwegian", "--timezone", "Atlantic/Reykjavik", "--email", "v@example.org"])
+        // what the person said wins
+        let g = AskAI.filled(["create", "omarchy", "--unattended", "--user", "anna", "--keyboard=Icelandic"], defaults: d, password: "pw1")
+        XCTAssertEqual(g.argv, ["create", "omarchy", "--unattended", "--user", "anna", "--keyboard=Icelandic", "--password", "pw1",
+                                "--timezone", "Atlantic/Reykjavik", "--email", "v@example.org"])
+        // nothing stored yet, or no password: asked for first
+        XCTAssertEqual(AskAI.filled(["create", "omarchy"], defaults: nil, password: nil).missing, ["defaults", "password"])
+        XCTAssertEqual(AskAI.filled(["create", "omarchy"], defaults: d, password: nil).missing, ["password"])
+        // the other kinds, a windows that asks in its window, and other commands are left as written
+        XCTAssertEqual(AskAI.filled(["create", "tiny", "--name", "t1"], defaults: d, password: "pw1").argv, ["create", "tiny", "--name", "t1"])
+        XCTAssertEqual(AskAI.filled(["create", "windows"], defaults: d, password: "pw1").argv, ["create", "windows"])
+        XCTAssertEqual(AskAI.filled(["start", "Omarchy"], defaults: nil, password: nil).missing, [])
+        // an unattended windows: the user and the password, not Omarchy's keyboard names
+        XCTAssertEqual(AskAI.filled(["create", "windows", "--unattended", "--accept-microsoft-license"], defaults: d, password: "pw1").argv,
+                       ["create", "windows", "--unattended", "--accept-microsoft-license", "--password", "pw1", "--user", "viktor"])
+    }
+    func testThePasswordIsShownAsDotsAndNeverGoesToTheAI() {
+        XCTAssertEqual(AskAI.shown(["create", "omarchy", "--name", "My Box", "--password", "secret", "--user", "v"]),
+                       "mylinux create omarchy --name \"My Box\" --password •••••• --user v")
+        XCTAssertEqual(AskAI.shown(["create", "omarchy", "--password=secret"]), "mylinux create omarchy --password=••••••")
+        let s = AskAI.system(machines: [["name": "Omarchy YT", "kind": "omarchy", "state": "stopped", "memoryGB": 8, "diskGB": 32]],
+                             defaults: MachineDefaults(user: "viktor"), hasPassword: true)
+        XCTAssertTrue(s.contains("name: Omarchy YT, kind: omarchy, state: stopped, memoryGB: 8, diskGB: 32"))
+        XCTAssertTrue(s.contains("user viktor, password stored"))
+        XCTAssertTrue(s.contains("mylinux create <kind>"), "the commands are the command line's own")
+    }
+    func testTheAnswersJSONIsFoundInsideProseOrFences() throws {
+        let p = try AI.decode(AskAI.Plan.self, from: "Here you go:\n```json\n{\"say\":\"Making it\",\"commands\":[[\"create\",\"tiny\"]]}\n```")
+        XCTAssertEqual(p, AskAI.Plan(say: "Making it", commands: [["create", "tiny"]]))
+        XCTAssertThrowsError(try AI.decode(AskAI.Plan.self, from: "no json here"))
+    }
+}
