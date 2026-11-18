@@ -16,6 +16,9 @@ struct Snippet: Codable, Identifiable, Hashable {
     var own: Bool? = nil        // the user's (kept by the launcher), not built in
 
     var isOwn: Bool { own == true }
+    /// What Copy and Paste put in: without the last newline, so the command waits at the prompt for Return. A shell's
+    /// bracketed paste keeps a last newline on a line of its own, and the command looked as if it ran (Kali's zsh).
+    var typed: String { var t = text; while t.hasSuffix("\n") { t.removeLast() }; return t }
 }
 
 /// Which snippets: the system they are for (a Profile.Kind's raw value, or "vnc"), the file they are kept in (in
@@ -27,7 +30,7 @@ struct SnippetSet: Hashable {
 
     static func machine(_ kind: Profile.Kind) -> SnippetSet { SnippetSet(os: kind.snippetOS, file: "snippets.json", pasteHint: Snippets.pasteHint(kind)) }
     static let vnc = SnippetSet(os: "vnc", file: "snippets-vnc.json",
-                                pasteHint: "paste it into a terminal on the remote (Ctrl+Shift+V in Omarchy); the clipboard goes over when its window is in front")
+                                pasteHint: "bring the remote's window to the front (the clipboard goes over then), paste it into a terminal there (Ctrl+Shift+V in Omarchy)")
 }
 
 enum Snippets {
@@ -124,7 +127,7 @@ struct SnippetsView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Snippets for \(machine)").font(.title3.weight(.semibold))
-                    Text(paste != nil ? "Paste puts one into the terminal in front in \(machine), waiting for Return, and closes this window; or Copy, then \(model.set.pasteHint)." : "Copy one, then \(model.set.pasteHint).")
+                    Text(paste != nil ? "Paste puts one into the terminal in front in \(machine), waiting for Return, and closes this window; or Copy, then \(model.set.pasteHint), and press Return." : "Copy one, then \(model.set.pasteHint), and press Return.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -179,10 +182,8 @@ struct SnippetsView: View {
 
     private func doPaste(_ s: Snippet) {
         guard let paste else { return }
-        // without the last newline: the command waits at the prompt for Return
-        var text = s.text; while text.hasSuffix("\n") { text.removeLast() }
         Task {
-            if let problem = await paste(text) { model.error = problem; return }
+            if let problem = await paste(s.typed) { model.error = problem; return }
             model.error = ""; pasted = s.id
             // pasted: the window goes, and the terminal with the command at its prompt is in front
             if let close { close(); return }
@@ -192,7 +193,7 @@ struct SnippetsView: View {
 
     private func copy(_ s: Snippet) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(s.text.hasSuffix("\n") ? s.text : s.text + "\n", forType: .string)
+        NSPasteboard.general.setString(s.typed, forType: .string)
         copied = s.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copied == s.id { copied = nil } }
     }
@@ -219,7 +220,7 @@ private struct SnippetDetail: View {
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.25)))
-            Text("Copy, then \(hint).").font(.caption).foregroundStyle(.secondary)
+            Text("Copy, then \(hint), and press Return.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 if let delete { Button("Delete", role: .destructive, action: delete) }
                 if let edit { Button("Edit", action: edit) }

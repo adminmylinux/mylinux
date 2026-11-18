@@ -2187,6 +2187,17 @@ final class SnippetTests: XCTestCase {
         XCTAssertEqual(Set(vnc.map(\.id)), Set(omarchy.map(\.id)).subtracting(["codex-login"]), "begun as a copy of Omarchy's")
         XCTAssertEqual(SnippetSet.vnc.file, "snippets-vnc.json"); XCTAssertEqual(SnippetSet.machine(.omarchy).file, "snippets.json")
     }
+    /// Kali's shell is zsh: an alias a snippet sets up is read by zsh's new terminals too, and a copied snippet waits for
+    /// Return without a last newline (which zsh's bracketed paste showed on a line of its own, as if it ran).
+    func testSnippetsReachZshAndWaitForReturn() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../server-apps").standardized
+        for file in ["snippets.json", "snippets-vnc.json"] {
+            let list = try XCTUnwrap(Snippets.decode(try Data(contentsOf: dir.appendingPathComponent(file))))
+            for s in list where s.text.contains("\"$HOME/.bashrc\"") { XCTAssertTrue(s.text.contains("\"$HOME/.zshrc\""), "\(file) \(s.id)") }
+        }
+        let s = Snippet(id: "x", name: "x", description: "x", os: ["kali"], text: "(\necho hi\n)\n\n")
+        XCTAssertEqual(s.typed, "(\necho hi\n)")
+    }
 }
 
 final class DiskCleanupTests: XCTestCase {
