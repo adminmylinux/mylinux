@@ -2198,6 +2198,17 @@ final class SnippetTests: XCTestCase {
         let s = Snippet(id: "x", name: "x", description: "x", os: ["kali"], text: "(\necho hi\n)\n\n")
         XCTAssertEqual(s.typed, "(\necho hi\n)")
     }
+    /// Kali's second snippet installs the web-security skill (kalimenu + a Claude Code SKILL.md), and the redundant
+    /// cc-alias snippet no longer shows for Kali, since Install Claude Code already sets up cc there.
+    func testKaliHasTheWebSecuritySkillSnippet() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../server-apps").standardized
+        let list = try XCTUnwrap(Snippets.decode(try Data(contentsOf: dir.appendingPathComponent("snippets.json"))))
+        let kali = list.filter { $0.os.contains("kali") }
+        XCTAssertEqual(kali.dropFirst().first?.id, "kali-web-security", "the skill is Kali's second snippet")
+        let skill = try XCTUnwrap(kali.first { $0.id == "kali-web-security" })
+        XCTAssertTrue(skill.text.contains(".local/bin/kalimenu") && skill.text.contains("skills/kali-web-security/SKILL.md"))
+        XCTAssertFalse(try XCTUnwrap(list.first { $0.id == "cc-alias" }).os.contains("kali"))
+    }
 }
 
 final class DiskCleanupTests: XCTestCase {
